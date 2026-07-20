@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Activity, Target, MessageSquare, ListChecks } from "lucide-react"
+import { Activity, Target, MessageSquare, ListChecks, MapPin } from "lucide-react"
 import db from "@/lib/db"
+import { db as opportunityDb } from "@/lib/db/schema"
 
 export const dynamic = "force-dynamic"
 
@@ -59,6 +60,27 @@ export default function Home() {
        LIMIT 4`
     )
     .all() as GroupRow[]
+
+  const leadLocations = db
+    .prepare(
+      `SELECT location_mentioned FROM leads WHERE location_mentioned IS NOT NULL AND TRIM(location_mentioned) != ''`
+    )
+    .all() as { location_mentioned: string }[]
+  const opportunityLocations = opportunityDb
+    .prepare(
+      `SELECT location_mentioned FROM opportunities WHERE location_mentioned IS NOT NULL AND TRIM(location_mentioned) != ''`
+    )
+    .all() as { location_mentioned: string }[]
+
+  const locationCounts = new Map<string, number>()
+  for (const row of [...leadLocations, ...opportunityLocations]) {
+    const key = row.location_mentioned.trim()
+    locationCounts.set(key, (locationCounts.get(key) || 0) + 1)
+  }
+  const heatMap = Array.from(locationCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+  const maxHeat = heatMap.length > 0 ? heatMap[0][1] : 1
 
   return (
     <div className="flex flex-col gap-6">
@@ -166,6 +188,38 @@ export default function Home() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Opportunity Heat Map</CardTitle>
+          <CardDescription>Where demand is concentrated, across all leads and opportunities.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {heatMap.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No locations extracted yet — they show up here as leads and opportunities mention them.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {heatMap.map(([location, count]) => (
+                <div key={location} className="flex items-center gap-3">
+                  <div className="flex w-32 shrink-0 items-center gap-1.5 text-sm">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="truncate">{location}</span>
+                  </div>
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-blue-600"
+                      style={{ width: `${Math.max((count / maxHeat) * 100, 4)}%` }}
+                    />
+                  </div>
+                  <span className="w-6 shrink-0 text-right text-sm font-medium">{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
