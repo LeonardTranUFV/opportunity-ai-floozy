@@ -76,7 +76,17 @@ export function WebsiteScannerForm() {
       {result && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
-            <div className="text-3xl font-bold">{result.score}/100</div>
+            <div
+              className={`text-3xl font-bold ${
+                result.score >= 80
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : result.score >= 50
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-destructive"
+              }`}
+            >
+              {result.score}/100
+            </div>
             <div className="text-sm text-muted-foreground">
               {result.url} · {result.loadTimeMs}ms · HTTP {result.statusCode}
             </div>

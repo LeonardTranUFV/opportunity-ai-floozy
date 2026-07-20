@@ -17,13 +17,13 @@ interface OpportunityRow {
 }
 
 const COLUMNS = [
-  { key: "new", label: "New" },
-  { key: "contacted", label: "Contacted" },
-  { key: "qualified", label: "Qualified" },
-  { key: "appointment", label: "Appointment" },
-  { key: "proposal", label: "Proposal" },
-  { key: "won", label: "Won" },
-  { key: "lost", label: "Lost" },
+  { key: "new", label: "New", dot: "bg-blue-500" },
+  { key: "contacted", label: "Contacted", dot: "bg-amber-500" },
+  { key: "qualified", label: "Qualified", dot: "bg-violet-500" },
+  { key: "appointment", label: "Appointment", dot: "bg-cyan-500" },
+  { key: "proposal", label: "Proposal", dot: "bg-indigo-500" },
+  { key: "won", label: "Won", dot: "bg-emerald-500" },
+  { key: "lost", label: "Lost", dot: "bg-red-500" },
 ] as const
 
 export default function CrmPage() {
@@ -71,12 +71,15 @@ export default function CrmPage() {
             return (
               <div key={col.key} className="flex w-72 shrink-0 flex-col gap-3">
                 <div className="flex items-center justify-between px-1">
-                  <h3 className="text-sm font-semibold">{col.label}</h3>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold">
+                    <span className={`h-2 w-2 rounded-full ${col.dot}`} />
+                    {col.label}
+                  </h3>
                   <span className="text-xs text-muted-foreground">{items.length}</span>
                 </div>
                 <div className="flex flex-col gap-2">
                   {items.map((opp) => (
-                    <Card key={opp.id} size="sm">
+                    <Card key={opp.id} size="sm" className="transition-shadow hover:shadow-md">
                       <CardContent className="flex flex-col gap-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium">{opp.author_name}</span>

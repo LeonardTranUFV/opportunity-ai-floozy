@@ -90,44 +90,52 @@ export default function Home() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">High Intent Leads</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{highIntentCount}</div>
-            <p className="text-xs text-muted-foreground">ASAP or high-urgency leads</p>
+        <Card className="overflow-hidden">
+          <CardContent className="flex items-start justify-between">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-muted-foreground">High Intent Leads</span>
+              <span className="text-3xl font-bold tracking-tight">{highIntentCount}</span>
+              <span className="text-xs text-muted-foreground">ASAP or high-urgency leads</span>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+              <Target className="h-5 w-5" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Conversations</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{activeConversations}</div>
-            <p className="text-xs text-muted-foreground">Approved & dispatched to GHL</p>
+        <Card className="overflow-hidden">
+          <CardContent className="flex items-start justify-between">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-muted-foreground">Active Conversations</span>
+              <span className="text-3xl font-bold tracking-tight">{activeConversations}</span>
+              <span className="text-xs text-muted-foreground">Approved & dispatched to GHL</span>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <MessageSquare className="h-5 w-5" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Review</CardTitle>
-            <ListChecks className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingReview}</div>
-            <p className="text-xs text-muted-foreground">Leads awaiting your decision</p>
+        <Card className="overflow-hidden">
+          <CardContent className="flex items-start justify-between">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-muted-foreground">Pending Review</span>
+              <span className="text-3xl font-bold tracking-tight">{pendingReview}</span>
+              <span className="text-xs text-muted-foreground">Leads awaiting your decision</span>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <ListChecks className="h-5 w-5" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Communities Monitored</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{communitiesMonitored}</div>
-            <p className="text-xs text-muted-foreground">Active groups being scraped</p>
+        <Card className="overflow-hidden">
+          <CardContent className="flex items-start justify-between">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
+              <span className="text-3xl font-bold tracking-tight">{communitiesMonitored}</span>
+              <span className="text-xs text-muted-foreground">Active groups being scraped</span>
+            </div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Activity className="h-5 w-5" />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -141,11 +149,17 @@ export default function Home() {
           <CardContent>
             <div className="space-y-4">
               {recentLeads.length === 0 && (
-                <p className="text-sm text-muted-foreground">No leads yet — run a scrape to populate this feed.</p>
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <Activity className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">No leads yet — run a scrape to populate this feed.</p>
+                </div>
               )}
               {recentLeads.map((lead) => (
-                <div key={lead.id} className="flex items-center gap-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                <div
+                  key={lead.id}
+                  className="flex items-center gap-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
                     <Activity className="h-4 w-4" />
                   </div>
                   <div className="flex-1 space-y-1">
@@ -172,10 +186,16 @@ export default function Home() {
           <CardContent>
             <div className="space-y-4">
               {monitoredGroups.length === 0 && (
-                <p className="text-sm text-muted-foreground">No groups added yet.</p>
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <Activity className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">No groups added yet.</p>
+                </div>
               )}
               {monitoredGroups.map((g) => (
-                <div key={g.id} className="flex items-center gap-4">
+                <div
+                  key={g.id}
+                  className="flex items-center gap-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
+                >
                   <div className="flex-1 space-y-1">
                     <p className="text-sm font-medium leading-none">{g.name}</p>
                     <p className="text-xs text-muted-foreground capitalize">

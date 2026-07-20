@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { MapPin, Phone, ExternalLink, Flame } from "lucide-react"
+import { MapPin, Phone, ExternalLink, Flame, Search } from "lucide-react"
 import { db as opportunityDb } from "@/lib/db/schema"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
@@ -130,12 +130,17 @@ export default async function OpportunitiesPage({
 
       {opportunities.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No opportunities match these filters yet. Go to{" "}
-            <a href="/agents" className="underline">
-              AI Agents
-            </a>{" "}
-            and run a scan to find new ones.
+          <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Search className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              No opportunities match these filters yet. Go to{" "}
+              <a href="/agents" className="underline">
+                AI Agents
+              </a>{" "}
+              and run a scan to find new ones.
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -145,7 +150,10 @@ export default async function OpportunitiesPage({
             const confidence = Math.max(0, Math.min(100, opp.intent_score ?? 0))
 
             return (
-              <Card key={opp.id}>
+              <Card
+                key={opp.id}
+                className={`transition-shadow hover:shadow-md ${isHot ? "ring-1 ring-rose-500/30" : ""}`}
+              >
                 <CardContent className="flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-col gap-1">

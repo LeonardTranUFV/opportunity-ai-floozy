@@ -36,7 +36,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-blue-600 text-primary-foreground">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 text-primary-foreground shadow-sm">
                 <span className="font-bold text-white">O</span>
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">

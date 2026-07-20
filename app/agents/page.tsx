@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { buttonVariants } from "@/components/ui/button"
-import { Plus, MapPin, Target } from "lucide-react"
+import { Plus, MapPin, Target, Bot } from "lucide-react"
 import { db as opportunityDb } from "@/lib/db/schema"
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
 import { ScanAgentButton } from "@/components/agents/scan-agent-button"
@@ -47,7 +47,10 @@ export default function AgentsPage() {
 
       {agents.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <Bot className="h-5 w-5 text-muted-foreground" />
+            </div>
             <p className="text-sm text-muted-foreground">
               You haven&apos;t created any AI agents yet. An agent is what tells the AI what to look
               for, where, and how urgently to alert you.
@@ -61,9 +64,14 @@ export default function AgentsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {agents.map((agent) => (
-            <Card key={agent.id}>
+            <Card key={agent.id} className="transition-shadow hover:shadow-md">
               <CardHeader>
-                <CardTitle>{agent.name}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                    <Bot className="h-4 w-4" />
+                  </div>
+                  <CardTitle>{agent.name}</CardTitle>
+                </div>
                 <CardDescription>{agent.goal}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
