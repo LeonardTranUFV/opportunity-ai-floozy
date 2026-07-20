@@ -6,6 +6,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageTitle } from "@/components/page-title";
+import { NotificationsBell } from "@/components/notifications-bell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,6 +45,7 @@ export default function RootLayout({
                   <SidebarTrigger />
                   <div className="w-full flex justify-between items-center px-4">
                     <PageTitle />
+                    <NotificationsBell />
                   </div>
                 </header>
                 <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
