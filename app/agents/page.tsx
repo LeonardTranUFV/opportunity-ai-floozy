@@ -4,6 +4,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { Plus, MapPin, Target } from "lucide-react"
 import { db as opportunityDb } from "@/lib/db/schema"
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
+import { ScanAgentButton } from "@/components/agents/scan-agent-button"
 
 export const dynamic = "force-dynamic"
 
@@ -96,6 +97,7 @@ export default function AgentsPage() {
                   </div>
                   <DeleteAgentButton id={agent.id} name={agent.name} />
                 </div>
+                <ScanAgentButton id={agent.id} />
               </CardContent>
             </Card>
           ))}
