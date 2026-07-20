@@ -30,3 +30,24 @@ export async function GET() {
     return NextResponse.json({ success: false, error: 'Failed to fetch agents' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { id } = await request.json();
+    if (id === undefined) {
+      return NextResponse.json({ success: false, error: 'Agent id is required' }, { status: 400 });
+    }
+
+    db.prepare('DELETE FROM opportunities WHERE agent_id = ?').run(id);
+    const result = db.prepare('DELETE FROM agents WHERE id = ?').run(id);
+
+    if (result.changes === 0) {
+      return NextResponse.json({ success: false, error: 'Agent not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, deleted: id });
+  } catch (error) {
+    console.error('Error deleting agent:', error);
+    return NextResponse.json({ success: false, error: 'Failed to delete agent' }, { status: 500 });
+  }
+}

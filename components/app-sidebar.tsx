@@ -1,3 +1,7 @@
+"use client"
+
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   Sidebar,
   SidebarContent,
@@ -12,22 +16,30 @@ import {
 } from "@/components/ui/sidebar"
 import { Home, Users, Briefcase, ListTodo, Settings } from "lucide-react"
 
+const NAV_ITEMS = [
+  { href: "/", label: "Dashboard", icon: Home },
+  { href: "/opportunities", label: "Opportunities", icon: ListTodo },
+  { href: "/agents", label: "AI Agents", icon: Users },
+  { href: "/crm", label: "CRM Pipeline", icon: Briefcase },
+  { href: "/settings", label: "Settings", icon: Settings },
+]
+
 export function AppSidebar() {
+  const pathname = usePathname()
+
   return (
     <Sidebar variant="inset" collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg">
-              <a href="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-blue-600 text-primary-foreground">
-                  <span className="font-bold text-white">O</span>
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">Opportunity AI</span>
-                  <span className="truncate text-xs">Growth Engine</span>
-                </div>
-              </a>
+            <SidebarMenuButton size="lg" render={<Link href="/" />}>
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-blue-600 text-primary-foreground">
+                <span className="font-bold text-white">O</span>
+              </div>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">Opportunity AI</span>
+                <span className="truncate text-xs">Growth Engine</span>
+              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -37,46 +49,21 @@ export function AppSidebar() {
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Dashboard">
-                  <a href="/">
-                    <Home />
-                    <span>Dashboard</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Opportunities">
-                  <a href="/opportunities">
-                    <ListTodo />
-                    <span>Opportunities</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="AI Agents">
-                  <a href="/agents">
-                    <Users />
-                    <span>AI Agents</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="CRM">
-                  <a href="/crm">
-                    <Briefcase />
-                    <span>CRM Pipeline</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Settings">
-                  <a href="/settings">
-                    <Settings />
-                    <span>Settings</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+                const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href)
+                return (
+                  <SidebarMenuItem key={href}>
+                    <SidebarMenuButton
+                      tooltip={label}
+                      isActive={isActive}
+                      render={<Link href={href} />}
+                    >
+                      <Icon />
+                      <span>{label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
