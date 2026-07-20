@@ -9,6 +9,7 @@ const TITLES: Record<string, string> = {
   "/agents/new": "Create Agent",
   "/communities": "Communities",
   "/crm": "CRM Pipeline",
+  "/tools": "Tools",
   "/settings": "Settings",
 }
 

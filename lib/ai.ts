@@ -145,3 +145,30 @@ Respond with a JSON object: { "reply": string }
     return text;
   }
 }
+
+export interface WebsiteCheck {
+  label: string;
+  pass: boolean;
+  detail: string;
+}
+
+/**
+ * Turn a rule-based website audit into a short, readable improvement report.
+ */
+export async function generateWebsiteReport(url: string, checks: WebsiteCheck[]): Promise<string> {
+  const systemInstruction = `
+You are a website improvement consultant writing a short report for a small business owner who
+is not technical. Given a list of automated checks, write 2-4 sentences summarizing what's good,
+what's missing, and the single highest-impact fix to prioritize first. Plain language, no jargon,
+no markdown formatting. Respond with a JSON object: { "report": string }
+`;
+  const userText = `Website: ${url}\n\nChecks:\n${JSON.stringify(checks, null, 2)}`;
+  const text = await callGemini(systemInstruction, userText);
+
+  try {
+    const parsed = JSON.parse(text);
+    return parsed.report || "";
+  } catch {
+    return text;
+  }
+}
