@@ -40,31 +40,52 @@ function getApiKey(): string {
   return apiKey;
 }
 
+const RETRYABLE_STATUS_CODES = new Set([503, 500]);
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function callGemini(systemInstruction: string, userText: string): Promise<string> {
   const apiKey = getApiKey();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: userText }] }],
-      systemInstruction: { parts: [{ text: systemInstruction }] },
-      generationConfig: { responseMimeType: "application/json" },
-    }),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: userText }] }],
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: { responseMimeType: "application/json" },
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error("Gemini API returned no content");
+      }
+      return text;
+    }
+
     const errText = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errText}`);
+    lastError = new Error(`Gemini API error (${response.status}): ${errText}`);
+
+    // Only retry on transient overload — not on quota exhaustion (429) or bad requests.
+    const shouldRetry = RETRYABLE_STATUS_CODES.has(response.status) && attempt < MAX_ATTEMPTS;
+    if (!shouldRetry) {
+      throw lastError;
+    }
+    await sleep(RETRY_DELAY_MS * attempt);
   }
 
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error("Gemini API returned no content");
-  }
-  return text;
+  throw lastError ?? new Error("Gemini API request failed");
 }
 
 /**
