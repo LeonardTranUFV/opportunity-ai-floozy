@@ -7,6 +7,7 @@ const TITLES: Record<string, string> = {
   "/opportunities": "Opportunities",
   "/agents": "AI Agents",
   "/agents/new": "Create Agent",
+  "/communities": "Communities",
   "/crm": "CRM Pipeline",
   "/settings": "Settings",
 }

@@ -14,12 +14,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Home, Users, Briefcase, ListTodo, Settings } from "lucide-react"
+import { Home, Users, Briefcase, ListTodo, Settings, Compass } from "lucide-react"
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/opportunities", label: "Opportunities", icon: ListTodo },
   { href: "/agents", label: "AI Agents", icon: Users },
+  { href: "/communities", label: "Communities", icon: Compass },
   { href: "/crm", label: "CRM Pipeline", icon: Briefcase },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
