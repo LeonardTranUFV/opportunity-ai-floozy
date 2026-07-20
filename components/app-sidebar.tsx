@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound } from "lucide-react"
+import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut } from "lucide-react"
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -27,7 +27,7 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 
-export function AppSidebar() {
+export function AppSidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname()
 
   return (
@@ -72,7 +72,24 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        {/* User profile or status can go here */}
+        {userEmail && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                <span className="truncate text-xs text-muted-foreground">{userEmail}</span>
+                <form action="/auth/signout" method="post">
+                  <button
+                    type="submit"
+                    aria-label="Sign out"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </button>
+                </form>
+              </div>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </SidebarFooter>
     </Sidebar>
   )
