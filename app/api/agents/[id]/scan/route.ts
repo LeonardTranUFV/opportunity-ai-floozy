@@ -74,8 +74,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const insertOpportunity = opportunityDb.prepare(`
     INSERT INTO opportunities
-      (agent_id, source_post_id, platform, author_name, author_profile_url, post_url, location_mentioned, content, category, intent_score, urgency, estimated_value, ai_summary, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')
+      (agent_id, source_post_id, platform, author_name, author_profile_url, post_url, location_mentioned, phone_number, content, category, intent_score, urgency, estimated_value, ai_summary, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')
   `);
   const markEvaluated = opportunityDb.prepare(
     "INSERT OR IGNORE INTO evaluated_posts (agent_id, source_post_id) VALUES (?, ?)"
@@ -97,6 +97,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         post.author_profile_url,
         post.post_url,
         evalItem.location_mentioned,
+        evalItem.phone_number,
         post.raw_text,
         evalItem.category,
         evalItem.intent_score,

@@ -17,7 +17,7 @@ interface OpportunityRow {
 }
 
 const COLUMNS = [
-  { key: "new", label: "New Lead" },
+  { key: "new", label: "New" },
   { key: "contacted", label: "Contacted" },
   { key: "qualified", label: "Qualified" },
   { key: "appointment", label: "Appointment" },

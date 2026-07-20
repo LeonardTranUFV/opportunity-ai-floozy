@@ -61,3 +61,19 @@ db.exec(`
     PRIMARY KEY (agent_id, source_post_id)
   );
 `);
+
+// Additive column migrations — safe to run every startup, no-op if already applied.
+// Wrapped in try/catch because Next's build spawns multiple worker processes that each
+// evaluate this module against the same on-disk file, racing the PRAGMA check.
+const opportunityColumns = (db.prepare(`PRAGMA table_info(opportunities)`).all() as { name: string }[]).map(
+  (c) => c.name
+);
+if (!opportunityColumns.includes('phone_number')) {
+  try {
+    db.exec(`ALTER TABLE opportunities ADD COLUMN phone_number TEXT`);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('duplicate column name')) {
+      throw error;
+    }
+  }
+}

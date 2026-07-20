@@ -1,8 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { MapPin, ExternalLink } from "lucide-react"
+import { MapPin, Phone, ExternalLink, Flame } from "lucide-react"
 import { db as opportunityDb } from "@/lib/db/schema"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
+import { ApproveRejectButtons } from "@/components/opportunities/approve-reject-buttons"
 
 export const dynamic = "force-dynamic"
 
@@ -14,6 +15,7 @@ interface OpportunityRow {
   author_name: string
   post_url: string | null
   location_mentioned: string | null
+  phone_number: string | null
   content: string
   category: string | null
   intent_score: number | null
@@ -137,67 +139,109 @@ export default async function OpportunitiesPage({
           </CardContent>
         </Card>
       ) : (
-        <div className="flex flex-col gap-4">
-          {opportunities.map((opp) => (
-            <Card key={opp.id}>
-              <CardContent className="flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{opp.author_name}</span>
-                      <span className="text-xs uppercase text-muted-foreground">{opp.platform}</span>
-                      {opp.location_mentioned && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="h-3 w-3" />
-                          {opp.location_mentioned}
-                        </span>
-                      )}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {opportunities.map((opp) => {
+            const isHot = (opp.intent_score ?? 0) >= 90 || opp.urgency === "asap"
+            const confidence = Math.max(0, Math.min(100, opp.intent_score ?? 0))
+
+            return (
+              <Card key={opp.id}>
+                <CardContent className="flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-medium">{opp.author_name}</span>
+                        <span className="text-xs uppercase text-muted-foreground">{opp.platform}</span>
+                        {isHot && (
+                          <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">
+                            <Flame className="h-2.5 w-2.5" />
+                            Hot
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        Agent: {opp.agent_name}
+                        {opp.category ? ` · ${opp.category}` : ""}
+                      </span>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      Agent: {opp.agent_name}
-                      {opp.category ? ` · ${opp.category}` : ""}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                         URGENCY_STYLES[opp.urgency] || URGENCY_STYLES.low
                       }`}
                     >
                       {opp.urgency}
                     </span>
-                    <span className="text-xs text-muted-foreground">Intent {opp.intent_score ?? "—"}</span>
                   </div>
-                </div>
 
-                {opp.ai_summary && <p className="text-sm font-medium">{opp.ai_summary}</p>}
-                <p className="rounded-md bg-muted/30 p-2 text-sm text-muted-foreground">
-                  &quot;{opp.content}&quot;
-                </p>
+                  {opp.ai_summary && <p className="text-sm font-medium">{opp.ai_summary}</p>}
 
-                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  {opp.estimated_value && <span>Est. value: {opp.estimated_value}</span>}
-                  {opp.post_url && (
-                    <a
-                      href={opp.post_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1 underline"
-                    >
-                      View original post
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                  <details className="rounded-md bg-muted/30 p-2 text-sm text-muted-foreground">
+                    <summary className="cursor-pointer text-xs">View Raw Social Post Text</summary>
+                    <p className="mt-2 whitespace-pre-wrap">&quot;{opp.content}&quot;</p>
+                  </details>
+
+                  <div className="grid grid-cols-2 gap-3 border-y py-2 text-sm">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="flex items-center gap-1 text-xs uppercase text-muted-foreground">
+                        <MapPin className="h-3 w-3" />
+                        Location
+                      </span>
+                      <span>{opp.location_mentioned || "Not specified"}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="flex items-center gap-1 text-xs uppercase text-muted-foreground">
+                        <Phone className="h-3 w-3" />
+                        Phone Number
+                      </span>
+                      {opp.phone_number ? (
+                        <a href={`tel:${opp.phone_number}`} className="text-blue-600 underline dark:text-blue-400">
+                          {opp.phone_number}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">Not stated</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">AI Confidence</span>
+                      <span className="font-medium">{confidence}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-blue-600" style={{ width: `${confidence}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                    {opp.estimated_value && <span>Est. value: {opp.estimated_value}</span>}
+                    {opp.post_url && (
+                      <a
+                        href={opp.post_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 underline"
+                      >
+                        View original post
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+
+                  <GenerateReplyButton id={opp.id} initialReply={opp.suggested_reply} />
+
+                  {opp.status === "new" ? (
+                    <ApproveRejectButtons id={opp.id} />
+                  ) : (
+                    <div className="flex items-center justify-between gap-4 pt-1">
+                      <span className="text-xs text-muted-foreground">Pipeline status</span>
+                      <StatusSelect id={opp.id} status={opp.status} />
+                    </div>
                   )}
-                </div>
-
-                <div className="flex items-center justify-between gap-4 pt-1">
-                  <StatusSelect id={opp.id} status={opp.status} />
-                </div>
-
-                <GenerateReplyButton id={opp.id} initialReply={opp.suggested_reply} />
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

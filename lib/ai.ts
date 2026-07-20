@@ -27,6 +27,7 @@ export interface OpportunityEvaluation {
   ai_summary: string;
   category: string;
   location_mentioned: string | null;
+  phone_number: string | null;
 }
 
 function getApiKey(): string {
@@ -105,7 +106,8 @@ this schema exactly:
   "estimated_value": string (short human-readable estimate like "$2,000-5,000", or "Unknown"),
   "ai_summary": string (one sentence, written for a busy business owner deciding whether to act),
   "category": string (short category label, e.g. "roofing", "flooring", "used car"),
-  "location_mentioned": string or null (city/neighborhood extracted from the post text, or null)
+  "location_mentioned": string or null (city/neighborhood extracted from the post text, or null),
+  "phone_number": string or null (ONLY if a phone number is explicitly written in the post text, else null — never invent one)
 }
 Always include every post_id from the input, even if relevant is false.
 `;
