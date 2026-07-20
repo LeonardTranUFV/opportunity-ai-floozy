@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Sparkles } from "lucide-react"
+import { formatApiError } from "@/lib/format-error"
 
 export function ScanAgentButton({ id }: { id: number }) {
   const router = useRouter()
@@ -17,7 +18,7 @@ export function ScanAgentButton({ id }: { id: number }) {
         const res = await fetch(`/api/agents/${id}/scan`, { method: "POST" })
         const data = await res.json()
         if (!res.ok || !data.success) {
-          setResult(data.error || "Scan failed")
+          setResult(formatApiError(data.error) || "Scan failed")
           return
         }
         if (data.evaluated === 0) {

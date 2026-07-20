@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { ConnectAccountsForm } from "@/components/accounts/connect-accounts-form"
+import { SessionStatus } from "@/components/accounts/session-status"
 
 export default function AccountsPage() {
   return (
@@ -10,6 +11,12 @@ export default function AccountsPage() {
           Authorize the live crawler to monitor target community groups on your behalf.
         </p>
       </div>
+
+      <Card>
+        <CardContent>
+          <SessionStatus />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

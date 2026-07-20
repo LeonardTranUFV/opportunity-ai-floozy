@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Sparkles, Copy, Check } from "lucide-react"
+import { formatApiError } from "@/lib/format-error"
 
 export function GenerateReplyButton({ id, initialReply }: { id: number; initialReply: string | null }) {
   const [isPending, startTransition] = useTransition()
@@ -17,7 +18,7 @@ export function GenerateReplyButton({ id, initialReply }: { id: number; initialR
         const res = await fetch(`/api/opportunities/${id}/reply`, { method: "POST" })
         const data = await res.json()
         if (!res.ok || !data.success) {
-          setError(data.error || "Failed to generate reply")
+          setError(formatApiError(data.error) || "Failed to generate reply")
           return
         }
         setReply(data.reply)

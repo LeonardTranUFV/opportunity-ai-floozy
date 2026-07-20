@@ -100,7 +100,12 @@ export function DiscoverGroupsForm() {
 
       {results && results.length === 0 && !error && (
         <p className="text-sm text-muted-foreground">
-          No public Facebook groups found for that search. Try a broader industry or location.
+          No groups found for that search. Try a broader industry or location — or check that
+          you&apos;re actually logged in under{" "}
+          <a href="/accounts" className="underline">
+            Connect Accounts
+          </a>
+          , since discovery only works while your Facebook session is authenticated.
         </p>
       )}
 

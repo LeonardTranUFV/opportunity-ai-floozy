@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CheckCircle2, XCircle, Search } from "lucide-react"
+import { formatApiError } from "@/lib/format-error"
 
 interface WebsiteCheck {
   label: string
@@ -86,7 +87,8 @@ export function WebsiteScannerForm() {
           )}
           {result.aiError && (
             <p className="text-xs text-muted-foreground">
-              AI summary unavailable right now ({result.aiError}) — checklist below is still accurate.
+              AI summary unavailable right now ({formatApiError(result.aiError)}) — checklist below is still
+              accurate.
             </p>
           )}
 
