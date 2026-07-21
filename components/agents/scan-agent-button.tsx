@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sparkles } from "lucide-react"
 import { formatApiError } from "@/lib/format-error"
 
@@ -82,19 +83,24 @@ export function ScanAgentButton({ id }: { id: string }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex gap-2">
-        <select
-          value={rangeDays}
-          onChange={(e) => setRangeDays(Number(e.target.value))}
+        <Select
+          value={String(rangeDays)}
+          onValueChange={(v) => v && setRangeDays(Number(v))}
           disabled={isPending}
-          className="h-8 shrink-0 rounded-md border bg-background px-2 text-xs"
-          aria-label="Scan lookback range"
         >
-          {RANGE_OPTIONS.map((opt) => (
-            <option key={opt.days} value={opt.days}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className="w-28 shrink-0" aria-label="Scan lookback range">
+            <SelectValue>
+              {(v: string) => RANGE_OPTIONS.find((opt) => String(opt.days) === v)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {RANGE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.days} value={String(opt.days)}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button
           variant="outline"
           size="sm"

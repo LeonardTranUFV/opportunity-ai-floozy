@@ -2,13 +2,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn } from "@/lib/utils"
-import { MapPin, Phone, ExternalLink, Flame, Search, ListFilter, Clock } from "lucide-react"
+import { MapPin, Phone, ExternalLink, Flame, Search, Clock } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
 import { ApproveRejectButtons } from "@/components/opportunities/approve-reject-buttons"
 import { SendOutreachButtons } from "@/components/opportunities/send-outreach-buttons"
 import { DeleteOpportunityButton } from "@/components/opportunities/delete-opportunity-button"
+import { FilterBar, type SortOption } from "@/components/opportunities/filter-bar"
 
 export const dynamic = "force-dynamic"
 
@@ -19,8 +20,37 @@ const URGENCY_VARIANT: Record<string, "destructive" | "warning" | "brand" | "sec
   low: "secondary",
 }
 
-const selectClassName =
-  "h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground shadow-sm outline-none transition-colors hover:border-foreground/20 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/30"
+const URGENCY_RANK: Record<string, number> = { asap: 0, high: 1, medium: 2, low: 3 }
+
+function resolvePostTimestamp(
+  posts: { posted_at: string | null; scraped_at: string | null } | null,
+  createdAt: string
+): number {
+  const iso = posts?.posted_at || posts?.scraped_at || createdAt
+  const ts = new Date(iso).getTime()
+  return Number.isNaN(ts) ? 0 : ts
+}
+
+function sortOpportunities<T extends { urgency: string; intent_score: number | null; created_at: string; posts: unknown }>(
+  list: T[],
+  sort: SortOption
+): T[] {
+  if (sort === "newest" || sort === "oldest") {
+    const withTs = list.map((opp) => ({
+      opp,
+      ts: resolvePostTimestamp(opp.posts as { posted_at: string | null; scraped_at: string | null } | null, opp.created_at),
+    }))
+    withTs.sort((a, b) => (sort === "newest" ? b.ts - a.ts : a.ts - b.ts))
+    return withTs.map((x) => x.opp)
+  }
+  if (sort === "urgency") {
+    return [...list].sort((a, b) => {
+      const rankDiff = (URGENCY_RANK[a.urgency] ?? 4) - (URGENCY_RANK[b.urgency] ?? 4)
+      return rankDiff !== 0 ? rankDiff : (b.intent_score ?? 0) - (a.intent_score ?? 0)
+    })
+  }
+  return list
+}
 
 // Facebook's relative-age labels ("2h", "3d") get parsed into an ISO string
 // at scrape time (posts.posted_at); when that parse fails the post has no
@@ -56,9 +86,12 @@ function formatPostAge(postedAt: string | null, scrapedAt: string | null): { lab
 export default async function OpportunitiesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ agent?: string; urgency?: string; status?: string }>
+  searchParams: Promise<{ agent?: string; urgency?: string; status?: string; sort?: string }>
 }) {
   const params = await searchParams
+  const sort: SortOption = params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency"
+    ? params.sort
+    : "relevance"
   const supabase = await createClient()
 
   const { data: agents } = await supabase.from("agents").select("id, name").order("name")
@@ -80,7 +113,8 @@ export default async function OpportunitiesPage({
     query = query.neq("status", "lost")
   }
 
-  const { data: opportunities } = await query
+  const { data: rawOpportunities } = await query
+  const opportunities = rawOpportunities ? sortOpportunities(rawOpportunities, sort) : rawOpportunities
 
   return (
     <div className="flex flex-col gap-6">
@@ -91,40 +125,13 @@ export default async function OpportunitiesPage({
         </p>
       </div>
 
-      <form className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/50 p-2" method="get">
-        <ListFilter className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
-        <select name="agent" defaultValue={params.agent || ""} className={selectClassName}>
-          <option value="">All Agents</option>
-          {agents?.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <select name="urgency" defaultValue={params.urgency || ""} className={cn(selectClassName, "capitalize")}>
-          <option value="">All Urgency</option>
-          <option value="asap">ASAP</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <select name="status" defaultValue={params.status || ""} className={cn(selectClassName, "capitalize")}>
-          <option value="">All Status</option>
-          <option value="new">New</option>
-          <option value="contacted">Contacted</option>
-          <option value="qualified">Qualified</option>
-          <option value="appointment">Appointment</option>
-          <option value="proposal">Proposal</option>
-          <option value="won">Won</option>
-          <option value="lost">Lost</option>
-        </select>
-        <button
-          type="submit"
-          className="h-8 rounded-md bg-brand px-3 text-sm font-medium text-brand-foreground transition-colors hover:bg-brand/90"
-        >
-          Filter
-        </button>
-      </form>
+      <FilterBar
+        agents={agents ?? []}
+        agentId={params.agent || ""}
+        urgency={params.urgency || ""}
+        status={params.status || ""}
+        sort={sort}
+      />
 
       {!opportunities || opportunities.length === 0 ? (
         <Card>
