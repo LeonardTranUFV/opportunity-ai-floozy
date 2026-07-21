@@ -42,7 +42,14 @@ export async function POST() {
     });
   }
 
-  const rows = posts.map((p) => ({
+  // Dedupe across groups within this run — the scraper only dedupes per-group,
+  // but the same external_post_id can surface in two different groups in one
+  // pass (e.g. a repeated sponsored post), and Postgres's ON CONFLICT DO UPDATE
+  // rejects the whole batch if a conflict key appears twice in one statement.
+  const dedupedPosts = new Map<string, (typeof posts)[number]>();
+  for (const p of posts) dedupedPosts.set(p.external_post_id, p);
+
+  const rows = [...dedupedPosts.values()].map((p) => ({
     user_id: user.id,
     group_id: p.group_id,
     platform: p.platform,
