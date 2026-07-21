@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Activity, Target, MessageSquare, ListChecks, MapPin } from "lucide-react"
+import { Activity, Target, MessageSquare, ListChecks, MapPin, ExternalLink } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
@@ -9,6 +9,15 @@ const urgencyLabel: Record<string, string> = {
   high: "High Intent",
   medium: "Medium Intent",
   low: "Low Intent",
+}
+
+function formatAlertTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
 }
 
 export default async function Home() {
@@ -29,7 +38,7 @@ export default async function Home() {
     supabase.from("groups").select("*", { count: "exact", head: true }).eq("active", true),
     supabase
       .from("opportunities")
-      .select("id, author_name, ai_summary, content, urgency, location_mentioned, created_at")
+      .select("id, author_name, ai_summary, content, urgency, location_mentioned, platform, post_url, created_at")
       .order("created_at", { ascending: false })
       .limit(4),
     supabase.from("groups").select("id, platform, name, active").eq("active", true).order("created_at", { ascending: false }).limit(4),
@@ -144,8 +153,25 @@ export default async function Home() {
                       {lead.location_mentioned ? ` · ${lead.location_mentioned}` : ""}
                     </p>
                     <p className="text-sm text-muted-foreground">&quot;{lead.ai_summary || lead.content}&quot;</p>
+                    <div className="flex items-center gap-2 pt-0.5 text-xs text-muted-foreground">
+                      <span>{formatAlertTime(lead.created_at)}</span>
+                      {lead.post_url && (
+                        <>
+                          <span>·</span>
+                          <a
+                            href={lead.post_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-0.5 capitalize underline hover:text-foreground"
+                          >
+                            {lead.platform || "View"} post
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  <div className="shrink-0 text-sm font-medium text-blue-600 dark:text-blue-400">
                     {urgencyLabel[lead.urgency] ?? lead.urgency}
                   </div>
                 </div>

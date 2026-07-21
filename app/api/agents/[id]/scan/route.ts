@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { evaluatePostsForAgent, type AgentProfile, type RawPostInput } from "@/lib/ai";
 
 const BATCH_SIZE = 25;
+const ALLOWED_RANGE_DAYS = [1, 3, 7];
 
 interface PostRow {
   id: string;
@@ -16,6 +17,10 @@ interface PostRow {
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: agentId } = await params;
   const supabase = await createClient();
+
+  const body = await request.json().catch(() => ({}));
+  const rangeDays = ALLOWED_RANGE_DAYS.includes(body.rangeDays) ? body.rangeDays : 3;
+  const cutoffIso = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
 
   const {
     data: { user },
@@ -40,9 +45,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .eq("agent_id", agentId);
   const evaluatedIds = new Set((evaluatedRows ?? []).map((r) => r.source_post_id));
 
+  // Posts with a parsed timestamp are filtered by that; posts where we couldn't
+  // parse a relative age from the page (posted_at is null) fall back to when we
+  // scraped them, so they aren't silently excluded from every range.
   const { data: allPosts } = await supabase
     .from("posts")
     .select("id, platform, author_name, author_profile_url, post_url, raw_text")
+    .or(`posted_at.gte.${cutoffIso},and(posted_at.is.null,scraped_at.gte.${cutoffIso})`)
     .order("scraped_at", { ascending: false })
     .limit(300);
 
@@ -55,7 +64,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       success: true,
       evaluated: 0,
       opportunities_found: 0,
-      message: "No new posts to evaluate — everything collected so far has already been scanned.",
+      message: `No new posts in the last ${rangeDays} day${rangeDays === 1 ? "" : "s"} to evaluate.`,
     });
   }
 

@@ -6,16 +6,27 @@ import { Button } from "@/components/ui/button"
 import { Sparkles } from "lucide-react"
 import { formatApiError } from "@/lib/format-error"
 
+const RANGE_OPTIONS = [
+  { days: 1, label: "1 day" },
+  { days: 3, label: "3 days" },
+  { days: 7, label: "7 days (Pro)" },
+]
+
 export function ScanAgentButton({ id }: { id: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<string | null>(null)
+  const [rangeDays, setRangeDays] = useState(3)
 
   const handleScan = () => {
     setResult(null)
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/agents/${id}/scan`, { method: "POST" })
+        const res = await fetch(`/api/agents/${id}/scan`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rangeDays }),
+        })
         const data = await res.json()
         if (!res.ok || !data.success) {
           setResult(formatApiError(data.error) || "Scan failed")
@@ -34,11 +45,26 @@ export function ScanAgentButton({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <Button variant="outline" size="sm" onClick={handleScan} disabled={isPending}>
-        <Sparkles className="h-3.5 w-3.5" />
-        {isPending ? "Scanning…" : "Scan for Opportunities"}
-      </Button>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex gap-2">
+        <select
+          value={rangeDays}
+          onChange={(e) => setRangeDays(Number(e.target.value))}
+          disabled={isPending}
+          className="h-8 shrink-0 rounded-md border bg-background px-2 text-xs"
+          aria-label="Scan lookback range"
+        >
+          {RANGE_OPTIONS.map((opt) => (
+            <option key={opt.days} value={opt.days}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <Button variant="outline" size="sm" className="flex-1" onClick={handleScan} disabled={isPending}>
+          <Sparkles className="h-3.5 w-3.5" />
+          {isPending ? "Scanning…" : "Scan for Opportunities"}
+        </Button>
+      </div>
       {result && <p className="text-xs text-muted-foreground">{result}</p>}
     </div>
   )

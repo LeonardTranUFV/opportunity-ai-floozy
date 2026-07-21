@@ -94,11 +94,14 @@ export default async function AgentsPage() {
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-2">
-                  <div className="flex items-center gap-1.5 text-sm">
+                  <Link
+                    href={`/opportunities?agent=${agent.id}`}
+                    className="flex items-center gap-1.5 text-sm hover:underline"
+                  >
                     <Target className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="font-medium">{countByAgent.get(agent.id) ?? 0}</span>
                     <span className="text-muted-foreground">opportunities found</span>
-                  </div>
+                  </Link>
                   <DeleteAgentButton id={agent.id} name={agent.name} />
                 </div>
                 <ScanAgentButton id={agent.id} />
