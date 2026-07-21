@@ -6,6 +6,14 @@ import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 const BATCH_SIZE = 25;
 const MAX_POSTS_PER_SCAN = 500;
 const ALLOWED_RANGE_DAYS = [1, 3, 7];
+// Gemini's free tier caps requests per minute (~10 RPM as of mid-2026) and
+// does NOT get retried on 429 (see lib/ai.ts) — so a scan with many batches
+// has to pace itself under that ceiling rather than firing them back-to-back.
+const BATCH_PACING_MS = 6500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 interface PostRow {
   id: string;
@@ -92,6 +100,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // many more were waiting, which made "scan everything" impossible without
   // repeated manual clicks.
   for (let i = 0; i < unevaluated.length; i += BATCH_SIZE) {
+    if (i > 0) await sleep(BATCH_PACING_MS);
     const batch = unevaluated.slice(i, i + BATCH_SIZE);
     const postsForAI: RawPostInput[] = batch.map((p) => ({
       post_id: p.id,
