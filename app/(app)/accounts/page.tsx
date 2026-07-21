@@ -24,15 +24,27 @@ export default function AccountsPage() {
           <CardDescription>Your password is never captured by this app.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
-            <li>Click a button below to launch a visible browser window.</li>
-            <li>Log into the Facebook or LinkedIn account in the popup browser.</li>
-            <li>Authorize any 2FA codes directly in the official portal.</li>
-            <li>
+          <ol className="flex flex-col gap-3 text-sm text-muted-foreground">
+            {[
+              "Click a button below to launch a visible browser window.",
+              "Log into the Facebook or LinkedIn account in the popup browser.",
+              "Authorize any 2FA codes directly in the official portal.",
+            ].map((step, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-semibold text-brand">
+                  {i + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+            <li className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-semibold text-brand">
+                4
+              </span>
               <strong className="text-foreground">Once completed, close the popup browser window manually.</strong>
             </li>
           </ol>
-          <p className="text-xs text-blue-600 dark:text-blue-400">
+          <p className="rounded-md border border-brand/20 bg-brand/5 px-3 py-2 text-xs text-brand">
             Cookies are kept locally on disk inside an auth profile — never sent anywhere else.
           </p>
           <ConnectAccountsForm />

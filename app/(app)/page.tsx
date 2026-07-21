@@ -1,5 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Activity, Target, MessageSquare, ListChecks, MapPin, ExternalLink } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Activity, Target, MessageSquare, ListChecks, MapPin, ExternalLink, Compass, Flame } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
@@ -9,6 +11,13 @@ const urgencyLabel: Record<string, string> = {
   high: "High Intent",
   medium: "Medium Intent",
   low: "Low Intent",
+}
+
+const urgencyVariant: Record<string, "destructive" | "warning" | "brand" | "secondary"> = {
+  asap: "destructive",
+  high: "warning",
+  medium: "brand",
+  low: "secondary",
 }
 
 function formatAlertTime(iso: string): string {
@@ -69,56 +78,56 @@ export default async function Home() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-3xl font-bold tracking-tight">Today's Opportunities</h2>
+      <div className="flex flex-col gap-1">
+        <h2 className="text-3xl font-bold tracking-tight">Today&apos;s Opportunities</h2>
         <p className="text-muted-foreground">Here is your daily AI digest.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden transition-shadow hover:shadow-md">
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">High Intent Leads</span>
               <span className="text-3xl font-bold tracking-tight">{highIntentCount ?? 0}</span>
               <span className="text-xs text-muted-foreground">ASAP or high-urgency leads</span>
             </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/15 dark:text-rose-400">
               <Target className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden transition-shadow hover:shadow-md">
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">Active Conversations</span>
               <span className="text-3xl font-bold tracking-tight">{activeConversations ?? 0}</span>
               <span className="text-xs text-muted-foreground">Approved & dispatched to GHL</span>
             </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
               <MessageSquare className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden transition-shadow hover:shadow-md">
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">Pending Review</span>
               <span className="text-3xl font-bold tracking-tight">{pendingReview ?? 0}</span>
               <span className="text-xs text-muted-foreground">Leads awaiting your decision</span>
             </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400">
               <ListChecks className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden transition-shadow hover:shadow-md">
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
               <span className="text-3xl font-bold tracking-tight">{communitiesMonitored ?? 0}</span>
               <span className="text-xs text-muted-foreground">Active groups being scraped</span>
             </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
               <Activity className="h-5 w-5" />
             </div>
           </CardContent>
@@ -132,19 +141,20 @@ export default async function Home() {
             <CardDescription>Latest leads found by your scraping engine.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-1">
               {(!recentOpportunities || recentOpportunities.length === 0) && (
-                <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <Activity className="h-8 w-8 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">No leads yet — run a scrape to populate this feed.</p>
-                </div>
+                <EmptyState
+                  icon={Activity}
+                  title="No leads yet"
+                  description="Run a scrape to populate this feed."
+                />
               )}
               {recentOpportunities?.map((lead) => (
                 <div
                   key={lead.id}
                   className="flex items-center gap-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
                     <Activity className="h-4 w-4" />
                   </div>
                   <div className="flex-1 space-y-1">
@@ -162,7 +172,7 @@ export default async function Home() {
                             href={lead.post_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-center gap-0.5 capitalize underline hover:text-foreground"
+                            className="flex items-center gap-0.5 capitalize underline decoration-dotted underline-offset-2 hover:text-brand"
                           >
                             {lead.platform || "View"} post
                             <ExternalLink className="h-3 w-3" />
@@ -171,9 +181,9 @@ export default async function Home() {
                       )}
                     </div>
                   </div>
-                  <div className="shrink-0 text-sm font-medium text-blue-600 dark:text-blue-400">
+                  <Badge variant={urgencyVariant[lead.urgency] ?? "secondary"} className="shrink-0">
                     {urgencyLabel[lead.urgency] ?? lead.urgency}
-                  </div>
+                  </Badge>
                 </div>
               ))}
             </div>
@@ -186,24 +196,22 @@ export default async function Home() {
             <CardDescription>Groups actively being scraped for opportunities.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-1">
               {monitoredGroups.length === 0 && (
-                <div className="flex flex-col items-center gap-2 py-6 text-center">
-                  <Activity className="h-8 w-8 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">No groups added yet.</p>
-                </div>
+                <EmptyState icon={Compass} title="No groups added yet" />
               )}
               {monitoredGroups.map((g) => (
                 <div
                   key={g.id}
-                  className="flex items-center gap-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
+                  className="flex items-center gap-3 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
                 >
-                  <div className="flex-1 space-y-1">
-                    <p className="text-sm font-medium leading-none">{g.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">
-                      {g.platform} • {g.post_count} posts collected
-                    </p>
+                  <div className="flex-1 space-y-1 min-w-0">
+                    <p className="truncate text-sm font-medium leading-none">{g.name}</p>
+                    <p className="text-xs text-muted-foreground">{g.post_count} posts collected</p>
                   </div>
+                  <Badge variant="outline" className="shrink-0 capitalize">
+                    {g.platform}
+                  </Badge>
                 </div>
               ))}
             </div>
@@ -213,7 +221,10 @@ export default async function Home() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Opportunity Heat Map</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Flame className="h-4 w-4 text-brand" />
+            Opportunity Heat Map
+          </CardTitle>
           <CardDescription>Where demand is concentrated, across all leads and opportunities.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -222,7 +233,7 @@ export default async function Home() {
               No locations extracted yet — they show up here as leads and opportunities mention them.
             </p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {heatMap.map(([location, count]) => (
                 <div key={location} className="flex items-center gap-3">
                   <div className="flex w-32 shrink-0 items-center gap-1.5 text-sm">
@@ -231,11 +242,11 @@ export default async function Home() {
                   </div>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                     <div
-                      className="h-full rounded-full bg-blue-600"
+                      className="h-full rounded-full bg-gradient-to-r from-brand/70 to-brand transition-all"
                       style={{ width: `${Math.max((count / maxHeat) * 100, 4)}%` }}
                     />
                   </div>
-                  <span className="w-6 shrink-0 text-right text-sm font-medium">{count}</span>
+                  <span className="w-6 shrink-0 text-right text-sm font-medium tabular-nums">{count}</span>
                 </div>
               ))}
             </div>

@@ -1,5 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { MapPin, Phone, ExternalLink, Flame, Search } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/ui/empty-state"
+import { cn } from "@/lib/utils"
+import { MapPin, Phone, ExternalLink, Flame, Search, ListFilter } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
@@ -9,12 +12,15 @@ import { DeleteOpportunityButton } from "@/components/opportunities/delete-oppor
 
 export const dynamic = "force-dynamic"
 
-const URGENCY_STYLES: Record<string, string> = {
-  asap: "bg-destructive/10 text-destructive",
-  high: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  medium: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  low: "bg-muted text-muted-foreground",
+const URGENCY_VARIANT: Record<string, "destructive" | "warning" | "brand" | "secondary"> = {
+  asap: "destructive",
+  high: "warning",
+  medium: "brand",
+  low: "secondary",
 }
+
+const selectClassName =
+  "h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground shadow-sm outline-none transition-colors hover:border-foreground/20 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/30"
 
 export default async function OpportunitiesPage({
   searchParams,
@@ -54,12 +60,9 @@ export default async function OpportunitiesPage({
         </p>
       </div>
 
-      <form className="flex flex-wrap gap-3" method="get">
-        <select
-          name="agent"
-          defaultValue={params.agent || ""}
-          className="h-8 rounded-md border bg-background px-2 text-sm"
-        >
+      <form className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/50 p-2" method="get">
+        <ListFilter className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
+        <select name="agent" defaultValue={params.agent || ""} className={selectClassName}>
           <option value="">All Agents</option>
           {agents?.map((a) => (
             <option key={a.id} value={a.id}>
@@ -67,22 +70,14 @@ export default async function OpportunitiesPage({
             </option>
           ))}
         </select>
-        <select
-          name="urgency"
-          defaultValue={params.urgency || ""}
-          className="h-8 rounded-md border bg-background px-2 text-sm capitalize"
-        >
+        <select name="urgency" defaultValue={params.urgency || ""} className={cn(selectClassName, "capitalize")}>
           <option value="">All Urgency</option>
           <option value="asap">ASAP</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
-        <select
-          name="status"
-          defaultValue={params.status || ""}
-          className="h-8 rounded-md border bg-background px-2 text-sm capitalize"
-        >
+        <select name="status" defaultValue={params.status || ""} className={cn(selectClassName, "capitalize")}>
           <option value="">All Status</option>
           <option value="new">New</option>
           <option value="contacted">Contacted</option>
@@ -92,24 +87,30 @@ export default async function OpportunitiesPage({
           <option value="won">Won</option>
           <option value="lost">Lost</option>
         </select>
-        <button type="submit" className="h-8 rounded-md border px-3 text-sm hover:bg-muted">
+        <button
+          type="submit"
+          className="h-8 rounded-md bg-brand px-3 text-sm font-medium text-brand-foreground transition-colors hover:bg-brand/90"
+        >
           Filter
         </button>
       </form>
 
       {!opportunities || opportunities.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <Search className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              No opportunities match these filters yet. Go to{" "}
-              <a href="/agents" className="underline">
-                AI Agents
-              </a>{" "}
-              and run a scan to find new ones.
-            </p>
+          <CardContent className="py-6">
+            <EmptyState
+              icon={Search}
+              title="No opportunities match these filters yet"
+              description="Go to AI Agents and run a scan to find new ones."
+              action={
+                <a
+                  href="/agents"
+                  className="text-sm font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
+                >
+                  Go to AI Agents →
+                </a>
+              }
+            />
           </CardContent>
         </Card>
       ) : (
@@ -122,7 +123,10 @@ export default async function OpportunitiesPage({
             return (
               <Card
                 key={opp.id}
-                className={`transition-shadow hover:shadow-md ${isHot ? "ring-1 ring-rose-500/30" : ""}`}
+                className={cn(
+                  "transition-all hover:shadow-md",
+                  isHot ? "ring-1 ring-rose-500/40" : "hover:ring-1 hover:ring-brand/20"
+                )}
               >
                 <CardContent className="flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-3">
@@ -131,10 +135,10 @@ export default async function OpportunitiesPage({
                         <span className="font-medium">{opp.author_name}</span>
                         <span className="text-xs uppercase text-muted-foreground">{opp.platform}</span>
                         {isHot && (
-                          <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">
+                          <Badge variant="destructive" className="uppercase tracking-wide">
                             <Flame className="h-2.5 w-2.5" />
                             Hot
-                          </span>
+                          </Badge>
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
@@ -143,13 +147,9 @@ export default async function OpportunitiesPage({
                       </span>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                          URGENCY_STYLES[opp.urgency] || URGENCY_STYLES.low
-                        }`}
-                      >
+                      <Badge variant={URGENCY_VARIANT[opp.urgency] ?? "secondary"} className="capitalize">
                         {opp.urgency}
-                      </span>
+                      </Badge>
                       <DeleteOpportunityButton id={opp.id} name={opp.author_name} />
                     </div>
                   </div>
@@ -175,7 +175,7 @@ export default async function OpportunitiesPage({
                         Phone Number
                       </span>
                       {opp.phone_number ? (
-                        <a href={`tel:${opp.phone_number}`} className="text-blue-600 underline dark:text-blue-400">
+                        <a href={`tel:${opp.phone_number}`} className="text-brand underline decoration-dotted underline-offset-2 hover:text-brand/80">
                           {opp.phone_number}
                         </a>
                       ) : (
@@ -190,7 +190,10 @@ export default async function OpportunitiesPage({
                       <span className="font-medium">{confidence}%</span>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-blue-600" style={{ width: `${confidence}%` }} />
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-brand/70 to-brand transition-all"
+                        style={{ width: `${confidence}%` }}
+                      />
                     </div>
                   </div>
 
@@ -201,7 +204,7 @@ export default async function OpportunitiesPage({
                         href={opp.post_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-1 underline"
+                        className="flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-brand"
                       >
                         View original post
                         <ExternalLink className="h-3 w-3" />
