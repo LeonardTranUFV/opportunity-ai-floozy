@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { evaluatePostsForAgent, type AgentProfile, type RawPostInput } from "@/lib/ai";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 
-const BATCH_SIZE = 25;
+// Posts per Gemini request. Larger batches mean fewer total requests (less
+// time spent on inter-batch pacing below) — these are short social posts, so
+// even 100 of them per call is nowhere near Gemini's 1M-token context window.
+const BATCH_SIZE = 100;
 const MAX_POSTS_PER_SCAN = 500;
 const ALLOWED_RANGE_DAYS = [1, 3, 7];
 // Gemini's free tier caps requests per minute (~10 RPM as of mid-2026) and

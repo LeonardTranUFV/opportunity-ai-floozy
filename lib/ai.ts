@@ -61,7 +61,10 @@ async function callGemini(systemInstruction: string, userText: string): Promise<
       body: JSON.stringify({
         contents: [{ parts: [{ text: userText }] }],
         systemInstruction: { parts: [{ text: systemInstruction }] },
-        generationConfig: { responseMimeType: "application/json" },
+        // maxOutputTokens set explicitly — some clients silently default well
+        // below the model's real 65,536-token cap when this is omitted, which
+        // would truncate the JSON array on large batches (see scan/route.ts).
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 65536 },
       }),
     });
 
