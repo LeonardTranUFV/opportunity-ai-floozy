@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic"
 const COLUMNS = [
   { key: "new", label: "New", dot: "bg-blue-500" },
   { key: "contacted", label: "Contacted", dot: "bg-amber-500" },
-  { key: "qualified", label: "Qualified", dot: "bg-violet-500" },
+  { key: "qualified", label: "Qualified", dot: "bg-teal-500" },
   { key: "appointment", label: "Appointment", dot: "bg-cyan-500" },
   { key: "proposal", label: "Proposal", dot: "bg-indigo-500" },
   { key: "won", label: "Won", dot: "bg-emerald-500" },
