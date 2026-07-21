@@ -28,16 +28,17 @@ export function ScanAgentButton({ id }: { id: string }) {
           body: JSON.stringify({ rangeDays }),
         })
         const data = await res.json()
+        const scrapedNote = data.scraped > 0 ? ` (+${data.scraped} freshly scraped)` : ""
         if (!res.ok || !data.success) {
-          setResult(formatApiError(data.error) || "Scan failed")
+          setResult((formatApiError(data.error) || "Scan failed") + scrapedNote)
           return
         }
         if (data.evaluated === 0) {
-          setResult(data.message || "Nothing new to scan.")
+          setResult((data.message || "Nothing new to scan.") + scrapedNote)
         } else {
-          setResult(`Scanned ${data.evaluated} posts, found ${data.opportunities_found} opportunities.`)
-          router.refresh()
+          setResult(`Scanned ${data.evaluated} posts${scrapedNote}, found ${data.opportunities_found} opportunities.`)
         }
+        router.refresh()
       } catch {
         setResult("Scan failed — check the server log.")
       }
@@ -61,8 +62,8 @@ export function ScanAgentButton({ id }: { id: string }) {
           ))}
         </select>
         <Button variant="outline" size="sm" className="flex-1" onClick={handleScan} disabled={isPending}>
-          <Sparkles className="h-3.5 w-3.5" />
-          {isPending ? "Scanning…" : "Scan for Opportunities"}
+          <Sparkles className={`h-3.5 w-3.5 ${isPending ? "animate-pulse" : ""}`} />
+          {isPending ? "Scraping & scanning… (can take a few minutes)" : "Scan for Opportunities"}
         </Button>
       </div>
       {result && <p className="text-xs text-muted-foreground">{result}</p>}

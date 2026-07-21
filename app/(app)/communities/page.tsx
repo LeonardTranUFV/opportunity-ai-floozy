@@ -71,8 +71,8 @@ export default async function CommunitiesPage() {
         <CardHeader>
           <CardTitle>Monitored Communities</CardTitle>
           <CardDescription>
-            {groups.length} groups being tracked. Scraping pulls fresh posts from active groups only —
-            run it, then head to Agents to scan for opportunities.
+            {groups.length} groups being tracked. Scanning an agent now scrapes these automatically first —
+            you only need this button if you want to pull fresh posts without running a scan.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
