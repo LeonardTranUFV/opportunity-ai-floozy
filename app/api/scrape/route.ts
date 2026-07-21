@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { scrapeActiveGroups } from "@/lib/scraper";
+import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 
 export async function POST() {
   const supabase = await createClient();
@@ -11,68 +11,22 @@ export async function POST() {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  const { data: activeGroups, error: groupsError } = await supabase
-    .from("groups")
-    .select("id, platform, name, url")
-    .eq("active", true);
-
-  if (groupsError) {
-    return NextResponse.json({ success: false, error: groupsError.message }, { status: 500 });
+  try {
+    const { scraped, inserted, log } = await scrapeAndStorePosts(supabase, user.id);
+    if (scraped === 0) {
+      return NextResponse.json({
+        success: true,
+        scraped: 0,
+        inserted: 0,
+        log,
+        message: log[0] === "No active groups to scrape."
+          ? "No active groups to scrape. Go to Community Discovery and activate at least one group first."
+          : "No posts found across your active groups this run.",
+      });
+    }
+    return NextResponse.json({ success: true, scraped, inserted, log });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Scrape failed";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
-
-  if (!activeGroups || activeGroups.length === 0) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "No active groups to scrape. Go to Community Discovery and activate at least one group first.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const { posts, log } = await scrapeActiveGroups(activeGroups);
-
-  if (posts.length === 0) {
-    return NextResponse.json({
-      success: true,
-      scraped: 0,
-      inserted: 0,
-      log,
-      message: "No posts found across your active groups this run.",
-    });
-  }
-
-  // Dedupe across groups within this run — the scraper only dedupes per-group,
-  // but the same external_post_id can surface in two different groups in one
-  // pass (e.g. a repeated sponsored post), and Postgres's ON CONFLICT DO UPDATE
-  // rejects the whole batch if a conflict key appears twice in one statement.
-  const dedupedPosts = new Map<string, (typeof posts)[number]>();
-  for (const p of posts) dedupedPosts.set(p.external_post_id, p);
-
-  const rows = [...dedupedPosts.values()].map((p) => ({
-    user_id: user.id,
-    group_id: p.group_id,
-    platform: p.platform,
-    external_post_id: p.external_post_id,
-    post_url: p.post_url,
-    author_name: p.author_name,
-    author_profile_url: p.author_profile_url,
-    posted_at: p.posted_at,
-    raw_text: p.raw_text,
-  }));
-
-  const { error: insertError, count } = await supabase
-    .from("posts")
-    .upsert(rows, { onConflict: "user_id,external_post_id", count: "exact" });
-
-  if (insertError) {
-    return NextResponse.json({ success: false, error: insertError.message, log }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    success: true,
-    scraped: posts.length,
-    inserted: count ?? posts.length,
-    log,
-  });
 }

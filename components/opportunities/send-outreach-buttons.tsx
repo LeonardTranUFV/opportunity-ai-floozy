@@ -9,19 +9,20 @@ import { formatApiError } from "@/lib/format-error"
 interface Props {
   id: string
   platform: string
-  hasReply: boolean
+  hasComment: boolean
+  hasDm: boolean
   hasPostUrl: boolean
   hasProfileUrl: boolean
   commentSentAt: string | null
   dmSentAt: string | null
 }
 
-export function SendOutreachButtons({ id, platform, hasReply, hasPostUrl, hasProfileUrl, commentSentAt, dmSentAt }: Props) {
+export function SendOutreachButtons({ id, platform, hasComment, hasDm, hasPostUrl, hasProfileUrl, commentSentAt, dmSentAt }: Props) {
   const router = useRouter()
   const [pending, setPending] = useState<"comment" | "dm" | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  if (platform !== "facebook" || !hasReply) return null
+  if (platform !== "facebook" || (!hasComment && !hasDm)) return null
 
   const send = (kind: "comment" | "dm") => {
     const label = kind === "comment" ? "post this as a public comment on the original post" : "send this as a Facebook DM to the author"
@@ -53,7 +54,7 @@ export function SendOutreachButtons({ id, platform, hasReply, hasPostUrl, hasPro
           variant="outline"
           size="sm"
           className="flex-1"
-          disabled={!hasPostUrl || pending !== null}
+          disabled={!hasComment || !hasPostUrl || pending !== null}
           onClick={() => send("comment")}
         >
           {commentSentAt ? <Check className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
@@ -63,7 +64,7 @@ export function SendOutreachButtons({ id, platform, hasReply, hasPostUrl, hasPro
           variant="outline"
           size="sm"
           className="flex-1"
-          disabled={!hasProfileUrl || pending !== null}
+          disabled={!hasDm || !hasProfileUrl || pending !== null}
           onClick={() => send("dm")}
         >
           {dmSentAt ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Trash2 } from "lucide-react"
 
 export function DeleteAgentButton({ id, name }: { id: string; name: string }) {
@@ -40,8 +41,15 @@ export function DeleteAgentButton({ id, name }: { id: string; name: string }) {
   }
 
   return (
-    <Button variant="ghost" size="icon-sm" onClick={() => setConfirming(true)} aria-label={`Delete ${name}`}>
-      <Trash2 className="h-3.5 w-3.5" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" onClick={() => setConfirming(true)} aria-label={`Delete ${name}`}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        }
+      />
+      <TooltipContent>Delete agent</TooltipContent>
+    </Tooltip>
   )
 }

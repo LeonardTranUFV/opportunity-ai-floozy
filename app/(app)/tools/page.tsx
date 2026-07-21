@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Globe } from "lucide-react"
 import { WebsiteScannerForm } from "@/components/tools/website-scanner-form"
 
 export default function ToolsPage() {
@@ -11,7 +12,10 @@ export default function ToolsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Website Scanner</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-brand" />
+            Website Scanner
+          </CardTitle>
           <CardDescription>
             Analyze a prospect&apos;s website and generate an improvement report — useful for
             outreach to businesses with weak online presence.

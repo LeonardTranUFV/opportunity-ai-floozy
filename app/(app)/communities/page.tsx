@@ -1,8 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Compass, Search, Link2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { DiscoverGroupsForm } from "@/components/communities/discover-groups-form"
 import { AddGroupUrlForm } from "@/components/communities/add-group-url-form"
 import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
+import { GroupName } from "@/components/communities/group-name"
 import { DeleteGroupButton } from "@/components/communities/delete-group-button"
 import { ScrapeNowButton } from "@/components/communities/scrape-now-button"
 
@@ -36,9 +40,12 @@ export default async function CommunitiesPage() {
         </p>
       </div>
 
-      <Card>
+      <Card className="transition-shadow hover:shadow-sm">
         <CardHeader>
-          <CardTitle>Discover Facebook Groups</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="h-4 w-4 text-brand" />
+            Discover Facebook Groups
+          </CardTitle>
           <CardDescription>
             Searches Facebook live using your saved session — this can take up to 20 seconds.
           </CardDescription>
@@ -48,9 +55,12 @@ export default async function CommunitiesPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="transition-shadow hover:shadow-sm">
         <CardHeader>
-          <CardTitle>Add Group by Link</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-4 w-4 text-brand" />
+            Add Group by Link
+          </CardTitle>
           <CardDescription>Already know the group? Paste its URL to start tracking it directly.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -62,29 +72,38 @@ export default async function CommunitiesPage() {
         <CardHeader>
           <CardTitle>Monitored Communities</CardTitle>
           <CardDescription>
-            {groups.length} groups being tracked. Scraping pulls fresh posts from active groups only —
-            run it, then head to Agents to scan for opportunities.
+            {groups.length} groups being tracked. Scanning an agent now scrapes these automatically first —
+            you only need this button if you want to pull fresh posts without running a scan.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <ScrapeNowButton />
           {groups.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No groups yet — discover some above, or they&apos;ll be added automatically as agents scan.
-            </p>
+            <EmptyState
+              icon={Compass}
+              title="No groups yet"
+              description="Discover some above, or they'll be added automatically as agents scan."
+            />
           ) : (
             <div className="flex flex-col gap-2">
               {groups.map((g) => (
-                <div key={g.id} className="flex items-center justify-between gap-4 rounded-lg border p-3">
-                  <div className="flex flex-col gap-0.5">
-                    <a href={g.url} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline">
-                      {g.name}
-                    </a>
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {g.platform} · {g.post_count} posts collected
-                    </span>
+                <div
+                  key={g.id}
+                  className="flex items-center justify-between gap-4 rounded-lg border border-border p-3 transition-colors hover:border-brand/30 hover:bg-brand/[0.03]"
+                >
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <GroupName id={g.id} name={g.name} url={g.url} />
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="capitalize">
+                        {g.platform}
+                      </Badge>
+                      <Badge variant={g.active ? "success" : "secondary"}>
+                        {g.active ? "Active" : "Paused"}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">{g.post_count} posts collected</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <GroupActiveToggle id={g.id} active={!!g.active} />
                     <DeleteGroupButton id={g.id} name={g.name} />
                   </div>

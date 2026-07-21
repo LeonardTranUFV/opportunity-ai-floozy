@@ -8,7 +8,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: opportunity, error: oppError } = await supabase
     .from("opportunities")
-    .select("id, platform, post_url, suggested_reply")
+    .select("id, platform, post_url, suggested_comment")
     .eq("id", opportunityId)
     .single();
 
@@ -27,14 +27,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ success: false, error: "This opportunity has no linked post URL." }, { status: 400 });
   }
 
-  if (!opportunity.suggested_reply) {
+  if (!opportunity.suggested_comment) {
     return NextResponse.json(
-      { success: false, error: "Generate an AI reply first, then send it." },
+      { success: false, error: "Generate a personalized response first, then send it." },
       { status: 400 }
     );
   }
 
-  const result = await postFacebookComment(opportunity.post_url, opportunity.suggested_reply);
+  const result = await postFacebookComment(opportunity.post_url, opportunity.suggested_comment);
 
   if (!result.success) {
     return NextResponse.json({ success: false, error: result.error }, { status: 502 });

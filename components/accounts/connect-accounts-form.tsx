@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { FacebookIcon, LinkedInIcon } from "@/components/icons"
 
 type Platform = "facebook" | "linkedin"
 
@@ -52,13 +53,18 @@ export function ConnectAccountsForm() {
         </div>
       ) : (
         <div className="flex w-full justify-center gap-4">
-          <Button className="max-w-70 flex-1" onClick={() => handleLaunch("facebook")}>
+          <Button
+            className="max-w-70 flex-1 bg-[#1877F2] text-white hover:bg-[#1877F2]/90"
+            onClick={() => handleLaunch("facebook")}
+          >
+            <FacebookIcon className="h-4 w-4" />
             Connect Facebook
           </Button>
           <Button
-            className="max-w-70 flex-1 bg-[#0a66c2] text-white hover:bg-[#0a66c2]/90"
+            className="max-w-70 flex-1 bg-[#0A66C2] text-white hover:bg-[#0A66C2]/90"
             onClick={() => handleLaunch("linkedin")}
           >
+            <LinkedInIcon className="h-4 w-4" />
             Connect LinkedIn
           </Button>
         </div>

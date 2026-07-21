@@ -8,7 +8,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: opportunity, error: oppError } = await supabase
     .from("opportunities")
-    .select("id, platform, author_profile_url, suggested_reply")
+    .select("id, platform, author_profile_url, suggested_dm")
     .eq("id", opportunityId)
     .single();
 
@@ -30,14 +30,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   }
 
-  if (!opportunity.suggested_reply) {
+  if (!opportunity.suggested_dm) {
     return NextResponse.json(
-      { success: false, error: "Generate an AI reply first, then send it." },
+      { success: false, error: "Generate a personalized response first, then send it." },
       { status: 400 }
     );
   }
 
-  const result = await sendFacebookMessage(opportunity.author_profile_url, opportunity.suggested_reply);
+  const result = await sendFacebookMessage(opportunity.author_profile_url, opportunity.suggested_dm);
 
   if (!result.success) {
     return NextResponse.json({ success: false, error: result.error }, { status: 502 });

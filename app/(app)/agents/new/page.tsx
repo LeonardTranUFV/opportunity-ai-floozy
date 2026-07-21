@@ -55,6 +55,16 @@ export default function NewAgentPage() {
         <CardHeader>
           <CardTitle>Create AI Agent</CardTitle>
           <CardDescription>Step {step} of 4: Setup your Opportunity Intelligence Agent.</CardDescription>
+          <div className="mt-3 flex gap-1.5">
+            {[1, 2, 3, 4].map((s) => (
+              <div
+                key={s}
+                className={`h-1.5 flex-1 rounded-full transition-colors ${
+                  s <= step ? "bg-brand" : "bg-muted"
+                }`}
+              />
+            ))}
+          </div>
         </CardHeader>
         <CardContent>
           {step === 1 && (
@@ -97,17 +107,29 @@ export default function NewAgentPage() {
             <div className="flex flex-col gap-4">
               <div className="space-y-2">
                 <Label>Select Sources</Label>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="fb" className="h-4 w-4 rounded border-gray-300" defaultChecked />
-                  <Label htmlFor="fb">Facebook Groups</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="li" className="h-4 w-4 rounded border-gray-300" defaultChecked />
-                  <Label htmlFor="li">LinkedIn Communities</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="re" className="h-4 w-4 rounded border-gray-300" defaultChecked />
-                  <Label htmlFor="re">Reddit Forums</Label>
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="fb"
+                    className="flex items-center gap-2.5 rounded-md border border-border px-3 py-2 text-sm transition-colors has-[:checked]:border-brand/40 has-[:checked]:bg-brand/5"
+                  >
+                    <input type="checkbox" id="fb" className="h-4 w-4 rounded border-input accent-brand" defaultChecked />
+                    Facebook Groups
+                  </label>
+                  <label
+                    htmlFor="li"
+                    className="flex items-center gap-2.5 rounded-md border border-border px-3 py-2 text-sm transition-colors has-[:checked]:border-brand/40 has-[:checked]:bg-brand/5"
+                  >
+                    <input type="checkbox" id="li" className="h-4 w-4 rounded border-input accent-brand" defaultChecked />
+                    LinkedIn Communities
+                  </label>
+                  <label
+                    htmlFor="re"
+                    className="flex items-center gap-2.5 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground transition-colors has-[:checked]:border-brand/40 has-[:checked]:bg-brand/5"
+                  >
+                    <input type="checkbox" id="re" className="h-4 w-4 rounded border-input accent-brand" defaultChecked />
+                    Reddit Forums
+                    <span className="ml-auto text-xs italic">coming soon</span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -117,7 +139,7 @@ export default function NewAgentPage() {
           <Button variant="outline" onClick={prevStep} disabled={step === 1 || isSubmitting}>
             Back
           </Button>
-          <Button onClick={step === 4 ? handleSubmit : nextStep} disabled={isSubmitting}>
+          <Button variant="brand" onClick={step === 4 ? handleSubmit : nextStep} disabled={isSubmitting}>
             {step === 4 ? (isSubmitting ? "Deploying..." : "Deploy Agent") : "Continue"}
           </Button>
         </CardFooter>

@@ -3,6 +3,7 @@
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Trash2 } from "lucide-react"
 
 export function DeleteOpportunityButton({ id, name }: { id: string; name: string }) {
@@ -22,15 +23,22 @@ export function DeleteOpportunityButton({ id, name }: { id: string; name: string
   }
 
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      onClick={handleDelete}
-      disabled={isPending}
-      aria-label={`Remove opportunity from ${name}`}
-      className="text-muted-foreground hover:text-destructive"
-    >
-      <Trash2 className="h-3.5 w-3.5" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleDelete}
+            disabled={isPending}
+            aria-label={`Remove opportunity from ${name}`}
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        }
+      />
+      <TooltipContent>Remove opportunity</TooltipContent>
+    </Tooltip>
   )
 }

@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/ui/empty-state"
 import { buttonVariants } from "@/components/ui/button"
 import { Plus, MapPin, Target, Bot } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
@@ -35,7 +37,7 @@ export default async function AgentsPage() {
             Each agent independently searches for a specific kind of opportunity.
           </p>
         </div>
-        <Link href="/agents/new" className={buttonVariants()}>
+        <Link href="/agents/new" className={buttonVariants({ variant: "brand" })}>
           <Plus />
           New Agent
         </Link>
@@ -43,27 +45,27 @@ export default async function AgentsPage() {
 
       {!agents || agents.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <Bot className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              You haven&apos;t created any AI agents yet. An agent is what tells the AI what to look
-              for, where, and how urgently to alert you.
-            </p>
-            <Link href="/agents/new" className={buttonVariants()}>
-              <Plus />
-              Create your first agent
-            </Link>
+          <CardContent className="py-6">
+            <EmptyState
+              icon={Bot}
+              title="You haven't created any AI agents yet"
+              description="An agent is what tells the AI what to look for, where, and how urgently to alert you."
+              action={
+                <Link href="/agents/new" className={buttonVariants({ variant: "brand" })}>
+                  <Plus />
+                  Create your first agent
+                </Link>
+              }
+            />
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {agents.map((agent) => (
-            <Card key={agent.id} className="transition-shadow hover:shadow-md">
+            <Card key={agent.id} className="transition-all hover:shadow-md hover:ring-1 hover:ring-brand/20">
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand ring-1 ring-brand/15">
                     <Bot className="h-4 w-4" />
                   </div>
                   <CardTitle>{agent.name}</CardTitle>
@@ -84,12 +86,9 @@ export default async function AgentsPage() {
                       .map((k: string) => k.trim())
                       .filter(Boolean)
                       .map((k: string) => (
-                        <span
-                          key={k}
-                          className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
-                        >
+                        <Badge key={k} variant="outline" className="font-normal text-muted-foreground">
                           {k}
-                        </span>
+                        </Badge>
                       ))}
                   </div>
                 )}

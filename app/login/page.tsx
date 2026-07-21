@@ -71,11 +71,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
+      <div className="pointer-events-none absolute left-1/2 top-1/3 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-sky-400/20 to-blue-600/20 blur-3xl" />
+      <Card className="relative w-full max-w-sm shadow-lg">
         <CardHeader>
           <div className="mb-2 flex items-center gap-2">
-            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 shadow-sm">
+            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 shadow-sm shadow-blue-600/30">
               <span className="font-bold text-white">O</span>
             </div>
             <span className="font-semibold">Opportunity AI</span>
@@ -101,7 +102,7 @@ export default function LoginPage() {
                   required
                 />
               </div>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" variant="brand" disabled={loading}>
                 {loading ? "Sending…" : "Send magic link"}
               </Button>
             </form>
@@ -130,21 +131,29 @@ export default function LoginPage() {
                   required
                 />
               </div>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" variant="brand" disabled={loading}>
                 {loading ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
               </Button>
               <button
                 type="button"
                 onClick={() => setIsSignUp((v) => !v)}
-                className="text-xs text-muted-foreground underline"
+                className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-brand"
               >
                 {isSignUp ? "Already have an account? Sign in" : "New here? Create an account"}
               </button>
             </form>
           )}
 
-          {message && <p className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">{message}</p>}
-          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+          {message && (
+            <p className="mt-3 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
+              {message}
+            </p>
+          )}
+          {error && (
+            <p className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          )}
 
           <button
             type="button"
@@ -153,7 +162,7 @@ export default function LoginPage() {
               setMessage(null)
               setError(null)
             }}
-            className="mt-4 text-xs text-muted-foreground underline"
+            className="mt-4 text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-brand"
           >
             {mode === "magic-link" ? "Use email + password instead" : "Use a magic link instead"}
           </button>

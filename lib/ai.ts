@@ -61,7 +61,10 @@ async function callGemini(systemInstruction: string, userText: string): Promise<
       body: JSON.stringify({
         contents: [{ parts: [{ text: userText }] }],
         systemInstruction: { parts: [{ text: systemInstruction }] },
-        generationConfig: { responseMimeType: "application/json" },
+        // maxOutputTokens set explicitly — some clients silently default well
+        // below the model's real 65,536-token cap when this is omitted, which
+        // would truncate the JSON array on large batches (see scan/route.ts).
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 65536 },
       }),
     });
 
@@ -144,28 +147,63 @@ Always include every post_id from the input, even if relevant is false.
   }
 }
 
+export interface BusinessProfile {
+  ownerName?: string;
+  businessName?: string;
+  phone?: string;
+  pitch?: string;
+}
+
+export interface OutreachDrafts {
+  comment: string;
+  dm: string;
+}
+
 /**
- * Generate a personalized outreach reply referencing the specific post content.
+ * Generate two personalized outreach drafts for the same lead — a short
+ * public comment and a more personal DM — since they serve different jobs:
+ * the comment is a low-key public acknowledgment that points to the DM,
+ * while the DM asks about their specific problem and can carry more detail.
  */
-export async function generateReply(
+export async function generateOutreachDrafts(
   agent: AgentProfile,
   post: { author_name: string; raw_text: string; platform: string },
-  tone: "professional" | "casual" | "sales" | "educational" = "professional"
-): Promise<string> {
+  businessProfile: BusinessProfile = {}
+): Promise<OutreachDrafts> {
+  const profileLines = [
+    businessProfile.ownerName ? `Your name: ${businessProfile.ownerName}` : null,
+    businessProfile.businessName ? `Your business: ${businessProfile.businessName}` : null,
+    businessProfile.phone ? `Your phone number: ${businessProfile.phone}` : null,
+    businessProfile.pitch ? `Your pitch / what makes you stand out: ${businessProfile.pitch}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const systemInstruction = `
-You write short, personalized outreach replies for "${agent.name}", whose goal is: ${agent.goal}.
-Tone: ${tone}. Never generic — always reference specifics from the original post.
-Keep it under 300 characters, friendly, and not salesy. Do not use markdown.
-Respond with a JSON object: { "reply": string }
+You write short, personalized outreach messages for "${agent.name}", whose goal is: ${agent.goal}.
+${profileLines ? `\n### Who you are\n${profileLines}\n` : "\n(No business profile was provided — write in a friendly, personal voice without inventing a name, company, or phone number.)\n"}
+Never generic — always reference specifics from the original post. Sign with your real name when you have one.
+
+You are writing TWO different messages for the same lead:
+1. "comment" — a short, public reply posted directly under their post. Keep it brief and low-key:
+   acknowledge you can help, then point them to check their DM or ask for their phone number. Do not
+   go into detail publicly.
+2. "dm" — a private, more personal direct message. Reference the specific problem they mentioned,
+   ask a clarifying follow-up question about it, and if you have pitch/experience info, weave it in
+   naturally rather than reading like a sales pitch. This can be warmer and more detailed than the
+   comment.
+
+Keep each under 300 characters, friendly, never salesy or generic, no markdown, no hashtags.
+Respond with a JSON object: { "comment": string, "dm": string }
 `;
   const userText = `Original post by ${post.author_name} on ${post.platform}:\n"""${post.raw_text}"""`;
   const text = await callGemini(systemInstruction, userText);
 
   try {
     const parsed = JSON.parse(text);
-    return parsed.reply || "";
+    return { comment: parsed.comment || "", dm: parsed.dm || "" };
   } catch {
-    return text;
+    return { comment: text, dm: text };
   }
 }
 

@@ -15,6 +15,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -36,12 +37,12 @@ export function AppSidebar({ userEmail }: { userEmail?: string }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 text-primary-foreground shadow-sm">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 text-primary-foreground shadow-sm shadow-blue-600/30">
                 <span className="font-bold text-white">O</span>
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">Opportunity AI</span>
-                <span className="truncate text-xs">Growth Engine</span>
+                <span className="truncate text-xs text-muted-foreground">Growth Engine</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -60,8 +61,13 @@ export function AppSidebar({ userEmail }: { userEmail?: string }) {
                       tooltip={label}
                       isActive={isActive}
                       render={<Link href={href} />}
+                      className={cn(
+                        "relative transition-colors",
+                        isActive &&
+                          "bg-brand/10! text-brand! font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-brand"
+                      )}
                     >
-                      <Icon />
+                      <Icon className={cn(isActive && "text-brand")} />
                       <span>{label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

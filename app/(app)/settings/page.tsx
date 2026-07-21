@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { CheckCircle2, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { SettingsForm } from "@/components/settings/settings-form"
+import { BusinessProfileForm } from "@/components/settings/business-profile-form"
 
 export const dynamic = "force-dynamic"
 
@@ -32,6 +33,23 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Business Profile</CardTitle>
+          <CardDescription>
+            Optional, but recommended — used to personalize AI-generated replies so they sound like you.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BusinessProfileForm
+            initialOwnerName={settingsMap.business_owner_name || ""}
+            initialBusinessName={settingsMap.business_name || ""}
+            initialPhone={settingsMap.business_phone || ""}
+            initialPitch={settingsMap.business_pitch || ""}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>AI Persona</CardTitle>
           <CardDescription>
             Default reasoning settings used across the platform.
@@ -51,17 +69,22 @@ export default async function SettingsPage() {
           <CardTitle>Integrations</CardTitle>
           <CardDescription>API keys are read from your .env file — never edited here.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+        <CardContent className="flex flex-col gap-2">
           {integrations.map((integration) => (
-            <div key={integration.name} className="flex items-center justify-between text-sm">
-              <span>{integration.name}</span>
+            <div
+              key={integration.name}
+              className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm"
+            >
+              <span className="font-medium">{integration.name}</span>
               <span className="flex items-center gap-2 text-muted-foreground">
                 {integration.key ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 ) : (
                   <XCircle className="h-4 w-4 text-destructive" />
                 )}
-                <code className="text-xs">{maskKey(integration.key)}</code>
+                <code className="rounded bg-background px-1.5 py-0.5 text-xs ring-1 ring-border">
+                  {maskKey(integration.key)}
+                </code>
               </span>
             </div>
           ))}
@@ -73,7 +96,7 @@ export default async function SettingsPage() {
           <CardTitle>AI Agents</CardTitle>
           <CardDescription>
             Each agent has its own goal, location, and keywords — manage them from the{" "}
-            <a href="/agents" className="underline">
+            <a href="/agents" className="text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80">
               AI Agents
             </a>{" "}
             page.

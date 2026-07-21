@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const GOAL_OPTIONS = [
   { value: "home_services", label: "Home Services (contractors, roofers, plumbers, electricians)" },
@@ -54,18 +55,18 @@ export function SettingsForm({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="ai_goal">What is the AI generally looking for?</Label>
-        <select
-          id="ai_goal"
-          value={goal}
-          onChange={(e) => setGoal(e.target.value)}
-          className="h-8 rounded-md border bg-background px-2 text-sm"
-        >
-          {GOAL_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <Select value={goal} onValueChange={(v) => v && setGoal(v)}>
+          <SelectTrigger id="ai_goal" className="w-full">
+            <SelectValue>{(v: string) => GOAL_OPTIONS.find((opt) => opt.value === v)?.label}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {GOAL_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <p className="text-xs text-muted-foreground">
           This is the default goal used by the legacy scraping pipeline. Individual AI Agents
           each have their own goal set when created.
