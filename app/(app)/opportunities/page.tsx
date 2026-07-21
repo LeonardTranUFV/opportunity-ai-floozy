@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn } from "@/lib/utils"
-import { MapPin, Phone, ExternalLink, Flame, Search, ListFilter } from "lucide-react"
+import { MapPin, Phone, ExternalLink, Flame, Search, ListFilter, Clock } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
@@ -22,6 +22,37 @@ const URGENCY_VARIANT: Record<string, "destructive" | "warning" | "brand" | "sec
 const selectClassName =
   "h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground shadow-sm outline-none transition-colors hover:border-foreground/20 focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/30"
 
+// Facebook's relative-age labels ("2h", "3d") get parsed into an ISO string
+// at scrape time (posts.posted_at); when that parse fails the post has no
+// posted_at, so scraped_at (always set) is the next-best signal of freshness.
+function formatPostAge(postedAt: string | null, scrapedAt: string | null): { label: string; exact: string } | null {
+  const iso = postedAt || scrapedAt;
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let label: string;
+  if (minutes < 1) label = "just now";
+  else if (minutes < 60) label = `${minutes}m ago`;
+  else if (hours < 24) label = `${hours}h ago`;
+  else if (days < 7) label = `${days}d ago`;
+  else label = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  const exact = date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return { label: (postedAt ? "" : "~") + label, exact };
+}
+
 export default async function OpportunitiesPage({
   searchParams,
 }: {
@@ -34,7 +65,7 @@ export default async function OpportunitiesPage({
 
   let query = supabase
     .from("opportunities")
-    .select("*, agents(name)")
+    .select("*, agents(name), posts:source_post_id(posted_at, scraped_at)")
     .order("intent_score", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(100)
@@ -119,6 +150,8 @@ export default async function OpportunitiesPage({
             const isHot = (opp.intent_score ?? 0) >= 90 || opp.urgency === "asap"
             const confidence = Math.max(0, Math.min(100, opp.intent_score ?? 0))
             const agentName = (opp.agents as unknown as { name: string } | null)?.name ?? "Unknown agent"
+            const sourcePost = opp.posts as unknown as { posted_at: string | null; scraped_at: string | null } | null
+            const postAge = formatPostAge(sourcePost?.posted_at ?? null, sourcePost?.scraped_at ?? null)
 
             return (
               <Card
@@ -141,6 +174,15 @@ export default async function OpportunitiesPage({
                           </Badge>
                         )}
                       </div>
+                      {postAge && (
+                        <span
+                          className="flex items-center gap-1 text-xs text-muted-foreground"
+                          title={`Posted ${postAge.exact}`}
+                        >
+                          <Clock className="h-3 w-3" />
+                          {postAge.label}
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         Agent: {agentName}
                         {opp.category ? ` · ${opp.category}` : ""}
