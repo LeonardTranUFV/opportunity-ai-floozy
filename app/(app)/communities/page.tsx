@@ -1,30 +1,31 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import leadsDb from "@/lib/db"
+import { createClient } from "@/lib/supabase/server"
 import { DiscoverGroupsForm } from "@/components/communities/discover-groups-form"
+import { AddGroupUrlForm } from "@/components/communities/add-group-url-form"
 import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
 import { DeleteGroupButton } from "@/components/communities/delete-group-button"
+import { ScrapeNowButton } from "@/components/communities/scrape-now-button"
 
 export const dynamic = "force-dynamic"
 
-interface GroupRow {
-  id: number
-  platform: string
-  name: string
-  url: string
-  active: number
-  post_count: number
-}
+export default async function CommunitiesPage() {
+  const supabase = await createClient()
 
-export default function CommunitiesPage() {
-  const groups = leadsDb
-    .prepare(
-      `SELECT groups.id, groups.platform, groups.name, groups.url, groups.active, COUNT(posts.id) as post_count
-       FROM groups
-       LEFT JOIN posts ON posts.group_id = groups.id
-       GROUP BY groups.id
-       ORDER BY groups.created_at DESC`
-    )
-    .all() as GroupRow[]
+  const { data: allGroups } = await supabase
+    .from("groups")
+    .select("id, platform, name, url, active")
+    .order("created_at", { ascending: false })
+
+  const groupIds = (allGroups ?? []).map((g) => g.id)
+  const { data: postsForGroups } = groupIds.length
+    ? await supabase.from("posts").select("group_id").in("group_id", groupIds)
+    : { data: [] as { group_id: string }[] }
+
+  const postCountByGroup = new Map<string, number>()
+  for (const p of postsForGroups ?? []) {
+    postCountByGroup.set(p.group_id, (postCountByGroup.get(p.group_id) ?? 0) + 1)
+  }
+  const groups = (allGroups ?? []).map((g) => ({ ...g, post_count: postCountByGroup.get(g.id) ?? 0 }))
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,10 +50,24 @@ export default function CommunitiesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Monitored Communities</CardTitle>
-          <CardDescription>{groups.length} groups being tracked.</CardDescription>
+          <CardTitle>Add Group by Link</CardTitle>
+          <CardDescription>Already know the group? Paste its URL to start tracking it directly.</CardDescription>
         </CardHeader>
         <CardContent>
+          <AddGroupUrlForm />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Monitored Communities</CardTitle>
+          <CardDescription>
+            {groups.length} groups being tracked. Scraping pulls fresh posts from active groups only —
+            run it, then head to Agents to scan for opportunities.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <ScrapeNowButton />
           {groups.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No groups yet — discover some above, or they&apos;ll be added automatically as agents scan.

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Sparkles, Copy, Check } from "lucide-react"
 import { formatApiError } from "@/lib/format-error"
 
-export function GenerateReplyButton({ id, initialReply }: { id: number; initialReply: string | null }) {
+export function GenerateReplyButton({ id, initialReply }: { id: string; initialReply: string | null }) {
   const [isPending, startTransition] = useTransition()
   const [reply, setReply] = useState(initialReply)
   const [copied, setCopied] = useState(false)

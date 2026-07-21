@@ -1,18 +1,29 @@
 import { NextResponse } from 'next/server';
-import db from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 
 // GET all groups
 export async function GET() {
+  const supabase = await createClient();
   try {
-    const groups = db.prepare('SELECT * FROM groups ORDER BY created_at DESC').all();
-    return NextResponse.json(groups);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const { data, error } = await supabase.from('groups').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return NextResponse.json(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch groups';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // POST a new group
 export async function POST(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { platform, name, url, active } = body;
@@ -24,22 +35,29 @@ export async function POST(request: Request) {
     // Strip glued-on activity metadata that Facebook includes in scraped link text
     const cleanName = String(name).replace(/Last active.*$/i, '').replace(/\s{2,}/g, ' ').trim() || name;
 
-    const info = db.prepare(
-      'INSERT INTO groups (platform, name, url, active) VALUES (?, ?, ?, ?)'
-    ).run(platform, cleanName, url, active !== undefined ? (active ? 1 : 0) : 1);
+    const { data, error } = await supabase
+      .from('groups')
+      .insert({ user_id: user.id, platform, name: cleanName, url, active: active ?? true })
+      .select('*')
+      .single();
 
-    const newGroup = db.prepare('SELECT * FROM groups WHERE id = ?').get(info.lastInsertRowid);
-    return NextResponse.json(newGroup);
-  } catch (error: any) {
-    if (error.message.includes('UNIQUE constraint failed')) {
-      return NextResponse.json({ error: 'A group with this URL already exists.' }, { status: 409 });
+    if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ error: 'A group with this URL already exists.' }, { status: 409 });
+      }
+      throw error;
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to add group';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // PUT to update a group (active toggle or details)
 export async function PUT(request: Request) {
+  const supabase = await createClient();
   try {
     const body = await request.json();
     const { id, active, name, url } = body;
@@ -48,23 +66,33 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Group ID is required.' }, { status: 400 });
     }
 
-    if (active !== undefined) {
-      db.prepare('UPDATE groups SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+    const updates: Record<string, unknown> = {};
+    if (active !== undefined) updates.active = active;
+    if (name !== undefined) updates.name = name;
+    if (url !== undefined) updates.url = url;
+
+    if (Object.keys(updates).length > 0) {
+      const { error } = await supabase.from('groups').update(updates).eq('id', id);
+      if (error) throw error;
     }
 
-    if (name !== undefined && url !== undefined) {
-      db.prepare('UPDATE groups SET name = ?, url = ? WHERE id = ?').run(name, url, id);
-    }
+    const { data: updatedGroup, error: fetchError } = await supabase
+      .from('groups')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (fetchError) throw fetchError;
 
-    const updatedGroup = db.prepare('SELECT * FROM groups WHERE id = ?').get(id);
     return NextResponse.json(updatedGroup);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update group';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // DELETE a group (posts keep their history; group_id becomes NULL via FK rule)
 export async function DELETE(request: Request) {
+  const supabase = await createClient();
   try {
     const body = await request.json();
     const { id } = body;
@@ -73,13 +101,15 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Group ID is required.' }, { status: 400 });
     }
 
-    const info = db.prepare('DELETE FROM groups WHERE id = ?').run(id);
-    if (info.changes === 0) {
+    const { error, count } = await supabase.from('groups').delete({ count: 'exact' }).eq('id', id);
+    if (error) throw error;
+    if (!count) {
       return NextResponse.json({ error: 'Group not found.' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, deleted: id });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete group';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

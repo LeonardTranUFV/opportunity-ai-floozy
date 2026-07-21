@@ -2,33 +2,29 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { buttonVariants } from "@/components/ui/button"
 import { Plus, MapPin, Target, Bot } from "lucide-react"
-import { db as opportunityDb } from "@/lib/db/schema"
+import { createClient } from "@/lib/supabase/server"
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
 import { ScanAgentButton } from "@/components/agents/scan-agent-button"
 
 export const dynamic = "force-dynamic"
 
-interface AgentRow {
-  id: number
-  name: string
-  goal: string
-  location: string | null
-  keywords: string | null
-  negative_keywords: string | null
-  created_at: string
-  opportunity_count: number
-}
+export default async function AgentsPage() {
+  const supabase = await createClient()
 
-export default function AgentsPage() {
-  const agents = opportunityDb
-    .prepare(
-      `SELECT agents.*, COUNT(opportunities.id) as opportunity_count
-       FROM agents
-       LEFT JOIN opportunities ON opportunities.agent_id = agents.id
-       GROUP BY agents.id
-       ORDER BY agents.created_at DESC`
-    )
-    .all() as AgentRow[]
+  const { data: agents } = await supabase
+    .from("agents")
+    .select("*")
+    .order("created_at", { ascending: false })
+
+  const agentIds = (agents ?? []).map((a) => a.id)
+  const { data: opportunityAgentIds } = agentIds.length
+    ? await supabase.from("opportunities").select("agent_id").in("agent_id", agentIds)
+    : { data: [] as { agent_id: string }[] }
+
+  const countByAgent = new Map<string, number>()
+  for (const o of opportunityAgentIds ?? []) {
+    countByAgent.set(o.agent_id, (countByAgent.get(o.agent_id) ?? 0) + 1)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -45,7 +41,7 @@ export default function AgentsPage() {
         </Link>
       </div>
 
-      {agents.length === 0 ? (
+      {!agents || agents.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -85,9 +81,9 @@ export default function AgentsPage() {
                   <div className="flex flex-wrap gap-1.5">
                     {agent.keywords
                       .split(",")
-                      .map((k) => k.trim())
+                      .map((k: string) => k.trim())
                       .filter(Boolean)
-                      .map((k) => (
+                      .map((k: string) => (
                         <span
                           key={k}
                           className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
@@ -100,7 +96,7 @@ export default function AgentsPage() {
                 <div className="flex items-center justify-between pt-2">
                   <div className="flex items-center gap-1.5 text-sm">
                     <Target className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="font-medium">{agent.opportunity_count}</span>
+                    <span className="font-medium">{countByAgent.get(agent.id) ?? 0}</span>
                     <span className="text-muted-foreground">opportunities found</span>
                   </div>
                   <DeleteAgentButton id={agent.id} name={agent.name} />

@@ -1,19 +1,28 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db/schema';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { name, goal, location, keywords, negative_keywords } = body;
 
-    const stmt = db.prepare(`
-      INSERT INTO agents (name, goal, location, keywords, negative_keywords)
-      VALUES (?, ?, ?, ?, ?)
-    `);
+    const { data, error } = await supabase
+      .from('agents')
+      .insert({ user_id: user.id, name, goal, location, keywords, negative_keywords })
+      .select('id')
+      .single();
 
-    const result = stmt.run(name, goal, location, keywords, negative_keywords);
+    if (error) throw error;
 
-    return NextResponse.json({ success: true, id: result.lastInsertRowid });
+    return NextResponse.json({ success: true, id: data.id });
   } catch (error) {
     console.error('Error saving agent:', error);
     return NextResponse.json({ success: false, error: 'Failed to save agent' }, { status: 500 });
@@ -21,9 +30,15 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
+  const supabase = await createClient();
   try {
-    const stmt = db.prepare('SELECT * FROM agents ORDER BY created_at DESC');
-    const agents = stmt.all();
+    const { data: agents, error } = await supabase
+      .from('agents')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
     return NextResponse.json({ success: true, agents });
   } catch (error) {
     console.error('Error fetching agents:', error);
@@ -32,16 +47,18 @@ export async function GET() {
 }
 
 export async function DELETE(request: Request) {
+  const supabase = await createClient();
   try {
     const { id } = await request.json();
     if (id === undefined) {
       return NextResponse.json({ success: false, error: 'Agent id is required' }, { status: 400 });
     }
 
-    db.prepare('DELETE FROM opportunities WHERE agent_id = ?').run(id);
-    const result = db.prepare('DELETE FROM agents WHERE id = ?').run(id);
+    await supabase.from('opportunities').delete().eq('agent_id', id);
+    const { error, count } = await supabase.from('agents').delete({ count: 'exact' }).eq('id', id);
 
-    if (result.changes === 0) {
+    if (error) throw error;
+    if (!count) {
       return NextResponse.json({ success: false, error: 'Agent not found' }, { status: 404 });
     }
 

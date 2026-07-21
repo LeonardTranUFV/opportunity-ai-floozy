@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 
 const STATUSES = ["new", "contacted", "qualified", "appointment", "proposal", "won", "lost"] as const
 
-export function StatusSelect({ id, status }: { id: number; status: string }) {
+export function StatusSelect({ id, status }: { id: string; status: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 

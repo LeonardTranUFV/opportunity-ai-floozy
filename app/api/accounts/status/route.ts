@@ -6,7 +6,10 @@ async function checkFacebook(authPath: string): Promise<boolean> {
   const context = await chromium.launchPersistentContext(authPath, { headless: true });
   try {
     const page = await context.newPage();
-    await page.goto("https://www.facebook.com/", { waitUntil: "networkidle", timeout: 15000 });
+    // Facebook's feed polls in the background forever, so "networkidle" never
+    // resolves and used to time out — falsely reporting logged-out every time.
+    await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(3000);
     const loggedOutMarker = await page.getByText("Create new account").count();
     return loggedOutMarker === 0;
   } finally {
@@ -18,7 +21,8 @@ async function checkLinkedIn(authPath: string): Promise<boolean> {
   const context = await chromium.launchPersistentContext(authPath, { headless: true });
   try {
     const page = await context.newPage();
-    await page.goto("https://www.linkedin.com/feed/", { waitUntil: "networkidle", timeout: 15000 });
+    await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(3000);
     return page.url().includes("/feed");
   } finally {
     await context.close();

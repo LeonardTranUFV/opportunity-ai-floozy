@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import leadsDb from "@/lib/db";
-import { db as opportunityDb } from "@/lib/db/schema";
+import { createClient } from "@/lib/supabase/server";
 import { evaluatePostsForAgent, type AgentProfile, type RawPostInput } from "@/lib/ai";
 
 const BATCH_SIZE = 25;
 
 interface PostRow {
-  id: number;
+  id: string;
   platform: string;
   author_name: string;
   author_profile_url: string | null;
@@ -15,34 +14,41 @@ interface PostRow {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const agentId = Number(id);
+  const { id: agentId } = await params;
+  const supabase = await createClient();
 
-  if (!Number.isFinite(agentId)) {
-    return NextResponse.json({ success: false, error: "Invalid agent id" }, { status: 400 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  const agent = opportunityDb.prepare("SELECT * FROM agents WHERE id = ?").get(agentId) as
-    | AgentProfile
-    | undefined;
+  const { data: agent, error: agentError } = await supabase
+    .from("agents")
+    .select("*")
+    .eq("id", agentId)
+    .single();
 
-  if (!agent) {
+  if (agentError || !agent) {
     return NextResponse.json({ success: false, error: "Agent not found" }, { status: 404 });
   }
 
-  const evaluatedRows = opportunityDb
-    .prepare("SELECT source_post_id FROM evaluated_posts WHERE agent_id = ?")
-    .all(agentId) as { source_post_id: number }[];
-  const evaluatedIds = new Set(evaluatedRows.map((r) => r.source_post_id));
+  const { data: evaluatedRows } = await supabase
+    .from("evaluated_posts")
+    .select("source_post_id")
+    .eq("agent_id", agentId);
+  const evaluatedIds = new Set((evaluatedRows ?? []).map((r) => r.source_post_id));
 
-  const allPosts = leadsDb
-    .prepare(
-      `SELECT id, platform, author_name, author_profile_url, post_url, raw_text
-       FROM posts ORDER BY scraped_at DESC LIMIT 300`
-    )
-    .all() as PostRow[];
+  const { data: allPosts } = await supabase
+    .from("posts")
+    .select("id, platform, author_name, author_profile_url, post_url, raw_text")
+    .order("scraped_at", { ascending: false })
+    .limit(300);
 
-  const unevaluated = allPosts.filter((p) => !evaluatedIds.has(p.id)).slice(0, BATCH_SIZE);
+  const unevaluated = ((allPosts ?? []) as PostRow[])
+    .filter((p) => !evaluatedIds.has(p.id))
+    .slice(0, BATCH_SIZE);
 
   if (unevaluated.length === 0) {
     return NextResponse.json({
@@ -64,7 +70,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   let evaluations;
   try {
-    evaluations = await evaluatePostsForAgent(agent, postsForAI);
+    evaluations = await evaluatePostsForAgent(agent as AgentProfile, postsForAI);
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI evaluation failed";
     return NextResponse.json({ success: false, error: message }, { status: 502 });
@@ -72,47 +78,54 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const postById = new Map(unevaluated.map((p) => [p.id, p]));
 
-  const insertOpportunity = opportunityDb.prepare(`
-    INSERT INTO opportunities
-      (agent_id, source_post_id, platform, author_name, author_profile_url, post_url, location_mentioned, phone_number, content, category, intent_score, urgency, estimated_value, ai_summary, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new')
-  `);
-  const markEvaluated = opportunityDb.prepare(
-    "INSERT OR IGNORE INTO evaluated_posts (agent_id, source_post_id) VALUES (?, ?)"
-  );
+  const opportunitiesToInsert = [];
+  const evaluatedToInsert = [];
 
-  let opportunitiesFound = 0;
+  for (const evalItem of evaluations) {
+    evaluatedToInsert.push({ user_id: user.id, agent_id: agentId, source_post_id: evalItem.post_id });
 
-  const persist = opportunityDb.transaction((evals: typeof evaluations) => {
-    for (const evalItem of evals) {
-      markEvaluated.run(agentId, evalItem.post_id);
-      const post = postById.get(evalItem.post_id);
-      if (!post || !evalItem.relevant) continue;
+    const post = postById.get(evalItem.post_id);
+    if (!post || !evalItem.relevant) continue;
 
-      insertOpportunity.run(
-        agentId,
-        post.id,
-        post.platform,
-        post.author_name,
-        post.author_profile_url,
-        post.post_url,
-        evalItem.location_mentioned,
-        evalItem.phone_number,
-        post.raw_text,
-        evalItem.category,
-        evalItem.intent_score,
-        evalItem.urgency,
-        evalItem.estimated_value,
-        evalItem.ai_summary
-      );
-      opportunitiesFound++;
+    opportunitiesToInsert.push({
+      user_id: user.id,
+      agent_id: agentId,
+      source_post_id: post.id,
+      platform: post.platform,
+      author_name: post.author_name,
+      author_profile_url: post.author_profile_url,
+      post_url: post.post_url,
+      location_mentioned: evalItem.location_mentioned,
+      phone_number: evalItem.phone_number,
+      content: post.raw_text,
+      category: evalItem.category,
+      intent_score: evalItem.intent_score,
+      urgency: evalItem.urgency,
+      estimated_value: evalItem.estimated_value,
+      ai_summary: evalItem.ai_summary,
+      status: "new",
+    });
+  }
+
+  if (evaluatedToInsert.length > 0) {
+    const { error } = await supabase
+      .from("evaluated_posts")
+      .upsert(evaluatedToInsert, { onConflict: "agent_id,source_post_id" });
+    if (error) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
-  });
-  persist(evaluations);
+  }
+
+  if (opportunitiesToInsert.length > 0) {
+    const { error } = await supabase.from("opportunities").insert(opportunitiesToInsert);
+    if (error) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+  }
 
   return NextResponse.json({
     success: true,
     evaluated: unevaluated.length,
-    opportunities_found: opportunitiesFound,
+    opportunities_found: opportunitiesToInsert.length,
   });
 }

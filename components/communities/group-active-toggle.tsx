@@ -3,7 +3,7 @@
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 
-export function GroupActiveToggle({ id, active }: { id: number; active: boolean }) {
+export function GroupActiveToggle({ id, active }: { id: string; active: boolean }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 

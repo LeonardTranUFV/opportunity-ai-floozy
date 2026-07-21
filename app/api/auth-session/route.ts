@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 import path from 'path';
-import db from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   const authPath = path.resolve(process.cwd(), '../.auth_session');
 
   console.log(`🔑 Launching headed Playwright browser for Facebook login at: ${authPath}`);
@@ -82,26 +90,27 @@ export async function POST() {
       console.log(`📋 Discovered ${joinedGroups.length} joined Facebook group(s) in background.`);
       syncResults.found = joinedGroups.length;
 
-      // 3. Batch-insert into SQLite (default to inactive '0' so crawler doesn't suddenly scrape everything)
-      const insertGroupStmt = db.prepare(`
-        INSERT INTO groups (platform, name, url, active)
-        VALUES ('facebook', ?, ?, 0)
-        ON CONFLICT(url) DO UPDATE SET name = excluded.name
-      `);
+      // 3. Batch-upsert into Supabase (default to inactive so crawler doesn't suddenly scrape everything)
+      for (const grp of joinedGroups) {
+        const { error: upsertError, data: upsertData } = await supabase
+          .from('groups')
+          .upsert(
+            { user_id: user.id, platform: 'facebook', name: grp.name, url: grp.url, active: false },
+            { onConflict: 'user_id,url', ignoreDuplicates: false }
+          )
+          .select('id');
 
-      const transaction = db.transaction(() => {
-        for (const grp of joinedGroups) {
-          const result = insertGroupStmt.run(grp.name, grp.url);
-          if (result.changes > 0) {
-            syncResults.synced++;
-          } else {
-            syncResults.skipped++;
-          }
+        if (upsertError) {
+          console.error(`⚠️ Failed to upsert group "${grp.name}": ${upsertError.message}`);
+          syncResults.skipped++;
+        } else if (upsertData && upsertData.length > 0) {
+          syncResults.synced++;
+        } else {
+          syncResults.skipped++;
         }
-      });
+      }
 
-      transaction();
-      console.log(`✅ Group auto-sync transaction complete. New: ${syncResults.synced}, Skipped/Updated: ${syncResults.skipped}`);
+      console.log(`✅ Group auto-sync complete. New/Updated: ${syncResults.synced}, Skipped: ${syncResults.skipped}`);
 
     } catch (syncErr: any) {
       console.error(`⚠️ Silent group sync failed: ${syncErr.message}`);

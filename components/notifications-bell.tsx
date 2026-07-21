@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sheet"
 
 interface Notification {
-  id: number
+  id: string
   author_name: string
   ai_summary: string | null
   content: string

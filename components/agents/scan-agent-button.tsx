@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Sparkles } from "lucide-react"
 import { formatApiError } from "@/lib/format-error"
 
-export function ScanAgentButton({ id }: { id: number }) {
+export function ScanAgentButton({ id }: { id: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<string | null>(null)

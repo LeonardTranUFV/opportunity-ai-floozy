@@ -1,36 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { MapPin, Phone, ExternalLink, Flame, Search } from "lucide-react"
-import { db as opportunityDb } from "@/lib/db/schema"
+import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
 import { ApproveRejectButtons } from "@/components/opportunities/approve-reject-buttons"
+import { SendOutreachButtons } from "@/components/opportunities/send-outreach-buttons"
+import { DeleteOpportunityButton } from "@/components/opportunities/delete-opportunity-button"
 
 export const dynamic = "force-dynamic"
-
-interface OpportunityRow {
-  id: number
-  agent_id: number
-  agent_name: string
-  platform: string
-  author_name: string
-  post_url: string | null
-  location_mentioned: string | null
-  phone_number: string | null
-  content: string
-  category: string | null
-  intent_score: number | null
-  urgency: string
-  estimated_value: string | null
-  ai_summary: string | null
-  suggested_reply: string | null
-  status: string
-  created_at: string
-}
-
-interface AgentOption {
-  id: number
-  name: string
-}
 
 const URGENCY_STYLES: Record<string, string> = {
   asap: "bg-destructive/10 text-destructive",
@@ -45,36 +22,28 @@ export default async function OpportunitiesPage({
   searchParams: Promise<{ agent?: string; urgency?: string; status?: string }>
 }) {
   const params = await searchParams
-  const agents = opportunityDb.prepare("SELECT id, name FROM agents ORDER BY name").all() as AgentOption[]
+  const supabase = await createClient()
 
-  const conditions: string[] = []
-  const values: (string | number)[] = []
+  const { data: agents } = await supabase.from("agents").select("id, name").order("name")
 
-  if (params.agent) {
-    conditions.push("opportunities.agent_id = ?")
-    values.push(Number(params.agent))
-  }
-  if (params.urgency) {
-    conditions.push("opportunities.urgency = ?")
-    values.push(params.urgency)
-  }
+  let query = supabase
+    .from("opportunities")
+    .select("*, agents(name)")
+    .order("intent_score", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(100)
+
+  if (params.agent) query = query.eq("agent_id", params.agent)
+  if (params.urgency) query = query.eq("urgency", params.urgency)
   if (params.status) {
-    conditions.push("opportunities.status = ?")
-    values.push(params.status)
+    query = query.eq("status", params.status)
+  } else {
+    // Default view hides rejected opportunities so "Reject" reads as removal —
+    // they're still visible via Status → Lost here, and always in the CRM's Lost column.
+    query = query.neq("status", "lost")
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
-
-  const opportunities = opportunityDb
-    .prepare(
-      `SELECT opportunities.*, agents.name as agent_name
-       FROM opportunities
-       JOIN agents ON agents.id = opportunities.agent_id
-       ${where}
-       ORDER BY opportunities.intent_score DESC, opportunities.created_at DESC
-       LIMIT 100`
-    )
-    .all(...values) as OpportunityRow[]
+  const { data: opportunities } = await query
 
   return (
     <div className="flex flex-col gap-6">
@@ -92,7 +61,7 @@ export default async function OpportunitiesPage({
           className="h-8 rounded-md border bg-background px-2 text-sm"
         >
           <option value="">All Agents</option>
-          {agents.map((a) => (
+          {agents?.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
             </option>
@@ -128,7 +97,7 @@ export default async function OpportunitiesPage({
         </button>
       </form>
 
-      {opportunities.length === 0 ? (
+      {!opportunities || opportunities.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -148,6 +117,7 @@ export default async function OpportunitiesPage({
           {opportunities.map((opp) => {
             const isHot = (opp.intent_score ?? 0) >= 90 || opp.urgency === "asap"
             const confidence = Math.max(0, Math.min(100, opp.intent_score ?? 0))
+            const agentName = (opp.agents as unknown as { name: string } | null)?.name ?? "Unknown agent"
 
             return (
               <Card
@@ -168,17 +138,20 @@ export default async function OpportunitiesPage({
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        Agent: {opp.agent_name}
+                        Agent: {agentName}
                         {opp.category ? ` · ${opp.category}` : ""}
                       </span>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
-                        URGENCY_STYLES[opp.urgency] || URGENCY_STYLES.low
-                      }`}
-                    >
-                      {opp.urgency}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                          URGENCY_STYLES[opp.urgency] || URGENCY_STYLES.low
+                        }`}
+                      >
+                        {opp.urgency}
+                      </span>
+                      <DeleteOpportunityButton id={opp.id} name={opp.author_name} />
+                    </div>
                   </div>
 
                   {opp.ai_summary && <p className="text-sm font-medium">{opp.ai_summary}</p>}
@@ -237,6 +210,16 @@ export default async function OpportunitiesPage({
                   </div>
 
                   <GenerateReplyButton id={opp.id} initialReply={opp.suggested_reply} />
+
+                  <SendOutreachButtons
+                    id={opp.id}
+                    platform={opp.platform}
+                    hasReply={!!opp.suggested_reply}
+                    hasPostUrl={!!opp.post_url}
+                    hasProfileUrl={!!opp.author_profile_url}
+                    commentSentAt={opp.comment_sent_at}
+                    dmSentAt={opp.dm_sent_at}
+                  />
 
                   {opp.status === "new" ? (
                     <ApproveRejectButtons id={opp.id} />

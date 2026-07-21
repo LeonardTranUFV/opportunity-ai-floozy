@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Trash2 } from "lucide-react"
 
-export function DeleteAgentButton({ id, name }: { id: number; name: string }) {
+export function DeleteAgentButton({ id, name }: { id: string; name: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirming, setConfirming] = useState(false)

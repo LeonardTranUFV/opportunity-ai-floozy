@@ -1,25 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Activity, Target, MessageSquare, ListChecks, MapPin } from "lucide-react"
-import db from "@/lib/db"
-import { db as opportunityDb } from "@/lib/db/schema"
+import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
-
-interface LeadRow {
-  id: number
-  author_name: string
-  service_summary: string
-  urgency: string
-  location_mentioned: string | null
-  created_at: string
-}
-
-interface GroupRow {
-  id: number
-  platform: string
-  name: string
-  post_count: number
-}
 
 const urgencyLabel: Record<string, string> = {
   asap: "ASAP",
@@ -28,53 +11,46 @@ const urgencyLabel: Record<string, string> = {
   low: "Low Intent",
 }
 
-export default function Home() {
-  const highIntentCount = (
-    db.prepare(`SELECT COUNT(*) as c FROM leads WHERE urgency IN ('asap', 'high')`).get() as { c: number }
-  ).c
-  const activeConversations = (
-    db.prepare(`SELECT COUNT(*) as c FROM leads WHERE status = 'approved'`).get() as { c: number }
-  ).c
-  const pendingReview = (
-    db.prepare(`SELECT COUNT(*) as c FROM leads WHERE status = 'pending'`).get() as { c: number }
-  ).c
-  const communitiesMonitored = (
-    db.prepare(`SELECT COUNT(*) as c FROM groups WHERE active = 1`).get() as { c: number }
-  ).c
+export default async function Home() {
+  const supabase = await createClient()
 
-  const recentLeads = db
-    .prepare(
-      `SELECT id, author_name, service_summary, urgency, location_mentioned, created_at
-       FROM leads ORDER BY created_at DESC LIMIT 4`
-    )
-    .all() as LeadRow[]
+  const [
+    { count: highIntentCount },
+    { count: activeConversations },
+    { count: pendingReview },
+    { count: communitiesMonitored },
+    { data: recentOpportunities },
+    { data: allGroups },
+    { data: locationsData },
+  ] = await Promise.all([
+    supabase.from("opportunities").select("*", { count: "exact", head: true }).in("urgency", ["asap", "high"]),
+    supabase.from("opportunities").select("*", { count: "exact", head: true }).eq("status", "qualified"),
+    supabase.from("opportunities").select("*", { count: "exact", head: true }).eq("status", "new"),
+    supabase.from("groups").select("*", { count: "exact", head: true }).eq("active", true),
+    supabase
+      .from("opportunities")
+      .select("id, author_name, ai_summary, content, urgency, location_mentioned, created_at")
+      .order("created_at", { ascending: false })
+      .limit(4),
+    supabase.from("groups").select("id, platform, name, active").eq("active", true).order("created_at", { ascending: false }).limit(4),
+    supabase.from("opportunities").select("location_mentioned").not("location_mentioned", "is", null),
+  ])
 
-  const monitoredGroups = db
-    .prepare(
-      `SELECT groups.id, groups.platform, groups.name, COUNT(posts.id) as post_count
-       FROM groups
-       LEFT JOIN posts ON posts.group_id = groups.id
-       WHERE groups.active = 1
-       GROUP BY groups.id
-       ORDER BY groups.created_at DESC
-       LIMIT 4`
-    )
-    .all() as GroupRow[]
-
-  const leadLocations = db
-    .prepare(
-      `SELECT location_mentioned FROM leads WHERE location_mentioned IS NOT NULL AND TRIM(location_mentioned) != ''`
-    )
-    .all() as { location_mentioned: string }[]
-  const opportunityLocations = opportunityDb
-    .prepare(
-      `SELECT location_mentioned FROM opportunities WHERE location_mentioned IS NOT NULL AND TRIM(location_mentioned) != ''`
-    )
-    .all() as { location_mentioned: string }[]
+  // post counts per monitored group (small dataset, fine to do client-side)
+  const groupIds = (allGroups ?? []).map((g) => g.id)
+  const { data: postsForGroups } = groupIds.length
+    ? await supabase.from("posts").select("group_id").in("group_id", groupIds)
+    : { data: [] as { group_id: string }[] }
+  const postCountByGroup = new Map<string, number>()
+  for (const p of postsForGroups ?? []) {
+    postCountByGroup.set(p.group_id, (postCountByGroup.get(p.group_id) ?? 0) + 1)
+  }
+  const monitoredGroups = (allGroups ?? []).map((g) => ({ ...g, post_count: postCountByGroup.get(g.id) ?? 0 }))
 
   const locationCounts = new Map<string, number>()
-  for (const row of [...leadLocations, ...opportunityLocations]) {
-    const key = row.location_mentioned.trim()
+  for (const row of locationsData ?? []) {
+    const key = row.location_mentioned?.trim()
+    if (!key) continue
     locationCounts.set(key, (locationCounts.get(key) || 0) + 1)
   }
   const heatMap = Array.from(locationCounts.entries())
@@ -94,7 +70,7 @@ export default function Home() {
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">High Intent Leads</span>
-              <span className="text-3xl font-bold tracking-tight">{highIntentCount}</span>
+              <span className="text-3xl font-bold tracking-tight">{highIntentCount ?? 0}</span>
               <span className="text-xs text-muted-foreground">ASAP or high-urgency leads</span>
             </div>
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
@@ -106,7 +82,7 @@ export default function Home() {
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">Active Conversations</span>
-              <span className="text-3xl font-bold tracking-tight">{activeConversations}</span>
+              <span className="text-3xl font-bold tracking-tight">{activeConversations ?? 0}</span>
               <span className="text-xs text-muted-foreground">Approved & dispatched to GHL</span>
             </div>
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
@@ -118,7 +94,7 @@ export default function Home() {
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">Pending Review</span>
-              <span className="text-3xl font-bold tracking-tight">{pendingReview}</span>
+              <span className="text-3xl font-bold tracking-tight">{pendingReview ?? 0}</span>
               <span className="text-xs text-muted-foreground">Leads awaiting your decision</span>
             </div>
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
@@ -130,7 +106,7 @@ export default function Home() {
           <CardContent className="flex items-start justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
-              <span className="text-3xl font-bold tracking-tight">{communitiesMonitored}</span>
+              <span className="text-3xl font-bold tracking-tight">{communitiesMonitored ?? 0}</span>
               <span className="text-xs text-muted-foreground">Active groups being scraped</span>
             </div>
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -148,13 +124,13 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentLeads.length === 0 && (
+              {(!recentOpportunities || recentOpportunities.length === 0) && (
                 <div className="flex flex-col items-center gap-2 py-6 text-center">
                   <Activity className="h-8 w-8 text-muted-foreground/40" />
                   <p className="text-sm text-muted-foreground">No leads yet — run a scrape to populate this feed.</p>
                 </div>
               )}
-              {recentLeads.map((lead) => (
+              {recentOpportunities?.map((lead) => (
                 <div
                   key={lead.id}
                   className="flex items-center gap-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
@@ -167,7 +143,7 @@ export default function Home() {
                       {lead.author_name}
                       {lead.location_mentioned ? ` · ${lead.location_mentioned}` : ""}
                     </p>
-                    <p className="text-sm text-muted-foreground">&quot;{lead.service_summary}&quot;</p>
+                    <p className="text-sm text-muted-foreground">&quot;{lead.ai_summary || lead.content}&quot;</p>
                   </div>
                   <div className="text-sm font-medium text-blue-600 dark:text-blue-400">
                     {urgencyLabel[lead.urgency] ?? lead.urgency}

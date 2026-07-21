@@ -1,7 +1,7 @@
 const GEMINI_MODEL = "gemini-3.5-flash";
 
 export interface AgentProfile {
-  id: number;
+  id: string;
   name: string;
   goal: string;
   location: string | null;
@@ -10,7 +10,7 @@ export interface AgentProfile {
 }
 
 export interface RawPostInput {
-  post_id: number;
+  post_id: string;
   platform: string;
   author_name: string;
   raw_text: string;
@@ -19,7 +19,7 @@ export interface RawPostInput {
 }
 
 export interface OpportunityEvaluation {
-  post_id: number;
+  post_id: string;
   relevant: boolean;
   intent_score: number;
   urgency: "low" | "medium" | "high" | "asap";
@@ -120,7 +120,7 @@ Negative keywords — if a post is clearly about one of these, mark it not relev
 Respond with a JSON array with exactly one object per input post, in the same order, matching
 this schema exactly:
 {
-  "post_id": number (must match the input post_id),
+  "post_id": string (must match the input post_id exactly),
   "relevant": boolean,
   "intent_score": number (0-100, how strongly this matches the agent's goal),
   "urgency": "low" | "medium" | "high" | "asap",

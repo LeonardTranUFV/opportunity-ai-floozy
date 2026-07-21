@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { db as opportunityDb } from "@/lib/db/schema";
+import { createClient } from "@/lib/supabase/server";
 
 const VALID_STATUSES = ["new", "contacted", "qualified", "appointment", "proposal", "won", "lost"];
 
 interface Opportunity {
-  id: number;
+  id: string;
   author_name: string;
   phone_number: string | null;
   category: string | null;
@@ -66,12 +66,8 @@ async function dispatchToGHL(opportunity: Opportunity) {
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const opportunityId = Number(id);
-
-  if (!Number.isFinite(opportunityId)) {
-    return NextResponse.json({ success: false, error: "Invalid opportunity id" }, { status: 400 });
-  }
+  const { id: opportunityId } = await params;
+  const supabase = await createClient();
 
   const body = await request.json();
   const { status } = body;
@@ -83,26 +79,56 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     );
   }
 
-  const current = opportunityDb.prepare("SELECT * FROM opportunities WHERE id = ?").get(opportunityId) as
-    | Opportunity
-    | undefined;
-  if (!current) {
+  const { data: current, error: fetchError } = await supabase
+    .from("opportunities")
+    .select("*")
+    .eq("id", opportunityId)
+    .single();
+
+  if (fetchError || !current) {
     return NextResponse.json({ success: false, error: "Opportunity not found" }, { status: 404 });
   }
 
   if (status !== undefined) {
-    opportunityDb.prepare("UPDATE opportunities SET status = ? WHERE id = ?").run(status, opportunityId);
+    const { error: updateError } = await supabase
+      .from("opportunities")
+      .update({ status })
+      .eq("id", opportunityId);
+    if (updateError) {
+      return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
+    }
   }
 
-  const updated = opportunityDb.prepare("SELECT * FROM opportunities WHERE id = ?").get(
-    opportunityId
-  ) as Opportunity;
+  const { data: updated } = await supabase
+    .from("opportunities")
+    .select("*")
+    .eq("id", opportunityId)
+    .single();
 
   // Qualifying an opportunity is the "approve" moment — dispatch it to GHL, same as the legacy pipeline.
   let ghlResult = null;
-  if (status === "qualified" && current.status !== "qualified") {
-    ghlResult = await dispatchToGHL(updated);
+  if (status === "qualified" && current.status !== "qualified" && updated) {
+    ghlResult = await dispatchToGHL(updated as Opportunity);
   }
 
   return NextResponse.json({ success: true, opportunity: updated, ghl: ghlResult });
+}
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: opportunityId } = await params;
+  const supabase = await createClient();
+
+  const { error, count } = await supabase
+    .from("opportunities")
+    .delete({ count: "exact" })
+    .eq("id", opportunityId);
+
+  if (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+  if (!count) {
+    return NextResponse.json({ success: false, error: "Opportunity not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, deleted: opportunityId });
 }

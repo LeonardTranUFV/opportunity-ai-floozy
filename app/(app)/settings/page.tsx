@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { CheckCircle2, XCircle } from "lucide-react"
-import leadsDb from "@/lib/db"
+import { createClient } from "@/lib/supabase/server"
 import { SettingsForm } from "@/components/settings/settings-form"
 
 export const dynamic = "force-dynamic"
@@ -11,9 +11,10 @@ function maskKey(key: string | undefined): string {
   return `${key.slice(0, 4)}••••••••${key.slice(-4)}`
 }
 
-export default function SettingsPage() {
-  const rows = leadsDb.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[]
-  const settingsMap = Object.fromEntries(rows.map((r) => [r.key, r.value]))
+export default async function SettingsPage() {
+  const supabase = await createClient()
+  const { data: rows } = await supabase.from("settings").select("key, value")
+  const settingsMap = Object.fromEntries((rows ?? []).map((r) => [r.key, r.value]))
 
   const integrations = [
     { name: "Gemini API (AI reasoning)", key: process.env.GEMINI_API_KEY },
