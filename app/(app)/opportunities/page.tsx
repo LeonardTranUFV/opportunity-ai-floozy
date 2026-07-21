@@ -86,7 +86,7 @@ function formatPostAge(postedAt: string | null, scrapedAt: string | null): { lab
 export default async function OpportunitiesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ agent?: string; urgency?: string; status?: string; sort?: string }>
+  searchParams: Promise<{ agent?: string; urgency?: string; status?: string; sort?: string; id?: string }>
 }) {
   const params = await searchParams
   const sort: SortOption = params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency"
@@ -103,14 +103,24 @@ export default async function OpportunitiesPage({
     .order("created_at", { ascending: false })
     .limit(100)
 
-  if (params.agent) query = query.eq("agent_id", params.agent)
-  if (params.urgency) query = query.eq("urgency", params.urgency)
-  if (params.status) {
-    query = query.eq("status", params.status)
+  // A deep link from the dashboard's Recent Alerts — show just that one
+  // opportunity regardless of status/agent/urgency, since the point is to
+  // act on a specific lead someone clicked, not to browse a filtered list.
+  if (params.id) {
+    query = supabase
+      .from("opportunities")
+      .select("*, agents(name), posts:source_post_id(posted_at, scraped_at)")
+      .eq("id", params.id)
   } else {
-    // Default view hides rejected opportunities so "Reject" reads as removal —
-    // they're still visible via Status → Lost here, and always in the CRM's Lost column.
-    query = query.neq("status", "lost")
+    if (params.agent) query = query.eq("agent_id", params.agent)
+    if (params.urgency) query = query.eq("urgency", params.urgency)
+    if (params.status) {
+      query = query.eq("status", params.status)
+    } else {
+      // Default view hides rejected opportunities so "Reject" reads as removal —
+      // they're still visible via Status → Lost here, and always in the CRM's Lost column.
+      query = query.neq("status", "lost")
+    }
   }
 
   const { data: rawOpportunities } = await query
@@ -125,13 +135,22 @@ export default async function OpportunitiesPage({
         </p>
       </div>
 
-      <FilterBar
-        agents={agents ?? []}
-        agentId={params.agent || ""}
-        urgency={params.urgency || ""}
-        status={params.status || ""}
-        sort={sort}
-      />
+      {params.id ? (
+        <a
+          href="/opportunities"
+          className="flex w-fit items-center gap-1.5 text-sm text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
+        >
+          ← Back to all Opportunities
+        </a>
+      ) : (
+        <FilterBar
+          agents={agents ?? []}
+          agentId={params.agent || ""}
+          urgency={params.urgency || ""}
+          status={params.status || ""}
+          sort={sort}
+        />
+      )}
 
       {!opportunities || opportunities.length === 0 ? (
         <Card>
@@ -261,12 +280,17 @@ export default async function OpportunitiesPage({
                     )}
                   </div>
 
-                  <GenerateReplyButton id={opp.id} initialReply={opp.suggested_reply} />
+                  <GenerateReplyButton
+                    id={opp.id}
+                    initialComment={opp.suggested_comment}
+                    initialDm={opp.suggested_dm}
+                  />
 
                   <SendOutreachButtons
                     id={opp.id}
                     platform={opp.platform}
-                    hasReply={!!opp.suggested_reply}
+                    hasComment={!!opp.suggested_comment}
+                    hasDm={!!opp.suggested_dm}
                     hasPostUrl={!!opp.post_url}
                     hasProfileUrl={!!opp.author_profile_url}
                     commentSentAt={opp.comment_sent_at}

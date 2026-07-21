@@ -2,6 +2,9 @@
 
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Pause, Play } from "lucide-react"
 
 export function GroupActiveToggle({ id, active }: { id: string; active: boolean }) {
   const router = useRouter()
@@ -23,14 +26,23 @@ export function GroupActiveToggle({ id, active }: { id: string; active: boolean 
   }
 
   return (
-    <button
-      onClick={handleToggle}
-      disabled={isPending}
-      className={`h-6 rounded-full px-2 text-xs font-medium transition-colors disabled:opacity-50 ${
-        active ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"
-      }`}
-    >
-      {active ? "Active" : "Paused"}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleToggle}
+            disabled={isPending}
+            aria-label={active ? "Pause monitoring" : "Resume monitoring"}
+          >
+            {active ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          </Button>
+        }
+      />
+      <TooltipContent>
+        {active ? "Pause monitoring — keeps the group, stops scraping it" : "Resume monitoring"}
+      </TooltipContent>
+    </Tooltip>
   )
 }

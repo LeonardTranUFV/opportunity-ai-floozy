@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { CheckCircle2, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { SettingsForm } from "@/components/settings/settings-form"
+import { BusinessProfileForm } from "@/components/settings/business-profile-form"
 
 export const dynamic = "force-dynamic"
 
@@ -29,6 +30,23 @@ export default async function SettingsPage() {
           Configure how the AI reasons about opportunities and check your integrations.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Business Profile</CardTitle>
+          <CardDescription>
+            Optional, but recommended — used to personalize AI-generated replies so they sound like you.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BusinessProfileForm
+            initialOwnerName={settingsMap.business_owner_name || ""}
+            initialBusinessName={settingsMap.business_name || ""}
+            initialPhone={settingsMap.business_phone || ""}
+            initialPitch={settingsMap.business_pitch || ""}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

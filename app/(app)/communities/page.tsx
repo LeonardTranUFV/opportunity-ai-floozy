@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { DiscoverGroupsForm } from "@/components/communities/discover-groups-form"
 import { AddGroupUrlForm } from "@/components/communities/add-group-url-form"
 import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
+import { GroupName } from "@/components/communities/group-name"
 import { DeleteGroupButton } from "@/components/communities/delete-group-button"
 import { ScrapeNowButton } from "@/components/communities/scrape-now-button"
 
@@ -91,17 +92,13 @@ export default async function CommunitiesPage() {
                   className="flex items-center justify-between gap-4 rounded-lg border border-border p-3 transition-colors hover:border-brand/30 hover:bg-brand/[0.03]"
                 >
                   <div className="flex min-w-0 flex-col gap-1">
-                    <a
-                      href={g.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="truncate text-sm font-medium hover:text-brand hover:underline"
-                    >
-                      {g.name}
-                    </a>
+                    <GroupName id={g.id} name={g.name} url={g.url} />
                     <div className="flex items-center gap-1.5">
                       <Badge variant="outline" className="capitalize">
                         {g.platform}
+                      </Badge>
+                      <Badge variant={g.active ? "success" : "secondary"}>
+                        {g.active ? "Active" : "Paused"}
                       </Badge>
                       <span className="text-xs text-muted-foreground">{g.post_count} posts collected</span>
                     </div>

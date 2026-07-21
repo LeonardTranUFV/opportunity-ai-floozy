@@ -1,33 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Activity, Target, MessageSquare, ListChecks, MapPin, ExternalLink, Compass, Flame } from "lucide-react"
+import { Activity, Target, MessageSquare, ListChecks, MapPin, Compass, Flame, MessageCircle, Send } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
+import { AlertRow } from "@/components/dashboard/alert-row"
 
 export const dynamic = "force-dynamic"
-
-const urgencyLabel: Record<string, string> = {
-  asap: "ASAP",
-  high: "High Intent",
-  medium: "Medium Intent",
-  low: "Low Intent",
-}
-
-const urgencyVariant: Record<string, "destructive" | "warning" | "brand" | "secondary"> = {
-  asap: "destructive",
-  high: "warning",
-  medium: "brand",
-  low: "secondary",
-}
-
-function formatAlertTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
 
 export default async function Home() {
   const supabase = await createClient()
@@ -37,6 +15,8 @@ export default async function Home() {
     { count: activeConversations },
     { count: pendingReview },
     { count: communitiesMonitored },
+    { count: commentsSent },
+    { count: dmsSent },
     { data: recentOpportunities },
     { data: allGroups },
     { data: locationsData },
@@ -45,6 +25,8 @@ export default async function Home() {
     supabase.from("opportunities").select("*", { count: "exact", head: true }).eq("status", "qualified"),
     supabase.from("opportunities").select("*", { count: "exact", head: true }).eq("status", "new"),
     supabase.from("groups").select("*", { count: "exact", head: true }).eq("active", true),
+    supabase.from("opportunities").select("*", { count: "exact", head: true }).not("comment_sent_at", "is", null),
+    supabase.from("opportunities").select("*", { count: "exact", head: true }).not("dm_sent_at", "is", null),
     supabase
       .from("opportunities")
       .select("id, author_name, ai_summary, content, urgency, location_mentioned, platform, post_url, created_at")
@@ -150,41 +132,7 @@ export default async function Home() {
                 />
               )}
               {recentOpportunities?.map((lead) => (
-                <div
-                  key={lead.id}
-                  className="flex items-center gap-4 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
-                    <Activity className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <p className="text-sm font-medium leading-none">
-                      {lead.author_name}
-                      {lead.location_mentioned ? ` · ${lead.location_mentioned}` : ""}
-                    </p>
-                    <p className="text-sm text-muted-foreground">&quot;{lead.ai_summary || lead.content}&quot;</p>
-                    <div className="flex items-center gap-2 pt-0.5 text-xs text-muted-foreground">
-                      <span>{formatAlertTime(lead.created_at)}</span>
-                      {lead.post_url && (
-                        <>
-                          <span>·</span>
-                          <a
-                            href={lead.post_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-0.5 capitalize underline decoration-dotted underline-offset-2 hover:text-brand"
-                          >
-                            {lead.platform || "View"} post
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <Badge variant={urgencyVariant[lead.urgency] ?? "secondary"} className="shrink-0">
-                    {urgencyLabel[lead.urgency] ?? lead.urgency}
-                  </Badge>
-                </div>
+                <AlertRow key={lead.id} lead={lead} />
               ))}
             </div>
           </CardContent>
@@ -218,6 +166,35 @@ export default async function Home() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Outreach Sent</CardTitle>
+          <CardDescription>Personalized comments and DMs sent directly from this app.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-2xl font-bold tracking-tight">{commentsSent ?? 0}</span>
+                <span className="text-xs text-muted-foreground">Comments posted</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">
+                <Send className="h-5 w-5" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-2xl font-bold tracking-tight">{dmsSent ?? 0}</span>
+                <span className="text-xs text-muted-foreground">DMs sent</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

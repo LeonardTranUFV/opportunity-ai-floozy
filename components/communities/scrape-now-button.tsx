@@ -44,10 +44,15 @@ export function ScrapeNowButton() {
 
   return (
     <div className="flex flex-col gap-2">
-      <Button variant="brand" size="sm" onClick={handleScrape} disabled={isPending} className="w-fit">
-        <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
-        {isPending ? "Scraping active groups… (can take a minute)" : "Scrape Active Groups Now"}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={handleScrape} disabled={isPending} className="w-fit">
+          <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
+          {isPending ? "Scraping active groups… (can take a minute)" : "Scrape Active Groups Now"}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Optional — every &quot;Scan for Opportunities&quot; on the Agents page already does this first.
+        </span>
+      </div>
       {result && (
         <div
           className={cn(
