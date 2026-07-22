@@ -1,9 +1,5 @@
 import { chromium, type Page } from "playwright";
-import path from "path";
-
-function getAuthPath(): string {
-  return path.resolve(process.cwd(), "../.auth_session");
-}
+import { getAuthSessionPath } from "@/lib/auth-session";
 
 async function typeLikeHuman(page: Page, text: string) {
   await page.keyboard.type(text, { delay: 35 + Math.random() * 40 });
@@ -15,13 +11,13 @@ export interface OutreachResult {
 }
 
 /**
- * Posts a personalized comment on a Facebook post. Requires the account behind
- * .auth_session to already be a member of the post's group — if not, Facebook
- * shows a "join group" prompt instead of a comment box and this reports that
- * back as a clear error rather than a generic failure.
+ * Posts a personalized comment on a Facebook post, using this user's own
+ * connected session. Requires that account to already be a member of the
+ * post's group — if not, Facebook shows a "join group" prompt instead of a
+ * comment box and this reports that back as a clear error.
  */
-export async function postFacebookComment(postUrl: string, message: string): Promise<OutreachResult> {
-  const context = await chromium.launchPersistentContext(getAuthPath(), { headless: true });
+export async function postFacebookComment(postUrl: string, message: string, userId: string): Promise<OutreachResult> {
+  const context = await chromium.launchPersistentContext(getAuthSessionPath(userId), { headless: true });
   try {
     const page = await context.newPage();
     await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
@@ -56,8 +52,8 @@ export async function postFacebookComment(postUrl: string, message: string): Pro
  * Sends a personalized Messenger DM to a post author via their profile page.
  * Does not require group membership.
  */
-export async function sendFacebookMessage(profileUrl: string, message: string): Promise<OutreachResult> {
-  const context = await chromium.launchPersistentContext(getAuthPath(), { headless: true });
+export async function sendFacebookMessage(profileUrl: string, message: string, userId: string): Promise<OutreachResult> {
+  const context = await chromium.launchPersistentContext(getAuthSessionPath(userId), { headless: true });
   try {
     const page = await context.newPage();
     await page.goto(profileUrl, { waitUntil: "domcontentloaded", timeout: 20000 });

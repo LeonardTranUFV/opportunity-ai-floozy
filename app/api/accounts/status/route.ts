@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { chromium } from "playwright";
-import path from "path";
+import { createClient } from "@/lib/supabase/server";
+import { getAuthSessionPath } from "@/lib/auth-session";
 
 interface CheckResult {
   loggedIn: boolean;
@@ -75,7 +76,15 @@ async function checkLinkedIn(authPath: string): Promise<CheckResult> {
 }
 
 export async function GET() {
-  const authPath = path.resolve(process.cwd(), "../.auth_session");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
+  const authPath = getAuthSessionPath(user.id);
 
   // Sequential, not parallel — both checks share the same persistent Chromium
   // profile directory, which only one process can hold a lock on at a time.

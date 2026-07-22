@@ -6,6 +6,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id: opportunityId } = await params;
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
   const { data: opportunity, error: oppError } = await supabase
     .from("opportunities")
     .select("id, platform, post_url, suggested_comment")
@@ -34,7 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   }
 
-  const result = await postFacebookComment(opportunity.post_url, opportunity.suggested_comment);
+  const result = await postFacebookComment(opportunity.post_url, opportunity.suggested_comment, user.id);
 
   if (!result.success) {
     return NextResponse.json({ success: false, error: result.error }, { status: 502 });

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
-import path from 'path';
 import { createClient } from '@/lib/supabase/server';
+import { getAuthSessionPath } from '@/lib/auth-session';
 
 export async function POST() {
   const supabase = await createClient();
@@ -12,7 +12,7 @@ export async function POST() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const authPath = path.resolve(process.cwd(), '../.auth_session');
+  const authPath = getAuthSessionPath(user.id);
 
   console.log(`🔑 Launching headed Playwright browser for Facebook login at: ${authPath}`);
 

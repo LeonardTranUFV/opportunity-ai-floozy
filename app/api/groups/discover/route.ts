@@ -1,9 +1,18 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
-import path from 'path';
+import { createClient } from '@/lib/supabase/server';
+import { getAuthSessionPath } from '@/lib/auth-session';
 
 export async function POST(request: Request) {
   try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { industry, location } = body;
 
@@ -14,7 +23,7 @@ export async function POST(request: Request) {
     const searchQuery = `${industry} ${location}`;
     console.log(`📡 Launching Live Facebook Group Search for query: "${searchQuery}"...`);
 
-    const authPath = path.resolve(process.cwd(), '../.auth_session');
+    const authPath = getAuthSessionPath(user.id);
 
     // Launch headless Playwright context utilizing saved session cookies
     const browser = await chromium.launchPersistentContext(authPath, {

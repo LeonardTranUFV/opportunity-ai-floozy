@@ -30,7 +30,7 @@ export async function scrapeAndStorePosts(
     return { scraped: 0, inserted: 0, log: ["No active groups to scrape."] };
   }
 
-  const { posts, log } = await scrapeActiveGroups(activeGroups);
+  const { posts, log } = await scrapeActiveGroups(activeGroups, userId);
 
   if (posts.length === 0) {
     return { scraped: 0, inserted: 0, log };

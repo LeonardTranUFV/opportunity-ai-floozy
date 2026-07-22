@@ -1,9 +1,5 @@
 import { chromium } from "playwright";
-import path from "path";
-
-function getAuthPath(): string {
-  return path.resolve(process.cwd(), "../.auth_session");
-}
+import { getAuthSessionPath } from "@/lib/auth-session";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randBetween = (min: number, max: number) => min + Math.floor(Math.random() * (max - min));
@@ -201,11 +197,11 @@ export interface ScrapeSummary {
  * re-extracting after every scroll step since Facebook/LinkedIn virtualize
  * their feeds (posts scrolled past disappear from the DOM).
  */
-export async function scrapeActiveGroups(groups: GroupToScrape[]): Promise<ScrapeSummary> {
+export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string): Promise<ScrapeSummary> {
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
 
-  const context = await chromium.launchPersistentContext(getAuthPath(), {
+  const context = await chromium.launchPersistentContext(getAuthSessionPath(userId), {
     headless: true,
     viewport: { width: 1280, height: 900 },
     userAgent:
