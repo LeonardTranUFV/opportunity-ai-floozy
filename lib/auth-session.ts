@@ -28,7 +28,16 @@ export function getAuthSessionPath(userId: string, platform: string): string {
  * fix is closing the leftover window, not retrying automatically.
  */
 export function formatAuthLaunchError(raw: string, platformLabel: string): string {
-  if (raw.includes("Opening in existing browser session") || raw.includes("already in use")) {
+  const lockMarkers = [
+    "Opening in existing browser session",
+    "already in use",
+    // Playwright's outer error when it detects the profile is locked and its
+    // own cleanup/kill attempt then races with the process exiting on its
+    // own — the specific lock text above still shows up buried in the
+    // embedded browser log, but the *headline* message is this generic one.
+    "Target page, context or browser has been closed",
+  ];
+  if (lockMarkers.some((marker) => raw.includes(marker))) {
     return `A previous ${platformLabel} login window is still open somewhere (check your taskbar, other monitors, or Task Manager for a leftover chrome.exe) — close it, then try again. Only one ${platformLabel} session window can be open at a time.`;
   }
   return raw;
