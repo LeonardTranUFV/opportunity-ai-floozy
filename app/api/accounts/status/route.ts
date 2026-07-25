@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { chromium } from "playwright";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthSessionPath } from "@/lib/auth-session";
+import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 
 interface CheckResult {
   loggedIn: boolean;
@@ -148,18 +148,23 @@ export async function GET() {
 
   let facebook = false;
   let facebookName: string | null = null;
+  let facebookError: string | null = null;
   let linkedin = false;
   let linkedinName: string | null = null;
+  let linkedinError: string | null = null;
   let nextdoor = false;
   let nextdoorName: string | null = null;
+  let nextdoorError: string | null = null;
   let twitter = false;
   let twitterName: string | null = null;
+  let twitterError: string | null = null;
 
   if (facebookResult.status === "fulfilled") {
     facebook = facebookResult.value.loggedIn;
     facebookName = facebookResult.value.name;
   } else {
     console.error("Facebook status check failed:", facebookResult.reason);
+    facebookError = formatAuthLaunchError(String(facebookResult.reason?.message ?? facebookResult.reason), "Facebook");
   }
 
   if (linkedinResult.status === "fulfilled") {
@@ -167,6 +172,7 @@ export async function GET() {
     linkedinName = linkedinResult.value.name;
   } else {
     console.error("LinkedIn status check failed:", linkedinResult.reason);
+    linkedinError = formatAuthLaunchError(String(linkedinResult.reason?.message ?? linkedinResult.reason), "LinkedIn");
   }
 
   if (nextdoorResult.status === "fulfilled") {
@@ -174,6 +180,7 @@ export async function GET() {
     nextdoorName = nextdoorResult.value.name;
   } else {
     console.error("Nextdoor status check failed:", nextdoorResult.reason);
+    nextdoorError = formatAuthLaunchError(String(nextdoorResult.reason?.message ?? nextdoorResult.reason), "Nextdoor");
   }
 
   if (twitterResult.status === "fulfilled") {
@@ -181,17 +188,22 @@ export async function GET() {
     twitterName = twitterResult.value.name;
   } else {
     console.error("X status check failed:", twitterResult.reason);
+    twitterError = formatAuthLaunchError(String(twitterResult.reason?.message ?? twitterResult.reason), "X");
   }
 
   return NextResponse.json({
     success: true,
     facebook,
     facebookName,
+    facebookError,
     linkedin,
     linkedinName,
+    linkedinError,
     nextdoor,
     nextdoorName,
+    nextdoorError,
     twitter,
     twitterName,
+    twitterError,
   });
 }

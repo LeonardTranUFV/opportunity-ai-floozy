@@ -9,12 +9,16 @@ import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon } from "@/components/ic
 interface Status {
   facebook: boolean
   facebookName: string | null
+  facebookError: string | null
   linkedin: boolean
   linkedinName: string | null
+  linkedinError: string | null
   nextdoor: boolean
   nextdoorName: string | null
+  nextdoorError: string | null
   twitter: boolean
   twitterName: string | null
+  twitterError: string | null
 }
 
 function PlatformRow({
@@ -22,33 +26,44 @@ function PlatformRow({
   label,
   loggedIn,
   name,
+  error,
   iconColor,
 }: {
   icon: React.ReactNode
   label: string
   loggedIn: boolean
   name: string | null
+  error: string | null
   iconColor: string
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-border p-3">
-      <div className="flex items-center gap-3">
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${iconColor}`}>{icon}</div>
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">{label}</span>
-          {loggedIn && name ? (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <User className="h-3 w-3" />
-              {name}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              {loggedIn ? "Logged in" : "Not connected"}
-            </span>
-          )}
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${iconColor}`}>{icon}</div>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">{label}</span>
+            {loggedIn && name ? (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <User className="h-3 w-3" />
+                {name}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {loggedIn ? "Logged in" : error ? "Couldn't check" : "Not connected"}
+              </span>
+            )}
+          </div>
         </div>
+        <Badge variant={loggedIn ? "success" : error ? "warning" : "secondary"}>
+          {loggedIn ? "Connected" : error ? "Check failed" : "Not logged in"}
+        </Badge>
       </div>
-      <Badge variant={loggedIn ? "success" : "secondary"}>{loggedIn ? "Connected" : "Not logged in"}</Badge>
+      {error && (
+        <p className="pl-12 text-xs text-amber-600 dark:text-amber-400">
+          {error} This is not the same as being logged out — retry the check once that's resolved.
+        </p>
+      )}
     </div>
   )
 }
@@ -66,12 +81,16 @@ export function SessionStatus() {
         setStatus({
           facebook: data.facebook,
           facebookName: data.facebookName,
+          facebookError: data.facebookError,
           linkedin: data.linkedin,
           linkedinName: data.linkedinName,
+          linkedinError: data.linkedinError,
           nextdoor: data.nextdoor,
           nextdoorName: data.nextdoorName,
+          nextdoorError: data.nextdoorError,
           twitter: data.twitter,
           twitterName: data.twitterName,
+          twitterError: data.twitterError,
         })
       }
     } finally {
@@ -96,6 +115,7 @@ export function SessionStatus() {
             label="Facebook"
             loggedIn={status.facebook}
             name={status.facebookName}
+            error={status.facebookError}
             iconColor="bg-[#1877F2]/10 text-[#1877F2]"
           />
           <PlatformRow
@@ -103,6 +123,7 @@ export function SessionStatus() {
             label="LinkedIn"
             loggedIn={status.linkedin}
             name={status.linkedinName}
+            error={status.linkedinError}
             iconColor="bg-[#0A66C2]/10 text-[#0A66C2]"
           />
           <PlatformRow
@@ -110,6 +131,7 @@ export function SessionStatus() {
             label="Nextdoor"
             loggedIn={status.nextdoor}
             name={status.nextdoorName}
+            error={status.nextdoorError}
             iconColor="bg-[#8fca43]/10 text-[#8fca43]"
           />
           <PlatformRow
@@ -117,13 +139,16 @@ export function SessionStatus() {
             label="X"
             loggedIn={status.twitter}
             name={status.twitterName}
+            error={status.twitterError}
             iconColor="bg-foreground/10 text-foreground"
           />
           {(!status.facebook || !status.linkedin || !status.nextdoor || !status.twitter) && (
             <p className="text-xs text-muted-foreground">
               Not logged in means group discovery and scraping won&apos;t find anything for that
               platform. Use Connect below and make sure to actually finish logging in before closing
-              the popup.
+              the popup. &quot;Check failed&quot; is different — the check itself broke (usually a
+              leftover window locking the profile), it says nothing about whether you&apos;re
+              actually logged in.
             </p>
           )}
         </div>
