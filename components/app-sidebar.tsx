@@ -32,7 +32,7 @@ export function AppSidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname()
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
+    <Sidebar variant="inset" collapsible="icon" style={{ "--sidebar-width": "17.5rem" } as React.CSSProperties}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -52,12 +52,13 @@ export function AppSidebar({ userEmail }: { userEmail?: string }) {
         <SidebarGroup>
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1.5">
               {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
                 const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href)
                 return (
                   <SidebarMenuItem key={href}>
                     <SidebarMenuButton
+                      size="lg"
                       tooltip={label}
                       isActive={isActive}
                       render={<Link href={href} />}
@@ -67,8 +68,8 @@ export function AppSidebar({ userEmail }: { userEmail?: string }) {
                           "bg-brand/10! text-brand! font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-brand"
                       )}
                     >
-                      <Icon className={cn(isActive && "text-brand")} />
-                      <span>{label}</span>
+                      <Icon className={cn("size-4.5", isActive && "text-brand")} />
+                      <span className="text-[0.925rem]">{label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )
