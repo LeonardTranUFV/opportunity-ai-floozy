@@ -4,13 +4,17 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { RefreshCw, User } from "lucide-react"
-import { FacebookIcon, LinkedInIcon } from "@/components/icons"
+import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon } from "@/components/icons"
 
 interface Status {
   facebook: boolean
   facebookName: string | null
   linkedin: boolean
   linkedinName: string | null
+  nextdoor: boolean
+  nextdoorName: string | null
+  twitter: boolean
+  twitterName: string | null
 }
 
 function PlatformRow({
@@ -64,6 +68,10 @@ export function SessionStatus() {
           facebookName: data.facebookName,
           linkedin: data.linkedin,
           linkedinName: data.linkedinName,
+          nextdoor: data.nextdoor,
+          nextdoorName: data.nextdoorName,
+          twitter: data.twitter,
+          twitterName: data.twitterName,
         })
       }
     } finally {
@@ -97,7 +105,21 @@ export function SessionStatus() {
             name={status.linkedinName}
             iconColor="bg-[#0A66C2]/10 text-[#0A66C2]"
           />
-          {(!status.facebook || !status.linkedin) && (
+          <PlatformRow
+            icon={<NextdoorIcon className="h-4.5 w-4.5" />}
+            label="Nextdoor"
+            loggedIn={status.nextdoor}
+            name={status.nextdoorName}
+            iconColor="bg-[#8fca43]/10 text-[#8fca43]"
+          />
+          <PlatformRow
+            icon={<XIcon className="h-4.5 w-4.5" />}
+            label="X"
+            loggedIn={status.twitter}
+            name={status.twitterName}
+            iconColor="bg-foreground/10 text-foreground"
+          />
+          {(!status.facebook || !status.linkedin || !status.nextdoor || !status.twitter) && (
             <p className="text-xs text-muted-foreground">
               Not logged in means group discovery and scraping won&apos;t find anything for that
               platform. Use Connect below and make sure to actually finish logging in before closing

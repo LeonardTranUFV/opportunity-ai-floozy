@@ -47,6 +47,58 @@ async function checkFacebook(authPath: string): Promise<CheckResult> {
   }
 }
 
+async function checkNextdoor(authPath: string): Promise<CheckResult> {
+  const context = await chromium.launchPersistentContext(authPath, { headless: true });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://nextdoor.com/news_feed/", { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(3000);
+    // Logged-out visitors get redirected to /login or a signup/landing page.
+    const loggedIn = !/\/login|\/signup|\/welcome/.test(page.url());
+
+    let name: string | null = null;
+    if (loggedIn) {
+      try {
+        await page
+          .waitForFunction(() => document.title.trim().toLowerCase() !== "nextdoor", { timeout: 8000 })
+          .catch(() => {});
+        const title = await page.title();
+        const cleaned = title.replace(/\s*[|–-]\s*Nextdoor.*$/i, "").trim();
+        name = cleaned && cleaned.toLowerCase() !== "nextdoor" ? cleaned : null;
+      } catch {
+        // leave name null
+      }
+    }
+    return { loggedIn, name };
+  } finally {
+    await context.close();
+  }
+}
+
+async function checkTwitter(authPath: string): Promise<CheckResult> {
+  const context = await chromium.launchPersistentContext(authPath, { headless: true });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://x.com/home", { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(3000);
+    // Logged-out visitors get bounced back to /login (or stay on x.com/ without reaching /home).
+    const loggedIn = page.url().includes("/home");
+
+    let name: string | null = null;
+    if (loggedIn) {
+      try {
+        const handleLink = await page.locator('a[href^="/"][aria-label]:has(img)').first();
+        name = (await handleLink.getAttribute("aria-label", { timeout: 3000 }).catch(() => null)) || null;
+      } catch {
+        // leave name null
+      }
+    }
+    return { loggedIn, name };
+  } finally {
+    await context.close();
+  }
+}
+
 async function checkLinkedIn(authPath: string): Promise<CheckResult> {
   const context = await chromium.launchPersistentContext(authPath, { headless: true });
   try {
@@ -92,6 +144,10 @@ export async function GET() {
   let facebookName: string | null = null;
   let linkedin = false;
   let linkedinName: string | null = null;
+  let nextdoor = false;
+  let nextdoorName: string | null = null;
+  let twitter = false;
+  let twitterName: string | null = null;
 
   try {
     const result = await checkFacebook(authPath);
@@ -109,5 +165,31 @@ export async function GET() {
     console.error("LinkedIn status check failed:", error);
   }
 
-  return NextResponse.json({ success: true, facebook, facebookName, linkedin, linkedinName });
+  try {
+    const result = await checkNextdoor(authPath);
+    nextdoor = result.loggedIn;
+    nextdoorName = result.name;
+  } catch (error) {
+    console.error("Nextdoor status check failed:", error);
+  }
+
+  try {
+    const result = await checkTwitter(authPath);
+    twitter = result.loggedIn;
+    twitterName = result.name;
+  } catch (error) {
+    console.error("X status check failed:", error);
+  }
+
+  return NextResponse.json({
+    success: true,
+    facebook,
+    facebookName,
+    linkedin,
+    linkedinName,
+    nextdoor,
+    nextdoorName,
+    twitter,
+    twitterName,
+  });
 }

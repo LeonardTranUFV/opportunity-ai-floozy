@@ -187,6 +187,127 @@ function extractLinkedInPosts(groupUrl: string): RawExtractedPost[] {
   return results;
 }
 
+/**
+ * Nextdoor DOM structure, unlike Facebook/LinkedIn's, hasn't been confirmed
+ * against a real logged-in session (no test account available while writing
+ * this) — selectors below are an educated guess based on Nextdoor's public
+ * markup conventions (semantic <time datetime> elements, /p/<slug> post
+ * permalinks). Treat the first live scrape as the real test; if it returns
+ * zero posts from an active neighborhood feed, inspect the actual DOM and
+ * adjust the selectors here.
+ */
+function extractNextdoorPosts(groupUrl: string): RawExtractedPost[] {
+  const results: RawExtractedPost[] = [];
+  const seenTexts = new Set<string>();
+  const postContainers = document.querySelectorAll(
+    'article, div[data-testid="post"], div[data-testid="realtime-feed-post"]'
+  );
+
+  const hashText = (str: string): string => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h).toString(36);
+  };
+
+  const getMessage = (container: Element): string => {
+    let best = "";
+    container.querySelectorAll('p, span, div[dir="auto"]').forEach((el) => {
+      const t = (el.textContent || "").trim();
+      if (t.length > best.length) best = t;
+    });
+    return best;
+  };
+
+  postContainers.forEach((container) => {
+    if ((container.textContent || "").trim().length < 30) return;
+
+    const authorElement = container.querySelector('a[href*="/profile/"], h2 a, h3 a');
+    const raw_text = getMessage(container).slice(0, 1500);
+    const author_name = authorElement ? (authorElement.textContent || "").trim() : "Neighbor";
+    const author_profile_url = authorElement ? authorElement.getAttribute("href") : null;
+
+    if (!raw_text || raw_text.length <= 20) return;
+
+    const textKey = raw_text.slice(0, 160).toLowerCase().replace(/\s+/g, " ");
+    if (seenTexts.has(textKey)) return;
+    seenTexts.add(textKey);
+
+    let directUrl: string | null = null;
+    const permalinkAnchor = container.querySelector('a[href*="/p/"]');
+    if (permalinkAnchor) {
+      const href = permalinkAnchor.getAttribute("href") || "";
+      directUrl = (href.startsWith("http") ? href : window.location.origin + href).split("?")[0];
+    }
+
+    const timeEl = container.querySelector("time[datetime]");
+    const timestamp = timeEl ? timeEl.getAttribute("datetime") : null;
+
+    results.push({
+      post_id: directUrl ? `nd_${directUrl.replace(/[^a-zA-Z0-9]/g, "_")}` : `nd_txt_${hashText(textKey)}`,
+      post_url: directUrl || groupUrl,
+      author_name,
+      author_profile_url,
+      timestamp,
+      raw_text,
+    });
+  });
+
+  return results;
+}
+
+/** X (Twitter) search-results timeline — `data-testid` hooks are the stable, documented markers X itself uses for automated testing, so these are lower-risk than the Nextdoor guesses above. Still unverified live. */
+function extractXPosts(groupUrl: string): RawExtractedPost[] {
+  const results: RawExtractedPost[] = [];
+  const seenTexts = new Set<string>();
+  const postContainers = document.querySelectorAll('article[data-testid="tweet"]');
+
+  const hashText = (str: string): string => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h).toString(36);
+  };
+
+  postContainers.forEach((container) => {
+    const textElement = container.querySelector('div[data-testid="tweetText"]');
+    const raw_text = textElement ? (textElement.textContent || "").trim() : "";
+    if (!raw_text || raw_text.length <= 15) return;
+
+    const textKey = raw_text.slice(0, 160).toLowerCase().replace(/\s+/g, " ");
+    if (seenTexts.has(textKey)) return;
+    seenTexts.add(textKey);
+
+    const nameBlock = container.querySelector('div[data-testid="User-Name"]');
+    const handleAnchor = nameBlock?.querySelector('a[href^="/"]') || null;
+    const author_profile_url = handleAnchor
+      ? window.location.origin + handleAnchor.getAttribute("href")
+      : null;
+    const author_name = nameBlock ? (nameBlock.textContent || "").trim().slice(0, 80) : "X user";
+
+    const statusAnchor = container.querySelector('a[href*="/status/"]');
+    const timeEl = container.querySelector("time[datetime]");
+    let directUrl: string | null = null;
+    if (statusAnchor) {
+      const href = statusAnchor.getAttribute("href") || "";
+      directUrl = (href.startsWith("http") ? href : window.location.origin + href).split("?")[0];
+    }
+
+    results.push({
+      post_id: directUrl ? `x_${directUrl.replace(/[^a-zA-Z0-9]/g, "_")}` : `x_txt_${hashText(textKey)}`,
+      post_url: directUrl || groupUrl,
+      author_name,
+      author_profile_url,
+      timestamp: timeEl ? timeEl.getAttribute("datetime") : null,
+      raw_text,
+    });
+  });
+
+  return results;
+}
+
 export interface ScrapeSummary {
   posts: ScrapedPost[];
   log: string[];
@@ -212,7 +333,18 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
     const page = await context.newPage();
 
     for (const group of groups) {
-      if (group.platform !== "facebook" && group.platform !== "linkedin") {
+      const extractor =
+        group.platform === "facebook"
+          ? extractFacebookPosts
+          : group.platform === "linkedin"
+            ? extractLinkedInPosts
+            : group.platform === "nextdoor"
+              ? extractNextdoorPosts
+              : group.platform === "twitter"
+                ? extractXPosts
+                : null;
+
+      if (!extractor) {
         log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
         continue;
       }
@@ -222,7 +354,6 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
         await page.waitForTimeout(4000);
 
         const collected = new Map<string, RawExtractedPost>();
-        const extractor = group.platform === "facebook" ? extractFacebookPosts : extractLinkedInPosts;
 
         for (let round = 0; round < 7; round++) {
           if (round > 0) {

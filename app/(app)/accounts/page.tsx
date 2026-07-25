@@ -27,7 +27,7 @@ export default function AccountsPage() {
           <ol className="flex flex-col gap-3 text-sm text-muted-foreground">
             {[
               "Click a button below to launch a visible browser window.",
-              "Log into the Facebook or LinkedIn account in the popup browser.",
+              "Log into the Facebook, LinkedIn, Nextdoor, or X account in the popup browser.",
               "Authorize any 2FA codes directly in the official portal.",
             ].map((step, i) => (
               <li key={i} className="flex items-start gap-3">

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Plus } from "lucide-react"
 
-function detectPlatform(rawUrl: string): "facebook" | "linkedin" | null {
+function detectPlatform(rawUrl: string): "facebook" | "linkedin" | "nextdoor" | "twitter" | null {
   let url: URL
   try {
     url = new URL(rawUrl.trim())
@@ -18,6 +18,8 @@ function detectPlatform(rawUrl: string): "facebook" | "linkedin" | null {
   const host = url.hostname.replace(/^www\./, "")
   if (host === "facebook.com" || host === "fb.com") return "facebook"
   if (host === "linkedin.com") return "linkedin"
+  if (host === "nextdoor.com") return "nextdoor"
+  if (host === "x.com" || host === "twitter.com") return "twitter"
   return null
 }
 
@@ -36,7 +38,9 @@ export function AddGroupUrlForm() {
 
     const platform = detectPlatform(url)
     if (!platform) {
-      setError("That doesn't look like a Facebook or LinkedIn group link. Paste the full group URL, e.g. https://www.facebook.com/groups/example")
+      setError(
+        "That doesn't look like a Facebook, LinkedIn, Nextdoor, or X link. Paste a group/feed URL, e.g. https://www.facebook.com/groups/example, your Nextdoor neighborhood feed URL, or an X search URL like https://x.com/search?q=plumber%20recommendation&f=live"
+      )
       return
     }
 
@@ -84,12 +88,12 @@ export function AddGroupUrlForm() {
               setError(null)
               setSuccess(null)
             }}
-            placeholder="https://www.facebook.com/groups/example"
+            placeholder="Facebook/LinkedIn group, Nextdoor feed, or X search URL"
             required
           />
         </div>
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
-          <Label htmlFor="group-name">Group name</Label>
+          <Label htmlFor="group-name">Name</Label>
           <Input
             id="group-name"
             value={name}
@@ -98,7 +102,7 @@ export function AddGroupUrlForm() {
               setError(null)
               setSuccess(null)
             }}
-            placeholder="e.g. Vancouver Home Renovation"
+            placeholder="e.g. Vancouver Home Renovation, or My Neighborhood"
             required
           />
         </div>

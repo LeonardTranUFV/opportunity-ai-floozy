@@ -13,3 +13,19 @@ export function LinkedInIcon({ className }: { className?: string }) {
     </svg>
   )
 }
+
+export function NextdoorIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.1 5.2h2.05c1.9 0 3.3.86 3.3 2.9 0 1.36-.66 2.2-1.66 2.66l2.1 3.94h-2.36l-1.8-3.5h-1.63v3.5h-2V7.2h2zm0 1.7v2.1h1.75c.83 0 1.4-.36 1.4-1.06 0-.72-.57-1.04-1.4-1.04h-1.75z" />
+    </svg>
+  )
+}
+
+export function XIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M18.24 2.25h3.31l-7.23 8.26 8.5 11.24h-6.66l-5.22-6.83-5.97 6.83H1.66l7.73-8.84L1.25 2.25h6.83l4.72 6.24 5.44-6.24zm-1.16 17.52h1.83L7.02 4.13H5.06l11.98 15.64z" />
+    </svg>
+  )
+}
