@@ -9,7 +9,7 @@ interface CheckResult {
 }
 
 async function checkFacebook(authPath: string): Promise<CheckResult> {
-  const context = await chromium.launchPersistentContext(authPath, { headless: true });
+  const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
     // Facebook's feed polls in the background forever, so "networkidle" never
@@ -48,7 +48,7 @@ async function checkFacebook(authPath: string): Promise<CheckResult> {
 }
 
 async function checkNextdoor(authPath: string): Promise<CheckResult> {
-  const context = await chromium.launchPersistentContext(authPath, { headless: true });
+  const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
     await page.goto("https://nextdoor.com/news_feed/", { waitUntil: "domcontentloaded", timeout: 15000 });
@@ -76,7 +76,7 @@ async function checkNextdoor(authPath: string): Promise<CheckResult> {
 }
 
 async function checkTwitter(authPath: string): Promise<CheckResult> {
-  const context = await chromium.launchPersistentContext(authPath, { headless: true });
+  const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
     await page.goto("https://x.com/home", { waitUntil: "domcontentloaded", timeout: 15000 });
@@ -100,7 +100,7 @@ async function checkTwitter(authPath: string): Promise<CheckResult> {
 }
 
 async function checkLinkedIn(authPath: string): Promise<CheckResult> {
-  const context = await chromium.launchPersistentContext(authPath, { headless: true });
+  const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
     await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 15000 });
@@ -136,10 +136,16 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  const authPath = getAuthSessionPath(user.id);
+  // Each platform now gets its own persistent-context profile directory
+  // (see getAuthSessionPath), so these checks no longer contend for one
+  // shared Chromium lock and can safely run in parallel.
+  const [facebookResult, linkedinResult, nextdoorResult, twitterResult] = await Promise.allSettled([
+    checkFacebook(getAuthSessionPath(user.id, "facebook")),
+    checkLinkedIn(getAuthSessionPath(user.id, "linkedin")),
+    checkNextdoor(getAuthSessionPath(user.id, "nextdoor")),
+    checkTwitter(getAuthSessionPath(user.id, "twitter")),
+  ]);
 
-  // Sequential, not parallel — both checks share the same persistent Chromium
-  // profile directory, which only one process can hold a lock on at a time.
   let facebook = false;
   let facebookName: string | null = null;
   let linkedin = false;
@@ -149,36 +155,32 @@ export async function GET() {
   let twitter = false;
   let twitterName: string | null = null;
 
-  try {
-    const result = await checkFacebook(authPath);
-    facebook = result.loggedIn;
-    facebookName = result.name;
-  } catch (error) {
-    console.error("Facebook status check failed:", error);
+  if (facebookResult.status === "fulfilled") {
+    facebook = facebookResult.value.loggedIn;
+    facebookName = facebookResult.value.name;
+  } else {
+    console.error("Facebook status check failed:", facebookResult.reason);
   }
 
-  try {
-    const result = await checkLinkedIn(authPath);
-    linkedin = result.loggedIn;
-    linkedinName = result.name;
-  } catch (error) {
-    console.error("LinkedIn status check failed:", error);
+  if (linkedinResult.status === "fulfilled") {
+    linkedin = linkedinResult.value.loggedIn;
+    linkedinName = linkedinResult.value.name;
+  } else {
+    console.error("LinkedIn status check failed:", linkedinResult.reason);
   }
 
-  try {
-    const result = await checkNextdoor(authPath);
-    nextdoor = result.loggedIn;
-    nextdoorName = result.name;
-  } catch (error) {
-    console.error("Nextdoor status check failed:", error);
+  if (nextdoorResult.status === "fulfilled") {
+    nextdoor = nextdoorResult.value.loggedIn;
+    nextdoorName = nextdoorResult.value.name;
+  } else {
+    console.error("Nextdoor status check failed:", nextdoorResult.reason);
   }
 
-  try {
-    const result = await checkTwitter(authPath);
-    twitter = result.loggedIn;
-    twitterName = result.name;
-  } catch (error) {
-    console.error("X status check failed:", error);
+  if (twitterResult.status === "fulfilled") {
+    twitter = twitterResult.value.loggedIn;
+    twitterName = twitterResult.value.name;
+  } else {
+    console.error("X status check failed:", twitterResult.reason);
   }
 
   return NextResponse.json({

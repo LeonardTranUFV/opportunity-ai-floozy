@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { getAuthSessionPath } from "@/lib/auth-session";
+import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randBetween = (min: number, max: number) => min + Math.floor(Math.random() * (max - min));
@@ -322,78 +322,104 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
 
-  const context = await chromium.launchPersistentContext(getAuthSessionPath(userId), {
-    headless: true,
-    viewport: { width: 1280, height: 900 },
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  });
+  // One persistent-context browser per platform, not one shared across all
+  // of them — Chromium only lets one process hold a given profile directory
+  // at a time, so a single browser reused across Facebook/LinkedIn/Nextdoor/X
+  // groups meant any one platform's Connect popup left open elsewhere could
+  // block scraping every other platform too.
+  const groupsByPlatform = new Map<string, GroupToScrape[]>();
+  for (const group of groups) {
+    const list = groupsByPlatform.get(group.platform) ?? [];
+    list.push(group);
+    groupsByPlatform.set(group.platform, list);
+  }
 
-  try {
-    const page = await context.newPage();
+  for (const [platform, platformGroups] of groupsByPlatform) {
+    const extractor =
+      platform === "facebook"
+        ? extractFacebookPosts
+        : platform === "linkedin"
+          ? extractLinkedInPosts
+          : platform === "nextdoor"
+            ? extractNextdoorPosts
+            : platform === "twitter"
+              ? extractXPosts
+              : null;
 
-    for (const group of groups) {
-      const extractor =
-        group.platform === "facebook"
-          ? extractFacebookPosts
-          : group.platform === "linkedin"
-            ? extractLinkedInPosts
-            : group.platform === "nextdoor"
-              ? extractNextdoorPosts
-              : group.platform === "twitter"
-                ? extractXPosts
-                : null;
-
-      if (!extractor) {
-        log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
-        continue;
+    if (!extractor) {
+      for (const group of platformGroups) {
+        log.push(`Skipped "${group.name}" — ${platform} scraping isn't supported yet.`);
       }
-
-      try {
-        await page.goto(group.url, { waitUntil: "domcontentloaded", timeout: 30000 });
-        await page.waitForTimeout(4000);
-
-        const collected = new Map<string, RawExtractedPost>();
-
-        for (let round = 0; round < 7; round++) {
-          if (round > 0) {
-            await page.mouse.wheel(0, randBetween(1100, 1700));
-            await page.waitForTimeout(randBetween(1400, 2400));
-          }
-          try {
-            const batch = await page.evaluate(extractor, group.url);
-            for (const p of batch) {
-              if (!collected.has(p.post_id)) collected.set(p.post_id, p);
-            }
-          } catch {
-            // a single extraction round failing shouldn't abort the whole group
-          }
-        }
-
-        const groupPosts = [...collected.values()];
-        log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
-
-        for (const p of groupPosts) {
-          posts.push({
-            group_id: group.id,
-            platform: group.platform,
-            external_post_id: p.post_id,
-            post_url: p.post_url,
-            author_name: p.author_name,
-            author_profile_url: p.author_profile_url,
-            posted_at: p.timestamp,
-            raw_text: p.raw_text,
-          });
-        }
-      } catch (err) {
-        log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
-      }
-
-      // Polite randomized pause between groups — keeps the crawl human-paced.
-      await sleep(randBetween(2000, 5000));
+      continue;
     }
-  } finally {
-    await context.close();
+
+    let context;
+    try {
+      context = await chromium.launchPersistentContext(getAuthSessionPath(userId, platform), {
+        headless: true,
+        channel: "chrome",
+        viewport: { width: 1280, height: 900 },
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      for (const group of platformGroups) {
+        log.push(`"${group.name}" failed: ${formatAuthLaunchError(message, platform)}`);
+      }
+      continue;
+    }
+
+    try {
+      const page = await context.newPage();
+
+      for (const group of platformGroups) {
+        try {
+          await page.goto(group.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await page.waitForTimeout(4000);
+
+          const collected = new Map<string, RawExtractedPost>();
+
+          for (let round = 0; round < 7; round++) {
+            if (round > 0) {
+              await page.mouse.wheel(0, randBetween(1100, 1700));
+              await page.waitForTimeout(randBetween(1400, 2400));
+            }
+            try {
+              const batch = await page.evaluate(extractor, group.url);
+              for (const p of batch) {
+                if (!collected.has(p.post_id)) collected.set(p.post_id, p);
+              }
+            } catch {
+              // a single extraction round failing shouldn't abort the whole group
+            }
+          }
+
+          const groupPosts = [...collected.values()];
+          log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
+
+          for (const p of groupPosts) {
+            posts.push({
+              group_id: group.id,
+              platform: group.platform,
+              external_post_id: p.post_id,
+              post_url: p.post_url,
+              author_name: p.author_name,
+              author_profile_url: p.author_profile_url,
+              posted_at: p.timestamp,
+              raw_text: p.raw_text,
+            });
+          }
+        } catch (err) {
+          log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
+        }
+
+        // Polite randomized pause between groups — keeps the crawl human-paced.
+        await sleep(randBetween(2000, 5000));
+      }
+    } finally {
+      await context.close();
+    }
   }
 
   return { posts, log };

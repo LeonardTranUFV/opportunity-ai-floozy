@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 import { createClient } from '@/lib/supabase/server';
-import { getAuthSessionPath } from '@/lib/auth-session';
+import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
 
 export async function POST(request: Request) {
   try {
@@ -23,11 +23,12 @@ export async function POST(request: Request) {
     const searchQuery = `${industry} ${location}`;
     console.log(`📡 Launching Live Facebook Group Search for query: "${searchQuery}"...`);
 
-    const authPath = getAuthSessionPath(user.id);
+    const authPath = getAuthSessionPath(user.id, 'facebook');
 
     // Launch headless Playwright context utilizing saved session cookies
     const browser = await chromium.launchPersistentContext(authPath, {
       headless: true,
+      channel: 'chrome',
       viewport: { width: 1280, height: 800 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
     // No invented fallback groups: an empty result is an honest answer the UI can explain.
     return NextResponse.json(discoveredResults);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: formatAuthLaunchError(error.message, 'Facebook') }, { status: 500 });
   }
 }
 

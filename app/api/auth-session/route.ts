@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 import { createClient } from '@/lib/supabase/server';
-import { getAuthSessionPath } from '@/lib/auth-session';
+import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
 
 export async function POST() {
   const supabase = await createClient();
@@ -12,14 +12,19 @@ export async function POST() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const authPath = getAuthSessionPath(user.id);
+  const authPath = getAuthSessionPath(user.id, 'facebook');
 
   console.log(`🔑 Launching headed Playwright browser for Facebook login at: ${authPath}`);
 
   try {
     // 1. Launch visible browser for user to perform manual login & 2FA
+    // channel: 'chrome' drives the user's real installed Google Chrome
+    // instead of Playwright's bundled "Chrome for Testing" build — Google
+    // actively rejects sign-in from that build ("This browser or app may
+    // not be secure"), which blocked "Sign in with Google" during login.
     const browser = await chromium.launchPersistentContext(authPath, {
       headless: false,
+      channel: 'chrome',
       viewport: { width: 1280, height: 800 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
@@ -40,6 +45,7 @@ export async function POST() {
     
     const backgroundContext = await chromium.launchPersistentContext(authPath, {
       headless: true,
+      channel: 'chrome',
       viewport: { width: 1280, height: 800 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
@@ -126,6 +132,6 @@ export async function POST() {
 
   } catch (error: any) {
     console.error('❌ Failed to launch Facebook session creator:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: formatAuthLaunchError(error.message, 'Facebook') }, { status: 500 });
   }
 }

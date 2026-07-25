@@ -1,5 +1,5 @@
 import { chromium, type Page } from "playwright";
-import { getAuthSessionPath } from "@/lib/auth-session";
+import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 
 async function typeLikeHuman(page: Page, text: string) {
   await page.keyboard.type(text, { delay: 35 + Math.random() * 40 });
@@ -17,7 +17,17 @@ export interface OutreachResult {
  * comment box and this reports that back as a clear error.
  */
 export async function postFacebookComment(postUrl: string, message: string, userId: string): Promise<OutreachResult> {
-  const context = await chromium.launchPersistentContext(getAuthSessionPath(userId), { headless: true });
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(getAuthSessionPath(userId, "facebook"), {
+      headless: true,
+      channel: "chrome",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, error: formatAuthLaunchError(message, "Facebook") };
+  }
+
   try {
     const page = await context.newPage();
     await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
@@ -53,7 +63,17 @@ export async function postFacebookComment(postUrl: string, message: string, user
  * Does not require group membership.
  */
 export async function sendFacebookMessage(profileUrl: string, message: string, userId: string): Promise<OutreachResult> {
-  const context = await chromium.launchPersistentContext(getAuthSessionPath(userId), { headless: true });
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(getAuthSessionPath(userId, "facebook"), {
+      headless: true,
+      channel: "chrome",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, error: formatAuthLaunchError(message, "Facebook") };
+  }
+
   try {
     const page = await context.newPage();
     await page.goto(profileUrl, { waitUntil: "domcontentloaded", timeout: 20000 });

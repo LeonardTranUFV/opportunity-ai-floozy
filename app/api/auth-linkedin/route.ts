@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 import { createClient } from '@/lib/supabase/server';
-import { getAuthSessionPath } from '@/lib/auth-session';
+import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
 
 export async function POST() {
   const supabase = await createClient();
@@ -12,13 +12,14 @@ export async function POST() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const authPath = getAuthSessionPath(user.id);
+  const authPath = getAuthSessionPath(user.id, 'linkedin');
 
   console.log(`🔑 Launching headed Playwright browser for LinkedIn login at session folder: ${authPath}`);
 
   try {
     const browser = await chromium.launchPersistentContext(authPath, {
       headless: false,
+      channel: 'chrome',
       viewport: { width: 1280, height: 800 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
@@ -37,6 +38,6 @@ export async function POST() {
     return NextResponse.json({ success: true, message: 'LinkedIn browser session completed and saved successfully.' });
   } catch (error: any) {
     console.error('❌ Failed to launch LinkedIn browser session:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: formatAuthLaunchError(error.message, 'LinkedIn') }, { status: 500 });
   }
 }
