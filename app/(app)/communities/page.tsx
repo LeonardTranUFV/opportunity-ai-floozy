@@ -10,6 +10,7 @@ import { GroupName } from "@/components/communities/group-name"
 import { DeleteGroupButton } from "@/components/communities/delete-group-button"
 import { ScrapeNowButton } from "@/components/communities/scrape-now-button"
 import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
+import { isHostedDeployment } from "@/lib/deployment"
 
 const PLATFORM_META: Record<string, { label: string; Icon: typeof FacebookIcon; iconColor: string }> = {
   facebook: { label: "Facebook", Icon: FacebookIcon, iconColor: "bg-[#1877F2]/10 text-[#1877F2]" },
@@ -23,6 +24,7 @@ const PLATFORM_ORDER = ["facebook", "linkedin", "nextdoor", "twitter", "reddit"]
 export const dynamic = "force-dynamic"
 
 export default async function CommunitiesPage() {
+  const hosted = isHostedDeployment()
   const supabase = await createClient()
 
   const { data: allGroups } = await supabase
@@ -61,20 +63,22 @@ export default async function CommunitiesPage() {
         </p>
       </div>
 
-      <Card className="transition-shadow hover:shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-brand" />
-            Discover Facebook Groups
-          </CardTitle>
-          <CardDescription>
-            Searches Facebook live using your saved session — this can take up to 20 seconds.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DiscoverGroupsForm />
-        </CardContent>
-      </Card>
+      {!hosted && (
+        <Card className="transition-shadow hover:shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-4 w-4 text-brand" />
+              Discover Facebook Groups
+            </CardTitle>
+            <CardDescription>
+              Searches Facebook live using your saved session — this can take up to 20 seconds.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DiscoverGroupsForm />
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="transition-shadow hover:shadow-sm">
         <CardHeader>
@@ -98,7 +102,11 @@ export default async function CommunitiesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <ScrapeNowButton />
+          <ScrapeNowButton
+            disabledReason={
+              hosted ? "Scraping requires the operator's local machine — not available on this hosted preview." : undefined
+            }
+          />
           {groups.length === 0 ? (
             <EmptyState
               icon={Compass}

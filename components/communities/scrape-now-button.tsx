@@ -7,7 +7,7 @@ import { RefreshCw, CircleCheck, CircleAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatApiError } from "@/lib/format-error"
 
-export function ScrapeNowButton() {
+export function ScrapeNowButton({ disabledReason }: { disabledReason?: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<string | null>(null)
@@ -40,6 +40,18 @@ export function ScrapeNowButton() {
         setResult("Scrape failed — check the server log.")
       }
     })
+  }
+
+  if (disabledReason) {
+    return (
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled className="w-fit">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Scrape Active Groups Now
+        </Button>
+        <span className="text-xs text-muted-foreground">{disabledReason}</span>
+      </div>
+    )
   }
 
   return (
