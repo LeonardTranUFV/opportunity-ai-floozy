@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { SourceGuideCard } from "@/components/guide/source-guide-card"
-import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon } from "@/components/icons"
+import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
 import { KeyRound, Compass, Users, ListTodo, Briefcase, MessageSquareText } from "lucide-react"
 
 const PIPELINE = [
@@ -144,14 +144,18 @@ export default function GuidePage() {
         />
 
         <SourceGuideCard
-          icon={<span className="text-sm font-bold">R</span>}
-          iconColor="bg-orange-500/10 text-orange-600 dark:text-orange-400"
+          icon={<RedditIcon className="h-4.5 w-4.5" />}
+          iconColor="bg-orange-600/10 text-orange-600"
           tag="Connector"
           title="Reddit"
-          description="Watch specific subreddits or search all of Reddit by keyword — no login required, since Reddit's public data doesn't need an account to read."
-          steps={[]}
+          description="Watch specific subreddits or search all of Reddit by keyword. Uses a free Reddit developer app, not your personal login."
+          steps={[
+            "Reddit locked down unauthenticated API access in 2023 — a free \"script\" app at reddit.com/prefs/apps is required (no Reddit password shared with this app, just a client ID/secret).",
+            "Go to Communities → Add a Source → Reddit and type what you're looking for, e.g. \"need a roofer Vancouver\" to search all of Reddit.",
+            "Or click \"Or watch a specific subreddit\" and enter just the name, e.g. \"roofing\", to follow one subreddit's new posts.",
+          ]}
+          caveat="Backend wiring for the Reddit API is still in progress — sources can be added now, but scraping won't return real posts until that's finished."
           useNowHref="/communities"
-          comingSoon
         />
 
         <SourceGuideCard

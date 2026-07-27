@@ -314,6 +314,65 @@ export interface ScrapeSummary {
 }
 
 /**
+ * Reddit's public JSON API (append .json to any listing/search URL) is free
+ * and unauthenticated for reading — no login, no browser, no persistent
+ * session needed at all. Converts whatever URL shape "Add a Source" saved
+ * (a subreddit URL or a /search/?q= URL) into its .json equivalent.
+ */
+function toRedditJsonUrl(rawUrl: string): string {
+  const u = new URL(rawUrl);
+  const subredditMatch = u.pathname.match(/^\/r\/([A-Za-z0-9_]+)\/?$/);
+  if (subredditMatch) {
+    return `https://www.reddit.com/r/${subredditMatch[1]}/new.json?limit=25`;
+  }
+  if (u.pathname.startsWith("/search")) {
+    const q = u.searchParams.get("q") ?? "";
+    return `https://www.reddit.com/search.json?q=${encodeURIComponent(q)}&sort=new&limit=25`;
+  }
+  return rawUrl.replace(/\/?$/, ".json");
+}
+
+async function scrapeRedditGroup(group: GroupToScrape): Promise<ScrapedPost[]> {
+  const jsonUrl = toRedditJsonUrl(group.url);
+  // Reddit rate-limits/blocks requests without a descriptive User-Agent.
+  const res = await fetch(jsonUrl, {
+    headers: { "User-Agent": "OpportunityAI/1.0 (lead-discovery bot; contact: app admin)" },
+  });
+  if (!res.ok) {
+    throw new Error(`Reddit request failed (${res.status})`);
+  }
+  const data = await res.json();
+  const children: unknown[] = data?.data?.children ?? [];
+
+  const posts: ScrapedPost[] = [];
+  for (const child of children) {
+    const p = (child as { data?: Record<string, unknown> })?.data;
+    if (!p) continue;
+    const title = typeof p.title === "string" ? p.title : "";
+    const selftext = typeof p.selftext === "string" ? p.selftext : "";
+    const raw_text = [title, selftext].filter(Boolean).join("\n\n").slice(0, 1500);
+    if (!raw_text || raw_text.length <= 15) continue;
+
+    const id = typeof p.id === "string" ? p.id : String(p.id ?? Math.random());
+    const permalink = typeof p.permalink === "string" ? p.permalink : null;
+    const author = typeof p.author === "string" ? p.author : null;
+    const createdUtc = typeof p.created_utc === "number" ? p.created_utc : null;
+
+    posts.push({
+      group_id: group.id,
+      platform: "reddit",
+      external_post_id: `reddit_${id}`,
+      post_url: permalink ? `https://www.reddit.com${permalink}` : group.url,
+      author_name: author || "Reddit user",
+      author_profile_url: author ? `https://www.reddit.com/user/${author}/` : null,
+      posted_at: createdUtc ? new Date(createdUtc * 1000).toISOString() : null,
+      raw_text,
+    });
+  }
+  return posts;
+}
+
+/**
  * Crawls each active group's feed with a persistent, human-paced scroll,
  * re-extracting after every scroll step since Facebook/LinkedIn virtualize
  * their feeds (posts scrolled past disappear from the DOM).
@@ -335,6 +394,23 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
   }
 
   for (const [platform, platformGroups] of groupsByPlatform) {
+    // Reddit is a plain HTTP fetch against its public JSON API — no browser,
+    // no persistent session, so it's handled entirely separately from the
+    // Playwright-based platforms below.
+    if (platform === "reddit") {
+      for (const group of platformGroups) {
+        try {
+          const groupPosts = await scrapeRedditGroup(group);
+          log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
+          posts.push(...groupPosts);
+        } catch (err) {
+          log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
+        }
+        await sleep(randBetween(500, 1200));
+      }
+      continue;
+    }
+
     const extractor =
       platform === "facebook"
         ? extractFacebookPosts

@@ -22,6 +22,14 @@ export function NextdoorIcon({ className }: { className?: string }) {
   )
 }
 
+export function RedditIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 2C6.48 2 2 6.48 2 12c0 2.72 1.09 5.19 2.85 7L4 22l3.14-.83C8.72 21.68 10.32 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.5 10.75c0 .55-.28 1.05-.72 1.34.03.16.05.32.05.48 0 2.13-2.63 3.85-5.87 3.85s-5.87-1.72-5.87-3.85c0-.17.02-.33.05-.49-.42-.29-.7-.79-.7-1.33 0-.9.73-1.62 1.62-1.62.42 0 .8.16 1.09.42.99-.66 2.28-1.09 3.71-1.14l.7-2.97a.4.4 0 0 1 .48-.3l2.19.44a1.11 1.11 0 1 1-.12.56l-1.86-.37-.59 2.55c1.44.05 2.73.48 3.72 1.15.29-.27.68-.43 1.11-.43.9 0 1.63.72 1.63 1.62zm-8.75.87a.9.9 0 1 0 1.8 0 .9.9 0 0 0-1.8 0zm5.61 2.79c-.62.62-1.79.84-2.36.84s-1.75-.22-2.36-.84a.25.25 0 0 1 .35-.35c.42.42 1.32.63 2.01.63s1.6-.21 2.01-.63a.25.25 0 0 1 .35.35zm-.36-1.89a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8z" />
+    </svg>
+  )
+}
+
 export function XIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">

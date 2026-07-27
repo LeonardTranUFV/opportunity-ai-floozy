@@ -6,15 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MapPin, Plus, Search } from "lucide-react"
-import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon } from "@/components/icons"
+import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
 
-type Platform = "facebook" | "linkedin" | "nextdoor" | "twitter"
+type Platform = "facebook" | "linkedin" | "nextdoor" | "twitter" | "reddit"
 
 const PLATFORM_TABS: { id: Platform; label: string; Icon: typeof FacebookIcon; activeClass: string }[] = [
   { id: "facebook", label: "Facebook", Icon: FacebookIcon, activeClass: "bg-[#1877F2] text-white hover:bg-[#1877F2]/90" },
   { id: "linkedin", label: "LinkedIn", Icon: LinkedInIcon, activeClass: "bg-[#0A66C2] text-white hover:bg-[#0A66C2]/90" },
   { id: "nextdoor", label: "Nextdoor", Icon: NextdoorIcon, activeClass: "bg-[#8fca43] text-white hover:bg-[#8fca43]/90" },
   { id: "twitter", label: "X", Icon: XIcon, activeClass: "bg-black text-white hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85" },
+  { id: "reddit", label: "Reddit", Icon: RedditIcon, activeClass: "bg-orange-600 text-white hover:bg-orange-600/90" },
 ]
 
 const PLATFORM_HOSTS: Record<Platform, string[]> = {
@@ -22,6 +23,7 @@ const PLATFORM_HOSTS: Record<Platform, string[]> = {
   linkedin: ["linkedin.com"],
   nextdoor: ["nextdoor.com"],
   twitter: ["x.com", "twitter.com"],
+  reddit: ["reddit.com"],
 }
 
 function hostMatches(rawUrl: string, platform: Platform): boolean {
@@ -63,6 +65,10 @@ export function AddSourceForm() {
   const [keyword, setKeyword] = useState("")
   // Nextdoor advanced toggle
   const [showAnotherNeighborhood, setShowAnotherNeighborhood] = useState(false)
+  // Reddit fields
+  const [redditQuery, setRedditQuery] = useState("")
+  const [subreddit, setSubreddit] = useState("")
+  const [showSubreddit, setShowSubreddit] = useState(false)
 
   const resetMessages = () => {
     setError(null)
@@ -75,6 +81,9 @@ export function AddSourceForm() {
     setName("")
     setKeyword("")
     setShowAnotherNeighborhood(false)
+    setRedditQuery("")
+    setSubreddit("")
+    setShowSubreddit(false)
     resetMessages()
   }
 
@@ -133,6 +142,47 @@ export function AddSourceForm() {
     if (result.ok) {
       setSuccess(`Added "${keyword.trim()}" — it'll be scraped on the next run.`)
       setKeyword("")
+      router.refresh()
+    } else {
+      setError(result.error)
+    }
+  }
+
+  const handleRedditSearchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    resetMessages()
+    if (!redditQuery.trim()) {
+      setError("Enter a keyword or phrase to search all of Reddit for.")
+      return
+    }
+    const searchUrl = `https://www.reddit.com/search/?q=${encodeURIComponent(redditQuery.trim())}`
+    setIsSubmitting(true)
+    const result = await addGroup("reddit", redditQuery.trim(), searchUrl)
+    setIsSubmitting(false)
+    if (result.ok) {
+      setSuccess(`Added "${redditQuery.trim()}" — it'll be scraped on the next run.`)
+      setRedditQuery("")
+      router.refresh()
+    } else {
+      setError(result.error)
+    }
+  }
+
+  const handleSubredditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    resetMessages()
+    const clean = subreddit.trim().replace(/^\/?r\//i, "")
+    if (!clean || /\s/.test(clean)) {
+      setError("Enter just the subreddit name, e.g. \"roofing\" (no spaces, no r/ needed).")
+      return
+    }
+    const subUrl = `https://www.reddit.com/r/${clean}/`
+    setIsSubmitting(true)
+    const result = await addGroup("reddit", `r/${clean}`, subUrl)
+    setIsSubmitting(false)
+    if (result.ok) {
+      setSuccess(`Added "r/${clean}" — it'll be scraped on the next run.`)
+      setSubreddit("")
       router.refresh()
     } else {
       setError(result.error)
@@ -273,6 +323,62 @@ export function AddSourceForm() {
             {isSubmitting ? "Adding…" : "Add"}
           </Button>
         </form>
+      )}
+
+      {platform === "reddit" && (
+        <div className="flex flex-col gap-3">
+          <form onSubmit={handleRedditSearchSubmit} className="flex flex-wrap items-end gap-3">
+            <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+              <Label htmlFor="reddit-query">Search all of Reddit for</Label>
+              <Input
+                id="reddit-query"
+                value={redditQuery}
+                onChange={(e) => {
+                  setRedditQuery(e.target.value)
+                  resetMessages()
+                }}
+                placeholder="e.g. need a roofer Vancouver"
+                required
+              />
+            </div>
+            <Button type="submit" disabled={isSubmitting}>
+              <Search className="h-3.5 w-3.5" />
+              {isSubmitting ? "Adding…" : "Add"}
+            </Button>
+          </form>
+          <button
+            type="button"
+            className="self-start text-xs text-muted-foreground underline underline-offset-2"
+            onClick={() => setShowSubreddit((v) => !v)}
+          >
+            {showSubreddit ? "Hide" : "Or watch a specific subreddit"}
+          </button>
+          {showSubreddit && (
+            <form onSubmit={handleSubredditSubmit} className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
+              <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                <Label htmlFor="subreddit">Subreddit name</Label>
+                <Input
+                  id="subreddit"
+                  value={subreddit}
+                  onChange={(e) => {
+                    setSubreddit(e.target.value)
+                    resetMessages()
+                  }}
+                  placeholder="e.g. VancouverIsAwesome"
+                  required
+                />
+              </div>
+              <Button type="submit" disabled={isSubmitting}>
+                <Plus className="h-3.5 w-3.5" />
+                {isSubmitting ? "Adding…" : "Add"}
+              </Button>
+            </form>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Reddit access is still being wired up on the backend — adding a source here works, but
+            scraping it won&apos;t return posts yet.
+          </p>
+        </div>
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
