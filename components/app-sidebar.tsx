@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut } from "lucide-react"
+import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { href: "/communities", label: "Communities", icon: Compass },
   { href: "/accounts", label: "Connect Accounts", icon: KeyRound },
   { href: "/crm", label: "CRM Pipeline", icon: Briefcase },
+  { href: "/guide", label: "How It Works", icon: BookOpen },
   { href: "/tools", label: "Tools", icon: Wrench },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
