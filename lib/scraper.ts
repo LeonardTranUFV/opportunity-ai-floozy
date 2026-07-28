@@ -196,12 +196,19 @@ function extractLinkedInPosts(groupUrl: string): RawExtractedPost[] {
  * zero posts from an active neighborhood feed, inspect the actual DOM and
  * adjust the selectors here.
  */
+/**
+ * Confirmed against a real logged-in session (2026-07-28) — Nextdoor's feed
+ * has no <time datetime> elements at all (unlike Facebook/LinkedIn), so
+ * relative age has to be parsed from the plain text inside
+ * [data-testid="post-timestamp"] ("1 day ago", "5 days ago", "19 hr ago").
+ * There's also no per-post permalink anchor in the feed view — posts only
+ * get a real URL once you click into them — so post_url falls back to the
+ * neighborhood feed URL and dedup relies on a text hash instead.
+ */
 function extractNextdoorPosts(groupUrl: string): RawExtractedPost[] {
   const results: RawExtractedPost[] = [];
   const seenTexts = new Set<string>();
-  const postContainers = document.querySelectorAll(
-    'article, div[data-testid="post"], div[data-testid="realtime-feed-post"]'
-  );
+  const postContainers = document.querySelectorAll("div.post");
 
   const hashText = (str: string): string => {
     let h = 0;
@@ -211,44 +218,53 @@ function extractNextdoorPosts(groupUrl: string): RawExtractedPost[] {
     return Math.abs(h).toString(36);
   };
 
-  const getMessage = (container: Element): string => {
-    let best = "";
-    container.querySelectorAll('p, span, div[dir="auto"]').forEach((el) => {
-      const t = (el.textContent || "").trim();
-      if (t.length > best.length) best = t;
-    });
-    return best;
+  const parseRelativeAge = (label: string): string | null => {
+    const m = label.match(/(\d{1,3})\s*(min|mins|minute|minutes|hr|hrs|hour|hours|day|days|week|weeks)\s*ago/i);
+    if (!m) return null;
+    const value = parseInt(m[1], 10);
+    const unit = m[2].toLowerCase();
+    const unitMs = unit.startsWith("min")
+      ? 60e3
+      : unit.startsWith("hr") || unit.startsWith("hour")
+        ? 3600e3
+        : unit.startsWith("day")
+          ? 86400e3
+          : 604800e3;
+    return new Date(Date.now() - value * unitMs).toISOString();
   };
 
   postContainers.forEach((container) => {
-    if ((container.textContent || "").trim().length < 30) return;
+    const profileAnchors = [...container.querySelectorAll('a[href*="/profile/"]')] as HTMLAnchorElement[];
+    const authorAnchor = profileAnchors.reduce<HTMLAnchorElement | null>((best, a) => {
+      const text = (a.textContent || "").trim();
+      const bestText = best ? (best.textContent || "").trim() : "";
+      return text.length > bestText.length ? a : best;
+    }, null);
+    const author_name = authorAnchor ? (authorAnchor.textContent || "").trim() : "Neighbor";
+    const author_profile_url = authorAnchor ? authorAnchor.getAttribute("href") : null;
 
-    const authorElement = container.querySelector('a[href*="/profile/"], h2 a, h3 a');
-    const raw_text = getMessage(container).slice(0, 1500);
-    const author_name = authorElement ? (authorElement.textContent || "").trim() : "Neighbor";
-    const author_profile_url = authorElement ? authorElement.getAttribute("href") : null;
-
+    const bodyEl = container.querySelector('[data-testid="post-body"]');
+    const raw_text = bodyEl ? (bodyEl.textContent || "").trim().slice(0, 1500) : "";
     if (!raw_text || raw_text.length <= 20) return;
 
     const textKey = raw_text.slice(0, 160).toLowerCase().replace(/\s+/g, " ");
     if (seenTexts.has(textKey)) return;
     seenTexts.add(textKey);
 
-    let directUrl: string | null = null;
-    const permalinkAnchor = container.querySelector('a[href*="/p/"]');
-    if (permalinkAnchor) {
-      const href = permalinkAnchor.getAttribute("href") || "";
-      directUrl = (href.startsWith("http") ? href : window.location.origin + href).split("?")[0];
-    }
+    const timestampEl = container.querySelector('[data-testid="post-timestamp"]');
+    const timestamp = timestampEl ? parseRelativeAge((timestampEl.textContent || "").trim()) : null;
 
-    const timeEl = container.querySelector("time[datetime]");
-    const timestamp = timeEl ? timeEl.getAttribute("datetime") : null;
+    const resolvedProfileUrl = author_profile_url
+      ? author_profile_url.startsWith("http")
+        ? author_profile_url
+        : window.location.origin + author_profile_url
+      : null;
 
     results.push({
-      post_id: directUrl ? `nd_${directUrl.replace(/[^a-zA-Z0-9]/g, "_")}` : `nd_txt_${hashText(textKey)}`,
-      post_url: directUrl || groupUrl,
+      post_id: `nd_txt_${hashText(textKey)}`,
+      post_url: groupUrl,
       author_name,
-      author_profile_url,
+      author_profile_url: resolvedProfileUrl,
       timestamp,
       raw_text,
     });
