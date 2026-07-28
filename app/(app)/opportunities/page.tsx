@@ -10,6 +10,7 @@ import { ApproveRejectButtons } from "@/components/opportunities/approve-reject-
 import { SendOutreachButtons } from "@/components/opportunities/send-outreach-buttons"
 import { DeleteOpportunityButton } from "@/components/opportunities/delete-opportunity-button"
 import { FilterBar, type SortOption } from "@/components/opportunities/filter-bar"
+import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 
 export const dynamic = "force-dynamic"
 
@@ -21,6 +22,7 @@ const URGENCY_VARIANT: Record<string, "destructive" | "warning" | "brand" | "sec
 }
 
 const URGENCY_RANK: Record<string, number> = { asap: 0, high: 1, medium: 2, low: 3 }
+const PLATFORM_RANK: Record<string, number> = Object.fromEntries(PLATFORM_ORDER.map((p, i) => [p, i]))
 
 function resolvePostTimestamp(
   posts: { posted_at: string | null; scraped_at: string | null } | null,
@@ -31,10 +33,9 @@ function resolvePostTimestamp(
   return Number.isNaN(ts) ? 0 : ts
 }
 
-function sortOpportunities<T extends { urgency: string; intent_score: number | null; created_at: string; posts: unknown }>(
-  list: T[],
-  sort: SortOption
-): T[] {
+function sortOpportunities<
+  T extends { urgency: string; intent_score: number | null; created_at: string; posts: unknown; platform: string }
+>(list: T[], sort: SortOption): T[] {
   if (sort === "newest" || sort === "oldest") {
     const withTs = list.map((opp) => ({
       opp,
@@ -46,6 +47,12 @@ function sortOpportunities<T extends { urgency: string; intent_score: number | n
   if (sort === "urgency") {
     return [...list].sort((a, b) => {
       const rankDiff = (URGENCY_RANK[a.urgency] ?? 4) - (URGENCY_RANK[b.urgency] ?? 4)
+      return rankDiff !== 0 ? rankDiff : (b.intent_score ?? 0) - (a.intent_score ?? 0)
+    })
+  }
+  if (sort === "platform") {
+    return [...list].sort((a, b) => {
+      const rankDiff = (PLATFORM_RANK[a.platform] ?? 99) - (PLATFORM_RANK[b.platform] ?? 99)
       return rankDiff !== 0 ? rankDiff : (b.intent_score ?? 0) - (a.intent_score ?? 0)
     })
   }
@@ -86,12 +93,13 @@ function formatPostAge(postedAt: string | null, scrapedAt: string | null): { lab
 export default async function OpportunitiesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ agent?: string; urgency?: string; status?: string; sort?: string; id?: string }>
+  searchParams: Promise<{ agent?: string; urgency?: string; status?: string; platform?: string; sort?: string; id?: string }>
 }) {
   const params = await searchParams
-  const sort: SortOption = params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency"
-    ? params.sort
-    : "relevance"
+  const sort: SortOption =
+    params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency" || params.sort === "platform"
+      ? params.sort
+      : "relevance"
   const supabase = await createClient()
 
   const { data: agents } = await supabase.from("agents").select("id, name").order("name")
@@ -114,6 +122,7 @@ export default async function OpportunitiesPage({
   } else {
     if (params.agent) query = query.eq("agent_id", params.agent)
     if (params.urgency) query = query.eq("urgency", params.urgency)
+    if (params.platform) query = query.eq("platform", params.platform)
     if (params.status) {
       query = query.eq("status", params.status)
     } else {
@@ -148,6 +157,7 @@ export default async function OpportunitiesPage({
           agentId={params.agent || ""}
           urgency={params.urgency || ""}
           status={params.status || ""}
+          platform={params.platform || ""}
           sort={sort}
         />
       )}
@@ -178,6 +188,7 @@ export default async function OpportunitiesPage({
             const agentName = (opp.agents as unknown as { name: string } | null)?.name ?? "Unknown agent"
             const sourcePost = opp.posts as unknown as { posted_at: string | null; scraped_at: string | null } | null
             const postAge = formatPostAge(sourcePost?.posted_at ?? null, sourcePost?.scraped_at ?? null)
+            const source = platformMeta(opp.platform)
 
             return (
               <Card
@@ -190,9 +201,20 @@ export default async function OpportunitiesPage({
                 <CardContent className="flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div
+                          className={cn(
+                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+                            source.iconColor
+                          )}
+                          title={source.label}
+                        >
+                          <source.Icon className="h-3.5 w-3.5" />
+                        </div>
                         <span className="font-medium">{opp.author_name}</span>
-                        <span className="text-xs uppercase text-muted-foreground">{opp.platform}</span>
+                        <Badge variant="outline" className="text-[0.7rem] font-normal text-muted-foreground">
+                          {source.label}
+                        </Badge>
                         {isHot && (
                           <Badge variant="destructive" className="uppercase tracking-wide">
                             <Flame className="h-2.5 w-2.5" />

@@ -9,17 +9,8 @@ import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
 import { GroupName } from "@/components/communities/group-name"
 import { DeleteGroupButton } from "@/components/communities/delete-group-button"
 import { ScrapeNowButton } from "@/components/communities/scrape-now-button"
-import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
 import { isHostedDeployment } from "@/lib/deployment"
-
-const PLATFORM_META: Record<string, { label: string; Icon: typeof FacebookIcon; iconColor: string }> = {
-  facebook: { label: "Facebook", Icon: FacebookIcon, iconColor: "bg-[#1877F2]/10 text-[#1877F2]" },
-  linkedin: { label: "LinkedIn", Icon: LinkedInIcon, iconColor: "bg-[#0A66C2]/10 text-[#0A66C2]" },
-  nextdoor: { label: "Nextdoor", Icon: NextdoorIcon, iconColor: "bg-[#8fca43]/10 text-[#8fca43]" },
-  twitter: { label: "X", Icon: XIcon, iconColor: "bg-foreground/10 text-foreground" },
-  reddit: { label: "Reddit", Icon: RedditIcon, iconColor: "bg-orange-600/10 text-orange-600" },
-}
-const PLATFORM_ORDER = ["facebook", "linkedin", "nextdoor", "twitter", "reddit"]
+import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 
 export const dynamic = "force-dynamic"
 

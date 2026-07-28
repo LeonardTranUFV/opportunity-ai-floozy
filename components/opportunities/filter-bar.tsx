@@ -4,8 +4,14 @@ import { useRouter, usePathname } from "next/navigation"
 import { ListFilter, X, ArrowDownWideNarrow } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 
-export type SortOption = "relevance" | "newest" | "oldest" | "urgency"
+export type SortOption = "relevance" | "newest" | "oldest" | "urgency" | "platform"
+
+const PLATFORM_OPTIONS = [
+  { value: "", label: "All Platforms" },
+  ...PLATFORM_ORDER.map((p) => ({ value: p, label: PLATFORM_META[p].label })),
+]
 
 const URGENCY_OPTIONS = [
   { value: "", label: "All Urgency" },
@@ -31,6 +37,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "newest", label: "Newest First" },
   { value: "oldest", label: "Oldest First" },
   { value: "urgency", label: "Urgency: ASAP → Low" },
+  { value: "platform", label: "Grouped by Platform" },
 ]
 
 export function FilterBar({
@@ -38,34 +45,38 @@ export function FilterBar({
   agentId,
   urgency,
   status,
+  platform,
   sort,
 }: {
   agents: { id: string; name: string }[]
   agentId: string
   urgency: string
   status: string
+  platform: string
   sort: SortOption
 }) {
   const router = useRouter()
   const pathname = usePathname()
 
-  const navigate = (next: { agent?: string; urgency?: string; status?: string; sort?: SortOption }) => {
+  const navigate = (next: { agent?: string; urgency?: string; status?: string; platform?: string; sort?: SortOption }) => {
     const merged = {
       agent: next.agent ?? agentId,
       urgency: next.urgency ?? urgency,
       status: next.status ?? status,
+      platform: next.platform ?? platform,
       sort: next.sort ?? sort,
     }
     const search = new URLSearchParams()
     if (merged.agent) search.set("agent", merged.agent)
     if (merged.urgency) search.set("urgency", merged.urgency)
     if (merged.status) search.set("status", merged.status)
+    if (merged.platform) search.set("platform", merged.platform)
     if (merged.sort !== "relevance") search.set("sort", merged.sort)
     const qs = search.toString()
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
-  const hasActiveFilters = !!(agentId || urgency || status || sort !== "relevance")
+  const hasActiveFilters = !!(agentId || urgency || status || platform || sort !== "relevance")
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/50 p-2">
@@ -117,6 +128,21 @@ export function FilterBar({
         </SelectContent>
       </Select>
 
+      <Select value={platform} onValueChange={(v) => navigate({ platform: v ?? "" })}>
+        <SelectTrigger className="min-w-[9rem]">
+          <SelectValue>
+            {(v: string) => PLATFORM_OPTIONS.find((o) => o.value === v)?.label ?? "All Platforms"}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {PLATFORM_OPTIONS.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
       <div className="mx-1 h-5 w-px bg-border" />
 
       <ArrowDownWideNarrow className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -136,7 +162,7 @@ export function FilterBar({
       </Select>
 
       {hasActiveFilters && (
-        <Button variant="ghost" size="sm" onClick={() => navigate({ agent: "", urgency: "", status: "", sort: "relevance" })}>
+        <Button variant="ghost" size="sm" onClick={() => navigate({ agent: "", urgency: "", status: "", platform: "", sort: "relevance" })}>
           <X className="h-3.5 w-3.5" />
           Clear
         </Button>
