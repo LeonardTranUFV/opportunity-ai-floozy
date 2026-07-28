@@ -95,11 +95,11 @@ export default async function AgentsPage() {
                 <div className="flex items-center justify-between pt-2">
                   <Link
                     href={`/opportunities?agent=${agent.id}`}
-                    className="flex items-center gap-1.5 text-sm hover:underline"
+                    className="flex items-center gap-1.5 text-sm text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
                   >
-                    <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Target className="h-3.5 w-3.5" />
                     <span className="font-medium">{countByAgent.get(agent.id) ?? 0}</span>
-                    <span className="text-muted-foreground">opportunities found</span>
+                    <span>opportunities found →</span>
                   </Link>
                   <DeleteAgentButton id={agent.id} name={agent.name} />
                 </div>

@@ -147,6 +147,65 @@ Always include every post_id from the input, even if relevant is false.
   }
 }
 
+export interface AgentEnhancement {
+  goal: string;
+  keywords: string;
+  negative_keywords: string;
+  location: string | null;
+  suggested_name: string;
+}
+
+/**
+ * Turns a plain-language description ("I'm a roofer in Vancouver looking for
+ * people who need roof repairs") into the structured fields the scoring
+ * pipeline actually needs — most people can describe their business in a
+ * sentence but can't reliably brainstorm a full keyword list themselves.
+ */
+export async function enhanceAgentProfile(
+  description: string,
+  businessProfile: BusinessProfile = {}
+): Promise<AgentEnhancement> {
+  const profileLines = [
+    businessProfile.businessName ? `Business name: ${businessProfile.businessName}` : null,
+    businessProfile.pitch ? `Pitch / specialty: ${businessProfile.pitch}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const systemInstruction = `
+You help small business owners set up an AI lead-monitoring agent. They describe their business and
+what they're looking for in plain, casual language — often just a sentence or two, sometimes with typos
+or filler words. Turn that into a precise, structured profile for the scoring AI to use.
+
+${profileLines ? `### Also known about this business\n${profileLines}\n` : ""}
+
+### Output
+Respond with a JSON object matching this schema exactly:
+{
+  "goal": string (a clear 1-2 sentence restatement of what kind of opportunity this agent should find, written for another AI to use as scoring instructions — specific, not generic),
+  "keywords": string (8-15 comma-separated keywords/phrases a real person would actually post, covering synonyms, misspellings, and related pain points — e.g. for a roofer: "roof leak, need roofer, roof repair, shingles falling, water damage ceiling, storm damage roof, roof replacement, roofing quote, roof estimate"),
+  "negative_keywords": string (3-6 comma-separated terms that would cause false positives to exclude — e.g. for a roofer: "hiring roofer, roofing job, DIY roof, roofing course"),
+  "location": string or null (comma-separated city names explicitly mentioned or clearly implied in the description, or null if none mentioned),
+  "suggested_name": string (a short 2-4 word name for this agent, e.g. "Roofing Scout")
+}
+`;
+  const userText = `Business owner's description:\n"""${description}"""`;
+  const text = await callGemini(systemInstruction, userText);
+
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      goal: parsed.goal || description,
+      keywords: parsed.keywords || "",
+      negative_keywords: parsed.negative_keywords || "",
+      location: parsed.location || null,
+      suggested_name: parsed.suggested_name || "",
+    };
+  } catch {
+    throw new Error("AI couldn't process that description — try rephrasing it.");
+  }
+}
+
 export interface BusinessProfile {
   ownerName?: string;
   businessName?: string;
