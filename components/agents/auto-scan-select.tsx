@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RefreshCcw } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // value "0" means off — Radix Select can't use an empty string as a real
 // option value, so off is modeled as its own item rather than null directly.
@@ -19,6 +20,7 @@ export function AutoScanSelect({ id, intervalHours }: { id: string; intervalHour
   const [isPending, startTransition] = useTransition()
   const [value, setValue] = useState(String(intervalHours ?? 0))
   const [error, setError] = useState(false)
+  const isActive = value !== "0"
 
   const handleChange = (v: string | null) => {
     if (!v) return
@@ -44,8 +46,20 @@ export function AutoScanSelect({ id, intervalHours }: { id: string; intervalHour
   return (
     <div className="flex flex-col gap-1">
       <Select value={value} onValueChange={handleChange} disabled={isPending}>
-        <SelectTrigger className="w-full" aria-label="Auto-scan schedule">
-          <RefreshCcw className="h-3.5 w-3.5 text-muted-foreground" />
+        <SelectTrigger
+          className={cn(
+            "w-full",
+            isActive &&
+              "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:border-emerald-500/50 dark:text-emerald-400"
+          )}
+          aria-label="Auto-scan schedule"
+        >
+          <RefreshCcw
+            className={cn(
+              "h-3.5 w-3.5",
+              isActive ? "text-emerald-600 opacity-100 dark:text-emerald-400" : "text-muted-foreground"
+            )}
+          />
           <SelectValue>{(v: string) => INTERVAL_OPTIONS.find((opt) => opt.value === v)?.label}</SelectValue>
         </SelectTrigger>
         <SelectContent>

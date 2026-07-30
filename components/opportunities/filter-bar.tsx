@@ -6,6 +6,7 @@ import { ListFilter, X, ArrowDownWideNarrow, RefreshCw } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
+import { CleanupOldButton } from "@/components/opportunities/cleanup-old-button"
 
 export type SortOption = "relevance" | "newest" | "oldest" | "urgency" | "platform"
 
@@ -170,16 +171,14 @@ export function FilterBar({
         </Button>
       )}
 
-      <Button
-        variant="ghost"
-        size="sm"
-        className="ml-auto"
-        disabled={isRefreshing}
-        onClick={() => startRefresh(() => router.refresh())}
-      >
-        <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-        Refresh
-      </Button>
+      <div className="ml-auto flex items-center gap-2">
+        <CleanupOldButton />
+        <div className="h-5 w-px bg-border" />
+        <Button variant="ghost" size="sm" disabled={isRefreshing} onClick={() => startRefresh(() => router.refresh())}>
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+      </div>
     </div>
   )
 }

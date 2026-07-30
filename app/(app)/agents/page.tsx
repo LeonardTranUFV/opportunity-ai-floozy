@@ -8,8 +8,12 @@ import { createClient } from "@/lib/supabase/server"
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
 import { ScanAgentButton } from "@/components/agents/scan-agent-button"
 import { AutoScanSelect } from "@/components/agents/auto-scan-select"
+import { StaleSourcesBanner } from "@/components/agents/stale-sources-banner"
+import { isHostedDeployment } from "@/lib/deployment"
 
 export const dynamic = "force-dynamic"
+
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000
 
 export default async function AgentsPage() {
   const supabase = await createClient()
@@ -29,6 +33,15 @@ export default async function AgentsPage() {
     countByAgent.set(o.agent_id, (countByAgent.get(o.agent_id) ?? 0) + 1)
   }
 
+  const { data: activeGroups } = await supabase.from("groups").select("last_scraped_at").eq("active", true)
+  const lastRefreshedAt = (activeGroups ?? []).reduce<string | null>((latest, g) => {
+    if (!g.last_scraped_at) return latest
+    return !latest || g.last_scraped_at > latest ? g.last_scraped_at : latest
+  }, null)
+  const sourcesAreStale =
+    (activeGroups?.length ?? 0) > 0 &&
+    (!lastRefreshedAt || Date.now() - new Date(lastRefreshedAt).getTime() > STALE_AFTER_MS)
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -43,6 +56,8 @@ export default async function AgentsPage() {
           New Agent
         </Link>
       </div>
+
+      {sourcesAreStale && <StaleSourcesBanner hosted={isHostedDeployment()} />}
 
       {!agents || agents.length === 0 ? (
         <Card>
@@ -73,7 +88,7 @@ export default async function AgentsPage() {
                 </div>
                 <CardDescription>{agent.goal}</CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-3">
+              <CardContent className="flex h-full flex-col gap-3">
                 {agent.location && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5" />
@@ -93,6 +108,7 @@ export default async function AgentsPage() {
                       ))}
                   </div>
                 )}
+                <div className="flex-1" />
                 <div className="flex items-center justify-between pt-2">
                   <Link
                     href={`/opportunities?agent=${agent.id}`}

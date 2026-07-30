@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn } from "@/lib/utils"
-import { MapPin, Phone, ExternalLink, Flame, Search, Clock } from "lucide-react"
+import { MapPin, Phone, ExternalLink, Flame, Search, Clock, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
@@ -93,7 +93,16 @@ function formatPostAge(postedAt: string | null, scrapedAt: string | null): { lab
 export default async function OpportunitiesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ agent?: string; urgency?: string; status?: string; platform?: string; sort?: string; id?: string }>
+  searchParams: Promise<{
+    agent?: string
+    urgency?: string
+    status?: string
+    platform?: string
+    sort?: string
+    id?: string
+    highIntent?: string
+    location?: string
+  }>
 }) {
   const params = await searchParams
   const sort: SortOption =
@@ -121,8 +130,15 @@ export default async function OpportunitiesPage({
       .eq("id", params.id)
   } else {
     if (params.agent) query = query.eq("agent_id", params.agent)
-    if (params.urgency) query = query.eq("urgency", params.urgency)
+    if (params.highIntent === "1") {
+      // Combined "ASAP or high urgency" view from the dashboard's High Intent
+      // Leads card — distinct from the single-value urgency dropdown below.
+      query = query.in("urgency", ["asap", "high"])
+    } else if (params.urgency) {
+      query = query.eq("urgency", params.urgency)
+    }
     if (params.platform) query = query.eq("platform", params.platform)
+    if (params.location) query = query.eq("location_mentioned", params.location)
     if (params.status) {
       query = query.eq("status", params.status)
     } else {
@@ -134,6 +150,24 @@ export default async function OpportunitiesPage({
 
   const { data: rawOpportunities } = await query
   const opportunities = rawOpportunities ? sortOpportunities(rawOpportunities, sort) : rawOpportunities
+
+  // highIntent/location are deep-link-only filters (not part of FilterBar's
+  // dropdowns), so surface them as separately-clearable chips that preserve
+  // every other active filter.
+  const buildHref = (overrides: Partial<Record<"highIntent" | "location", string | undefined>>) => {
+    const search = new URLSearchParams()
+    if (params.agent) search.set("agent", params.agent)
+    if (params.urgency) search.set("urgency", params.urgency)
+    if (params.status) search.set("status", params.status)
+    if (params.platform) search.set("platform", params.platform)
+    if (params.sort && params.sort !== "relevance") search.set("sort", params.sort)
+    const highIntent = "highIntent" in overrides ? overrides.highIntent : params.highIntent
+    const location = "location" in overrides ? overrides.location : params.location
+    if (highIntent === "1") search.set("highIntent", "1")
+    if (location) search.set("location", location)
+    const qs = search.toString()
+    return qs ? `/opportunities?${qs}` : "/opportunities"
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,14 +186,38 @@ export default async function OpportunitiesPage({
           ← Back to all Opportunities
         </a>
       ) : (
-        <FilterBar
-          agents={agents ?? []}
-          agentId={params.agent || ""}
-          urgency={params.urgency || ""}
-          status={params.status || ""}
-          platform={params.platform || ""}
-          sort={sort}
-        />
+        <div className="flex flex-col gap-2">
+          {(params.highIntent === "1" || params.location) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {params.highIntent === "1" && (
+                <a
+                  href={buildHref({ highIntent: undefined })}
+                  className="flex items-center gap-1 rounded-full bg-brand/10 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-brand hover:bg-brand/15"
+                >
+                  High Intent Only
+                  <X className="h-3 w-3" />
+                </a>
+              )}
+              {params.location && (
+                <a
+                  href={buildHref({ location: undefined })}
+                  className="flex items-center gap-1 rounded-full bg-brand/10 py-0.5 pl-2.5 pr-1.5 text-xs font-medium text-brand hover:bg-brand/15"
+                >
+                  Location: {params.location}
+                  <X className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          )}
+          <FilterBar
+            agents={agents ?? []}
+            agentId={params.agent || ""}
+            urgency={params.urgency || ""}
+            status={params.status || ""}
+            platform={params.platform || ""}
+            sort={sort}
+          />
+        </div>
       )}
 
       {!opportunities || opportunities.length === 0 ? (

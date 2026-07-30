@@ -1,9 +1,10 @@
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Activity, Target, MessageSquare, ListChecks, MapPin, Compass, Flame, MessageCircle, Send } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
-import { AlertRow } from "@/components/dashboard/alert-row"
+import { RecentAlertsList } from "@/components/dashboard/recent-alerts-list"
 
 export const dynamic = "force-dynamic"
 
@@ -31,7 +32,7 @@ export default async function Home() {
       .from("opportunities")
       .select("id, author_name, ai_summary, content, urgency, location_mentioned, platform, post_url, created_at")
       .order("created_at", { ascending: false })
-      .limit(4),
+      .limit(20),
     supabase.from("groups").select("id, platform, name, active").eq("active", true).order("created_at", { ascending: false }).limit(4),
     supabase.from("opportunities").select("location_mentioned").not("location_mentioned", "is", null),
   ])
@@ -66,54 +67,62 @@ export default async function Home() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="overflow-hidden transition-shadow hover:shadow-md">
-          <CardContent className="flex items-start justify-between">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-muted-foreground">High Intent Leads</span>
-              <span className="text-3xl font-bold tracking-tight">{highIntentCount ?? 0}</span>
-              <span className="text-xs text-muted-foreground">ASAP or high-urgency leads</span>
-            </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/15 dark:text-rose-400">
-              <Target className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden transition-shadow hover:shadow-md">
-          <CardContent className="flex items-start justify-between">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-muted-foreground">Active Conversations</span>
-              <span className="text-3xl font-bold tracking-tight">{activeConversations ?? 0}</span>
-              <span className="text-xs text-muted-foreground">Approved & dispatched to GHL</span>
-            </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
-              <MessageSquare className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden transition-shadow hover:shadow-md">
-          <CardContent className="flex items-start justify-between">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-muted-foreground">Pending Review</span>
-              <span className="text-3xl font-bold tracking-tight">{pendingReview ?? 0}</span>
-              <span className="text-xs text-muted-foreground">Leads awaiting your decision</span>
-            </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400">
-              <ListChecks className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden transition-shadow hover:shadow-md">
-          <CardContent className="flex items-start justify-between">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
-              <span className="text-3xl font-bold tracking-tight">{communitiesMonitored ?? 0}</span>
-              <span className="text-xs text-muted-foreground">Active groups being scraped</span>
-            </div>
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
-              <Activity className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <Link href="/opportunities?highIntent=1" className="block">
+          <Card className="overflow-hidden transition-all hover:shadow-md hover:ring-1 hover:ring-brand/20">
+            <CardContent className="flex items-start justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-muted-foreground">High Intent Leads</span>
+                <span className="text-3xl font-bold tracking-tight">{highIntentCount ?? 0}</span>
+                <span className="text-xs text-muted-foreground">ASAP or high-urgency leads</span>
+              </div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/15 dark:text-rose-400">
+                <Target className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/opportunities?status=qualified" className="block">
+          <Card className="overflow-hidden transition-all hover:shadow-md hover:ring-1 hover:ring-brand/20">
+            <CardContent className="flex items-start justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-muted-foreground">Active Conversations</span>
+                <span className="text-3xl font-bold tracking-tight">{activeConversations ?? 0}</span>
+                <span className="text-xs text-muted-foreground">Approved & dispatched to GHL</span>
+              </div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/opportunities?status=new" className="block">
+          <Card className="overflow-hidden transition-all hover:shadow-md hover:ring-1 hover:ring-brand/20">
+            <CardContent className="flex items-start justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-muted-foreground">Pending Review</span>
+                <span className="text-3xl font-bold tracking-tight">{pendingReview ?? 0}</span>
+                <span className="text-xs text-muted-foreground">Leads awaiting your decision</span>
+              </div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400">
+                <ListChecks className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/communities" className="block">
+          <Card className="overflow-hidden transition-all hover:shadow-md hover:ring-1 hover:ring-brand/20">
+            <CardContent className="flex items-start justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
+                <span className="text-3xl font-bold tracking-tight">{communitiesMonitored ?? 0}</span>
+                <span className="text-xs text-muted-foreground">Active groups being scraped</span>
+              </div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
+                <Activity className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
@@ -123,18 +132,15 @@ export default async function Home() {
             <CardDescription>Latest leads found by your scraping engine.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-1">
-              {(!recentOpportunities || recentOpportunities.length === 0) && (
-                <EmptyState
-                  icon={Activity}
-                  title="No leads yet"
-                  description="Run a scrape to populate this feed."
-                />
-              )}
-              {recentOpportunities?.map((lead) => (
-                <AlertRow key={lead.id} lead={lead} />
-              ))}
-            </div>
+            {!recentOpportunities || recentOpportunities.length === 0 ? (
+              <EmptyState
+                icon={Activity}
+                title="No leads yet"
+                description="Run a scrape to populate this feed."
+              />
+            ) : (
+              <RecentAlertsList leads={recentOpportunities} />
+            )}
           </CardContent>
         </Card>
 
@@ -149,8 +155,9 @@ export default async function Home() {
                 <EmptyState icon={Compass} title="No groups added yet" />
               )}
               {monitoredGroups.map((g) => (
-                <div
+                <Link
                   key={g.id}
+                  href="/communities"
                   className="flex items-center gap-3 rounded-lg p-2 -mx-2 transition-colors hover:bg-muted/50"
                 >
                   <div className="flex-1 space-y-1 min-w-0">
@@ -160,9 +167,15 @@ export default async function Home() {
                   <Badge variant="outline" className="shrink-0 capitalize">
                     {g.platform}
                   </Badge>
-                </div>
+                </Link>
               ))}
             </div>
+            <Link
+              href="/communities"
+              className="mt-2 flex items-center text-sm text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
+            >
+              View all communities →
+            </Link>
           </CardContent>
         </Card>
       </div>
@@ -210,9 +223,13 @@ export default async function Home() {
               No locations extracted yet — they show up here as leads and opportunities mention them.
             </p>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
               {heatMap.map(([location, count]) => (
-                <div key={location} className="flex items-center gap-3">
+                <Link
+                  key={location}
+                  href={`/opportunities?location=${encodeURIComponent(location)}`}
+                  className="flex items-center gap-3 rounded-lg p-1.5 -mx-1.5 transition-colors hover:bg-muted/50"
+                >
                   <div className="flex w-32 shrink-0 items-center gap-1.5 text-sm">
                     <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="truncate">{location}</span>
@@ -224,7 +241,7 @@ export default async function Home() {
                     />
                   </div>
                   <span className="w-6 shrink-0 text-right text-sm font-medium tabular-nums">{count}</span>
-                </div>
+                </Link>
               ))}
             </div>
           )}
