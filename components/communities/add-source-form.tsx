@@ -199,10 +199,13 @@ export function AddSourceForm() {
             size="sm"
             variant="outline"
             className={platform === tab.id ? tab.activeClass : ""}
-            onClick={() => switchPlatform(tab.id)}
+            onClick={() => tab.id !== "reddit" && switchPlatform(tab.id)}
+            disabled={tab.id === "reddit"}
+            title={tab.id === "reddit" ? "Coming soon — Reddit isn't wired up yet" : undefined}
           >
             <tab.Icon className="h-3.5 w-3.5" />
             {tab.label}
+            {tab.id === "reddit" && <span className="text-[10px] text-muted-foreground">(soon)</span>}
           </Button>
         ))}
       </div>
