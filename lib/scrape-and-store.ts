@@ -7,11 +7,18 @@ export interface ScrapeAndStoreResult {
   log: string[];
 }
 
+// Skip re-scraping a group this soon after it was last visited. The biggest
+// cost in a scan isn't the AI, it's Playwright's human-paced crawl (tens of
+// seconds per group) — without this, scanning 4 agents back-to-back in one
+// sitting re-scraped the same groups 4 times in a row for no new data.
+const SCRAPE_COOLDOWN_MS = 15 * 60 * 1000;
+
 /**
- * Scrapes every active group for this user and upserts fresh posts into
- * Supabase. Shared by the manual "Scrape Active Groups Now" button and the
- * agent Scan flow (which scrapes first so Scan always has fresh posts to
- * evaluate instead of relying on a separate manual step).
+ * Scrapes every active group for this user (skipping ones visited within the
+ * cooldown window) and upserts fresh posts into Supabase. Shared by the
+ * manual "Scrape Active Groups Now" button and the agent Scan flow (which
+ * scrapes first so Scan always has fresh posts to evaluate instead of
+ * relying on a separate manual step).
  */
 export async function scrapeAndStorePosts(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -19,7 +26,7 @@ export async function scrapeAndStorePosts(
 ): Promise<ScrapeAndStoreResult> {
   const { data: activeGroups, error: groupsError } = await supabase
     .from("groups")
-    .select("id, platform, name, url")
+    .select("id, platform, name, url, last_scraped_at")
     .eq("active", true);
 
   if (groupsError) {
@@ -30,7 +37,30 @@ export async function scrapeAndStorePosts(
     return { scraped: 0, inserted: 0, log: ["No active groups to scrape."] };
   }
 
-  const { posts, log } = await scrapeActiveGroups(activeGroups, userId);
+  const cooldownCutoff = Date.now() - SCRAPE_COOLDOWN_MS;
+  const dueGroups = activeGroups.filter(
+    (g) => !g.last_scraped_at || new Date(g.last_scraped_at).getTime() < cooldownCutoff
+  );
+  const skippedGroups = activeGroups.filter((g) => !dueGroups.includes(g));
+
+  const log: string[] = skippedGroups.map(
+    (g) => `"${g.name}": skipped — scraped within the last 15 minutes, already fresh.`
+  );
+
+  if (dueGroups.length === 0) {
+    return { scraped: 0, inserted: 0, log };
+  }
+
+  const scrapeResult = await scrapeActiveGroups(dueGroups, userId);
+  const posts = scrapeResult.posts;
+  log.push(...scrapeResult.log);
+
+  if (scrapeResult.scrapedGroupIds.length > 0) {
+    await supabase
+      .from("groups")
+      .update({ last_scraped_at: new Date().toISOString() })
+      .in("id", scrapeResult.scrapedGroupIds);
+  }
 
   if (posts.length === 0) {
     return { scraped: 0, inserted: 0, log };

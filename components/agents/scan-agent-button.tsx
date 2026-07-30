@@ -7,10 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles } from "lucide-react"
 import { formatApiError } from "@/lib/format-error"
 
+// shortLabel shows in the collapsed trigger (space-constrained); label is the
+// unambiguous version shown in the dropdown — "3 days" alone reads as a
+// countdown, "Posts from the last 3 days" makes the lookback window explicit.
 const RANGE_OPTIONS = [
-  { days: 1, label: "1 day" },
-  { days: 3, label: "3 days" },
-  { days: 7, label: "7 days (Pro)" },
+  { days: 1, shortLabel: "Last 24h", label: "Posts from the last 24 hours" },
+  { days: 3, shortLabel: "Last 3 days", label: "Posts from the last 3 days" },
+  { days: 7, shortLabel: "Last 7 days (Pro)", label: "Posts from the last 7 days (Pro)" },
 ]
 
 // Rough estimate for a typical run (scrape ~15 groups + a few paced Gemini
@@ -88,9 +91,9 @@ export function ScanAgentButton({ id }: { id: string }) {
           onValueChange={(v) => v && setRangeDays(Number(v))}
           disabled={isPending}
         >
-          <SelectTrigger className="w-28 shrink-0" aria-label="Scan lookback range">
+          <SelectTrigger className="w-36 shrink-0" aria-label="Scan lookback range">
             <SelectValue>
-              {(v: string) => RANGE_OPTIONS.find((opt) => String(opt.days) === v)?.label}
+              {(v: string) => RANGE_OPTIONS.find((opt) => String(opt.days) === v)?.shortLabel}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>

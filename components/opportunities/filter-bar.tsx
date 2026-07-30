@@ -1,7 +1,8 @@
 "use client"
 
+import { useTransition } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { ListFilter, X, ArrowDownWideNarrow } from "lucide-react"
+import { ListFilter, X, ArrowDownWideNarrow, RefreshCw } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
@@ -57,6 +58,7 @@ export function FilterBar({
 }) {
   const router = useRouter()
   const pathname = usePathname()
+  const [isRefreshing, startRefresh] = useTransition()
 
   const navigate = (next: { agent?: string; urgency?: string; status?: string; platform?: string; sort?: SortOption }) => {
     const merged = {
@@ -167,6 +169,17 @@ export function FilterBar({
           Clear
         </Button>
       )}
+
+      <Button
+        variant="ghost"
+        size="sm"
+        className="ml-auto"
+        disabled={isRefreshing}
+        onClick={() => startRefresh(() => router.refresh())}
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+        Refresh
+      </Button>
     </div>
   )
 }

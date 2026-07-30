@@ -62,7 +62,8 @@ export function ScrapeNowButton({ disabledReason }: { disabledReason?: string })
           {isPending ? "Scraping active groups… (can take a minute)" : "Scrape Active Groups Now"}
         </Button>
         <span className="text-xs text-muted-foreground">
-          Optional — every &quot;Scan for Opportunities&quot; on the Agents page already does this first.
+          Optional — every &quot;Scan for Opportunities&quot; already does this first. Groups scraped in the
+          last 15 min are skipped, so running this before scanning several agents makes those scans faster.
         </span>
       </div>
       {result && (

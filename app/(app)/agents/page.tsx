@@ -7,6 +7,7 @@ import { Plus, MapPin, Target, Bot } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
 import { ScanAgentButton } from "@/components/agents/scan-agent-button"
+import { AutoScanSelect } from "@/components/agents/auto-scan-select"
 
 export const dynamic = "force-dynamic"
 
@@ -104,6 +105,7 @@ export default async function AgentsPage() {
                   <DeleteAgentButton id={agent.id} name={agent.name} />
                 </div>
                 <ScanAgentButton id={agent.id} />
+                <AutoScanSelect id={agent.id} intervalHours={agent.auto_scan_interval_hours} />
               </CardContent>
             </Card>
           ))}

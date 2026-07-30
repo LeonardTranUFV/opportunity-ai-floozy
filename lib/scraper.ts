@@ -327,6 +327,13 @@ function extractXPosts(groupUrl: string): RawExtractedPost[] {
 export interface ScrapeSummary {
   posts: ScrapedPost[];
   log: string[];
+  scrapedGroupIds: string[];
+}
+
+interface PlatformScrapeResult {
+  posts: ScrapedPost[];
+  log: string[];
+  scrapedGroupIds: string[];
 }
 
 /**
@@ -388,20 +395,154 @@ async function scrapeRedditGroup(group: GroupToScrape): Promise<ScrapedPost[]> {
   return posts;
 }
 
+// Minimum scroll rounds every group gets regardless of what shows up — keeps
+// early-exit (below) from cutting off a group that just needed a couple of
+// scrolls before anything rendered.
+const MIN_SCROLL_ROUNDS = 3;
+const MAX_SCROLL_ROUNDS = 7;
+// Two consecutive rounds that surface nothing new means the feed's caught up
+// — no reason to keep scrolling and waiting out the remaining rounds.
+const STALE_ROUNDS_TO_STOP = 2;
+
+async function scrapeRedditPlatform(platformGroups: GroupToScrape[]): Promise<PlatformScrapeResult> {
+  const log: string[] = [];
+  const posts: ScrapedPost[] = [];
+  const scrapedGroupIds: string[] = [];
+  for (const group of platformGroups) {
+    try {
+      const groupPosts = await scrapeRedditGroup(group);
+      log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
+      posts.push(...groupPosts);
+      scrapedGroupIds.push(group.id);
+    } catch (err) {
+      log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    }
+    await sleep(randBetween(500, 1200));
+  }
+  return { posts, log, scrapedGroupIds };
+}
+
+async function scrapeBrowserPlatform(
+  platform: string,
+  platformGroups: GroupToScrape[],
+  userId: string
+): Promise<PlatformScrapeResult> {
+  const log: string[] = [];
+  const posts: ScrapedPost[] = [];
+  const scrapedGroupIds: string[] = [];
+
+  const extractor =
+    platform === "facebook"
+      ? extractFacebookPosts
+      : platform === "linkedin"
+        ? extractLinkedInPosts
+        : platform === "nextdoor"
+          ? extractNextdoorPosts
+          : platform === "twitter"
+            ? extractXPosts
+            : null;
+
+  if (!extractor) {
+    for (const group of platformGroups) {
+      log.push(`Skipped "${group.name}" — ${platform} scraping isn't supported yet.`);
+    }
+    return { posts, log, scrapedGroupIds };
+  }
+
+  let context;
+  try {
+    context = await chromium.launchPersistentContext(getAuthSessionPath(userId, platform), {
+      headless: true,
+      channel: "chrome",
+      viewport: { width: 1280, height: 900 },
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown error";
+    for (const group of platformGroups) {
+      log.push(`"${group.name}" failed: ${formatAuthLaunchError(message, platform)}`);
+    }
+    return { posts, log, scrapedGroupIds };
+  }
+
+  try {
+    const page = await context.newPage();
+
+    for (const group of platformGroups) {
+      try {
+        await page.goto(group.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.waitForTimeout(4000);
+
+        const collected = new Map<string, RawExtractedPost>();
+        let staleRounds = 0;
+
+        for (let round = 0; round < MAX_SCROLL_ROUNDS; round++) {
+          if (round > 0) {
+            await page.mouse.wheel(0, randBetween(1100, 1700));
+            await page.waitForTimeout(randBetween(1400, 2400));
+          }
+          const sizeBefore = collected.size;
+          try {
+            const batch = await page.evaluate(extractor, group.url);
+            for (const p of batch) {
+              if (!collected.has(p.post_id)) collected.set(p.post_id, p);
+            }
+          } catch {
+            // a single extraction round failing shouldn't abort the whole group
+          }
+
+          if (round + 1 < MIN_SCROLL_ROUNDS) continue;
+          staleRounds = collected.size === sizeBefore ? staleRounds + 1 : 0;
+          if (staleRounds >= STALE_ROUNDS_TO_STOP) break;
+        }
+
+        const groupPosts = [...collected.values()];
+        log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
+        scrapedGroupIds.push(group.id);
+
+        for (const p of groupPosts) {
+          posts.push({
+            group_id: group.id,
+            platform: group.platform,
+            external_post_id: p.post_id,
+            post_url: p.post_url,
+            author_name: p.author_name,
+            author_profile_url: p.author_profile_url,
+            posted_at: p.timestamp,
+            raw_text: p.raw_text,
+          });
+        }
+      } catch (err) {
+        log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
+      }
+
+      // Polite randomized pause between groups — keeps the crawl human-paced.
+      await sleep(randBetween(2000, 5000));
+    }
+  } finally {
+    await context.close();
+  }
+
+  return { posts, log, scrapedGroupIds };
+}
+
 /**
  * Crawls each active group's feed with a persistent, human-paced scroll,
  * re-extracting after every scroll step since Facebook/LinkedIn virtualize
  * their feeds (posts scrolled past disappear from the DOM).
  */
 export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string): Promise<ScrapeSummary> {
-  const log: string[] = [];
-  const posts: ScrapedPost[] = [];
-
   // One persistent-context browser per platform, not one shared across all
   // of them — Chromium only lets one process hold a given profile directory
   // at a time, so a single browser reused across Facebook/LinkedIn/Nextdoor/X
   // groups meant any one platform's Connect popup left open elsewhere could
-  // block scraping every other platform too.
+  // block scraping every other platform too. That same isolation also makes
+  // it safe to run every platform concurrently below: each one paces itself
+  // against its own account, so scraping Facebook and LinkedIn at the same
+  // time doesn't make either look more automated than scraping them one
+  // after another already does — it just stops one from idling while the
+  // other finishes.
   const groupsByPlatform = new Map<string, GroupToScrape[]>();
   for (const group of groups) {
     const list = groupsByPlatform.get(group.platform) ?? [];
@@ -409,110 +550,22 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
     groupsByPlatform.set(group.platform, list);
   }
 
-  for (const [platform, platformGroups] of groupsByPlatform) {
-    // Reddit is a plain HTTP fetch against its public JSON API — no browser,
-    // no persistent session, so it's handled entirely separately from the
-    // Playwright-based platforms below.
-    if (platform === "reddit") {
-      for (const group of platformGroups) {
-        try {
-          const groupPosts = await scrapeRedditGroup(group);
-          log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
-          posts.push(...groupPosts);
-        } catch (err) {
-          log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
-        }
-        await sleep(randBetween(500, 1200));
-      }
-      continue;
-    }
+  const platformResults = await Promise.all(
+    [...groupsByPlatform.entries()].map(([platform, platformGroups]) =>
+      platform === "reddit"
+        ? scrapeRedditPlatform(platformGroups)
+        : scrapeBrowserPlatform(platform, platformGroups, userId)
+    )
+  );
 
-    const extractor =
-      platform === "facebook"
-        ? extractFacebookPosts
-        : platform === "linkedin"
-          ? extractLinkedInPosts
-          : platform === "nextdoor"
-            ? extractNextdoorPosts
-            : platform === "twitter"
-              ? extractXPosts
-              : null;
-
-    if (!extractor) {
-      for (const group of platformGroups) {
-        log.push(`Skipped "${group.name}" — ${platform} scraping isn't supported yet.`);
-      }
-      continue;
-    }
-
-    let context;
-    try {
-      context = await chromium.launchPersistentContext(getAuthSessionPath(userId, platform), {
-        headless: true,
-        channel: "chrome",
-        viewport: { width: 1280, height: 900 },
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "unknown error";
-      for (const group of platformGroups) {
-        log.push(`"${group.name}" failed: ${formatAuthLaunchError(message, platform)}`);
-      }
-      continue;
-    }
-
-    try {
-      const page = await context.newPage();
-
-      for (const group of platformGroups) {
-        try {
-          await page.goto(group.url, { waitUntil: "domcontentloaded", timeout: 30000 });
-          await page.waitForTimeout(4000);
-
-          const collected = new Map<string, RawExtractedPost>();
-
-          for (let round = 0; round < 7; round++) {
-            if (round > 0) {
-              await page.mouse.wheel(0, randBetween(1100, 1700));
-              await page.waitForTimeout(randBetween(1400, 2400));
-            }
-            try {
-              const batch = await page.evaluate(extractor, group.url);
-              for (const p of batch) {
-                if (!collected.has(p.post_id)) collected.set(p.post_id, p);
-              }
-            } catch {
-              // a single extraction round failing shouldn't abort the whole group
-            }
-          }
-
-          const groupPosts = [...collected.values()];
-          log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
-
-          for (const p of groupPosts) {
-            posts.push({
-              group_id: group.id,
-              platform: group.platform,
-              external_post_id: p.post_id,
-              post_url: p.post_url,
-              author_name: p.author_name,
-              author_profile_url: p.author_profile_url,
-              posted_at: p.timestamp,
-              raw_text: p.raw_text,
-            });
-          }
-        } catch (err) {
-          log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
-        }
-
-        // Polite randomized pause between groups — keeps the crawl human-paced.
-        await sleep(randBetween(2000, 5000));
-      }
-    } finally {
-      await context.close();
-    }
+  const posts: ScrapedPost[] = [];
+  const log: string[] = [];
+  const scrapedGroupIds: string[] = [];
+  for (const result of platformResults) {
+    posts.push(...result.posts);
+    log.push(...result.log);
+    scrapedGroupIds.push(...result.scrapedGroupIds);
   }
 
-  return { posts, log };
+  return { posts, log, scrapedGroupIds };
 }
