@@ -106,15 +106,43 @@ export async function evaluateAgentPosts(
       );
     }
 
-    const postById = new Map(batch.map((p) => [p.id, p]));
-    const opportunitiesToInsert = [];
-    const evaluatedToInsert = [];
+    const opportunitiesToInsert: {
+      user_id: string;
+      agent_id: string;
+      source_post_id: string;
+      platform: string;
+      author_name: string;
+      author_profile_url: string | null;
+      post_url: string | null;
+      location_mentioned: string | null;
+      phone_number: string | null;
+      content: string;
+      category: string;
+      intent_score: number;
+      urgency: string;
+      estimated_value: string;
+      ai_summary: string;
+      status: string;
+    }[] = [];
+    const evaluatedToInsert: { user_id: string; agent_id: string; source_post_id: string }[] = [];
 
-    for (const evalItem of evaluations) {
-      evaluatedToInsert.push({ user_id: userId, agent_id: agent.id, source_post_id: evalItem.post_id });
+    // Match evaluations back to posts by array position, not by the post_id
+    // Gemini echoes in its JSON — the system instruction in lib/ai.ts already
+    // guarantees "one object per input post, in the same order," so position
+    // is a reliable match. The echoed string isn't: LLMs occasionally corrupt
+    // long hyphenated UUIDs when asked to copy them verbatim (observed live —
+    // a real ID lost 4 chars + a dash in transit), and that corrupted string
+    // was being inserted directly as source_post_id, a uuid column — Postgres
+    // rejects it, and because these are batch upserts, one bad id failed the
+    // *entire* batch, silently losing every real opportunity found alongside
+    // it. Only ever use batch[idx].id (the trusted DB value) as the FK.
+    evaluations.forEach((evalItem, idx) => {
+      const post = batch[idx];
+      if (!post) return; // Gemini returned more items than posts sent in this batch
 
-      const post = postById.get(evalItem.post_id);
-      if (!post || !evalItem.relevant) continue;
+      evaluatedToInsert.push({ user_id: userId, agent_id: agent.id, source_post_id: post.id });
+
+      if (!evalItem.relevant) return;
 
       opportunitiesToInsert.push({
         user_id: userId,
@@ -134,7 +162,7 @@ export async function evaluateAgentPosts(
         ai_summary: evalItem.ai_summary,
         status: "new",
       });
-    }
+    });
 
     if (evaluatedToInsert.length > 0) {
       const { error } = await supabase
