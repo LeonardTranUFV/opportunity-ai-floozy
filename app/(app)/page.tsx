@@ -87,7 +87,7 @@ export default async function Home() {
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-muted-foreground">Active Conversations</span>
                 <span className="text-3xl font-bold tracking-tight">{activeConversations ?? 0}</span>
-                <span className="text-xs text-muted-foreground">Approved & dispatched to GHL</span>
+                <span className="text-xs text-muted-foreground">Approved leads</span>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
                 <MessageSquare className="h-5 w-5" />

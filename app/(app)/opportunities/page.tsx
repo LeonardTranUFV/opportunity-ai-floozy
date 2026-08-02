@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn } from "@/lib/utils"
-import { MapPin, Phone, ExternalLink, Flame, Search, Clock, X } from "lucide-react"
+import { MapPin, Phone, ExternalLink, Flame, Search, Clock, X, User } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
@@ -11,6 +11,7 @@ import { SendOutreachButtons } from "@/components/opportunities/send-outreach-bu
 import { DeleteOpportunityButton } from "@/components/opportunities/delete-opportunity-button"
 import { FilterBar, type SortOption } from "@/components/opportunities/filter-bar"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
+import { isExactPostUrl } from "@/lib/post-url"
 
 export const dynamic = "force-dynamic"
 
@@ -112,6 +113,12 @@ export default async function OpportunitiesPage({
   const supabase = await createClient()
 
   const { data: agents } = await supabase.from("agents").select("id, name").order("name")
+  const { data: ghlSetting } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "ghl_dispatch_enabled")
+    .maybeSingle()
+  const ghlEnabled = ghlSetting?.value === "true"
 
   let query = supabase
     .from("opportunities")
@@ -353,9 +360,25 @@ export default async function OpportunitiesPage({
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-brand"
+                        title={
+                          isExactPostUrl(opp.post_url)
+                            ? undefined
+                            : "This platform didn't expose a direct link to this specific post — this opens the group/feed it came from instead."
+                        }
                       >
-                        View original post
+                        {isExactPostUrl(opp.post_url) ? "View original post" : "Open group (exact post link unavailable)"}
                         <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                    {opp.author_profile_url && (
+                      <a
+                        href={opp.author_profile_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-brand"
+                      >
+                        <User className="h-3 w-3" />
+                        View profile
                       </a>
                     )}
                   </div>
@@ -378,7 +401,7 @@ export default async function OpportunitiesPage({
                   />
 
                   {opp.status === "new" ? (
-                    <ApproveRejectButtons id={opp.id} />
+                    <ApproveRejectButtons id={opp.id} ghlEnabled={ghlEnabled} />
                   ) : (
                     <div className="flex items-center justify-between gap-4 pt-1">
                       <span className="text-xs text-muted-foreground">Pipeline status</span>

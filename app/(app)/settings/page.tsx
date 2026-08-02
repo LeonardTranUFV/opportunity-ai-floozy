@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { SettingsForm } from "@/components/settings/settings-form"
 import { BusinessProfileForm } from "@/components/settings/business-profile-form"
+import { GhlToggle } from "@/components/settings/ghl-toggle"
 
 export const dynamic = "force-dynamic"
 
@@ -21,6 +22,8 @@ export default async function SettingsPage() {
     { name: "Gemini API (AI reasoning)", key: process.env.GEMINI_API_KEY },
     { name: "GoHighLevel (CRM dispatch)", key: process.env.GHL_API_KEY },
   ]
+
+  const ghlDispatchEnabled = settingsMap.ghl_dispatch_enabled === "true"
 
   return (
     <div className="flex flex-col gap-6">
@@ -88,6 +91,7 @@ export default async function SettingsPage() {
               </span>
             </div>
           ))}
+          <GhlToggle initialEnabled={ghlDispatchEnabled} />
         </CardContent>
       </Card>
 

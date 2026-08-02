@@ -65,7 +65,7 @@ export function GenerateReplyButton({
         {comment && dm && <div className="h-px bg-border" />}
         {dm && <DraftBlock label="DM draft" text={dm} />}
         <Button variant="ghost" size="xs" className="w-fit" onClick={handleGenerate} disabled={isPending}>
-          {isPending ? "Regenerating…" : "Regenerate both"}
+          {isPending ? "Writing a new approach…" : "Try Another Approach"}
         </Button>
       </div>
     )

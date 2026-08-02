@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation"
 import { Activity, ExternalLink } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { isExactPostUrl } from "@/lib/post-url"
 
 const urgencyLabel: Record<string, string> = {
   asap: "ASAP",
@@ -73,7 +74,7 @@ export function AlertRow({ lead }: { lead: Lead }) {
                 onClick={(e) => e.stopPropagation()}
                 className="flex items-center gap-0.5 capitalize underline decoration-dotted underline-offset-2 hover:text-brand"
               >
-                {lead.platform || "View"} post
+                {isExactPostUrl(lead.post_url) ? `${lead.platform || "View"} post` : `Open ${lead.platform || ""} group`.trim()}
                 <ExternalLink className="h-3 w-3" />
               </a>
             </>

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 
-export function ApproveRejectButtons({ id }: { id: string }) {
+export function ApproveRejectButtons({ id, ghlEnabled }: { id: string; ghlEnabled: boolean }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
@@ -39,7 +39,7 @@ export function ApproveRejectButtons({ id }: { id: string }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex gap-2">
         <Button className="flex-1" onClick={() => handleUpdate("qualified")} disabled={isPending}>
-          {isPending ? "Working…" : "Approve & Dispatch to GHL"}
+          {isPending ? "Working…" : ghlEnabled ? "Approve & Dispatch to GHL" : "Approve"}
         </Button>
         <Button variant="destructive" onClick={() => handleUpdate("lost")} disabled={isPending}>
           Reject

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { generateOutreachDrafts, type AgentProfile, type BusinessProfile } from "@/lib/ai";
+import { generateOutreachDrafts, type AgentProfile, type BusinessProfile, type OutreachDrafts } from "@/lib/ai";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -8,7 +8,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { data: opportunity, error: oppError } = await supabase
     .from("opportunities")
-    .select("id, agent_id, author_name, content, platform")
+    .select("id, agent_id, author_name, content, platform, suggested_comment, suggested_dm")
     .eq("id", opportunityId)
     .single();
 
@@ -41,12 +41,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     pitch: settingsMap.business_pitch || undefined,
   };
 
+  const previousDraft: OutreachDrafts | undefined =
+    opportunity.suggested_comment && opportunity.suggested_dm
+      ? { comment: opportunity.suggested_comment, dm: opportunity.suggested_dm }
+      : undefined;
+
   let drafts;
   try {
     drafts = await generateOutreachDrafts(
       agent as AgentProfile,
       { author_name: opportunity.author_name, raw_text: opportunity.content, platform: opportunity.platform },
-      businessProfile
+      businessProfile,
+      previousDraft
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI reply generation failed";

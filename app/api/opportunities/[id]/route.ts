@@ -105,10 +105,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .eq("id", opportunityId)
     .single();
 
-  // Qualifying an opportunity is the "approve" moment — dispatch it to GHL, same as the legacy pipeline.
+  // Qualifying an opportunity is the "approve" moment. GHL dispatch is opt-in
+  // per business (Settings → Integrations) since not every customer using
+  // this app has a GoHighLevel account to push into.
   let ghlResult = null;
   if (status === "qualified" && current.status !== "qualified" && updated) {
-    ghlResult = await dispatchToGHL(updated as Opportunity);
+    const { data: ghlSetting } = await supabase
+      .from("settings")
+      .select("value")
+      .eq("key", "ghl_dispatch_enabled")
+      .maybeSingle();
+    if (ghlSetting?.value === "true") {
+      ghlResult = await dispatchToGHL(updated as Opportunity);
+    }
   }
 
   return NextResponse.json({ success: true, opportunity: updated, ghl: ghlResult });

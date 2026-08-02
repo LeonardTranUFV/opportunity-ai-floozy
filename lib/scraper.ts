@@ -83,7 +83,13 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
     const authorElement = container.querySelector("h2 a, h3 a, strong a");
     const raw_text = getMessage(container).slice(0, 1500);
     const author_name = authorElement ? (authorElement.textContent || "").trim() : "Anonymous Member";
-    const author_profile_url = authorElement ? authorElement.getAttribute("href") : null;
+    const authorHref = authorElement ? authorElement.getAttribute("href") : null;
+    // Unlike post_url below, this was never resolved to an absolute URL —
+    // Facebook's author anchors are relative ("/groups/.../user/123/?__cft__..."),
+    // which is a broken link once stored and clicked from outside facebook.com.
+    const author_profile_url = authorHref
+      ? (authorHref.startsWith("http") ? authorHref : window.location.origin + authorHref).split("?")[0]
+      : null;
 
     if (!raw_text || raw_text.length <= 20) return;
 
@@ -157,8 +163,10 @@ function extractLinkedInPosts(groupUrl: string): RawExtractedPost[] {
 
     const raw_text = textElement ? (textElement.textContent || "").trim() : "";
     const author_name = authorElement ? (authorElement.textContent || "").trim() : "LinkedIn Professional";
-    const author_profile_url =
-      container.querySelector("a.feed-shared-actor__image-link")?.getAttribute("href") || null;
+    const authorHref = container.querySelector("a.feed-shared-actor__image-link")?.getAttribute("href") || null;
+    const author_profile_url = authorHref
+      ? (authorHref.startsWith("http") ? authorHref : window.location.origin + authorHref).split("?")[0]
+      : null;
 
     if (!raw_text || raw_text.length <= 25) return;
 
@@ -468,6 +476,21 @@ async function scrapeBrowserPlatform(
 
   try {
     const page = await context.newPage();
+
+    // Defensive shim: when this module runs through esbuild-based tooling
+    // (e.g. `tsx`, used by the standalone local auto-scrape script) instead
+    // of Next.js's own SWC pipeline, esbuild's `keepNames` transform injects
+    // `__name(fn, "fn")` calls around nested const-arrow helpers (like
+    // getMessage/parseRelativeAge inside each extractor). That injected call
+    // ends up baked into the extractor function's own source text, so when
+    // Playwright ships that source into the page via page.evaluate(), it
+    // throws "__name is not defined" in the page's isolated context — every
+    // extraction round fails silently (caught below) and every group comes
+    // back with 0 posts, with no visible error. Next.js/SWC never does this,
+    // so this is a no-op there; it only matters for tsx-run entry points.
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__name ??= (fn: unknown) => fn;
+    });
 
     for (const group of platformGroups) {
       try {

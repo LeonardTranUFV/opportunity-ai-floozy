@@ -227,7 +227,8 @@ export interface OutreachDrafts {
 export async function generateOutreachDrafts(
   agent: AgentProfile,
   post: { author_name: string; raw_text: string; platform: string },
-  businessProfile: BusinessProfile = {}
+  businessProfile: BusinessProfile = {},
+  previousDraft?: OutreachDrafts
 ): Promise<OutreachDrafts> {
   const profileLines = [
     businessProfile.ownerName ? `Your name: ${businessProfile.ownerName}` : null,
@@ -253,6 +254,11 @@ You are writing TWO different messages for the same lead:
    comment.
 
 Keep each under 300 characters, friendly, never salesy or generic, no markdown, no hashtags.
+${
+  previousDraft
+    ? `\n### Try a different approach this time\nThe person asking already saw this earlier draft and wants a genuinely different take, not a reworded copy — vary the angle (e.g. lead with a question instead of an offer, or a different hook/tone), not just the wording:\nPrevious comment: "${previousDraft.comment}"\nPrevious dm: "${previousDraft.dm}"\n`
+    : ""
+}
 Respond with a JSON object: { "comment": string, "dm": string }
 `;
   const userText = `Original post by ${post.author_name} on ${post.platform}:\n"""${post.raw_text}"""`;

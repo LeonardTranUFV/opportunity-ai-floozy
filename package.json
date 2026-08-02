@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "auto-scrape": "tsx scripts/auto-scrape.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -39,6 +40,7 @@
     "eslint-config-next": "16.2.10",
     "postcss": "^8.5.20",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }
