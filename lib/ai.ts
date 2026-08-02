@@ -48,6 +48,26 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Every caller sets responseMimeType: "application/json" and immediately
+// JSON.parses the result, so a response that fails to parse is just as
+// useless as an HTTP-level failure. Observed empirically: this model
+// sometimes reports finishReason "STOP" while still cutting the JSON off
+// mid-string (no closing brace) — roughly 1 in 2 calls in one test batch —
+// unrelated to hitting maxOutputTokens. Previously every caller had its own
+// try/catch around JSON.parse with a silent fallback (e.g. dumping the raw
+// broken text into both the "comment" and "dm" fields), which meant a
+// customer could see garbled JSON presented as a real, sendable draft and
+// actually post it publicly. Retrying here — once, centrally — turns that
+// silent corruption into either a clean parse or a clear thrown error.
+function isParseableJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function callGemini(systemInstruction: string, userText: string): Promise<string> {
   const apiKey = getApiKey();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
@@ -72,9 +92,18 @@ async function callGemini(systemInstruction: string, userText: string): Promise<
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) {
-        throw new Error("Gemini API returned no content");
+        lastError = new Error("Gemini API returned no content");
+      } else if (!isParseableJson(text)) {
+        lastError = new Error(`Gemini API returned malformed JSON: ${text.slice(0, 200)}`);
+      } else {
+        return text;
       }
-      return text;
+
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(RETRY_DELAY_MS * attempt);
+        continue;
+      }
+      throw lastError;
     }
 
     const errText = await response.text();
