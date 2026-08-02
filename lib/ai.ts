@@ -1,4 +1,12 @@
-const GEMINI_MODEL = "gemini-3.5-flash";
+// gemini-3.5-flash's free-tier quota for this project is a separate,
+// much smaller daily bucket (20 req/day, confirmed via the API's own
+// quotaId "GenerateRequestsPerDayPerProjectPerModel-FreeTier") than
+// standard Flash models get — exhausted almost immediately under real
+// use. Each model has its own independent quota bucket, so gemini-3.6-flash
+// (confirmed working, clean JSON output) has real headroom. Still a
+// free-tier cap either way — enabling billing on the Cloud project is the
+// actual long-term fix, this just unblocks things until then.
+const GEMINI_MODEL = "gemini-3.6-flash";
 
 export interface AgentProfile {
   id: string;
