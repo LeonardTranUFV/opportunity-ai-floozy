@@ -12,9 +12,9 @@ import {
 } from "@/components/ui/card"
 
 export const metadata = {
-  title: "Pricing — Opportunity AI",
+  title: "Pricing — Floozy Opportunity AI",
   description:
-    "Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking for your trade nearby, and scores which ones are worth calling first.",
+    "Floozy Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking for your trade nearby, and scores which ones are worth calling first.",
 }
 
 const STARTER_LINK = "https://buy.stripe.com/fZu9ALdvneGd0Ym17I5wI0g"
@@ -78,7 +78,7 @@ export default function PricingPage() {
           <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 shadow-sm shadow-blue-600/30">
             <span className="font-bold text-white">O</span>
           </div>
-          <span className="font-semibold">Opportunity AI</span>
+          <span className="font-semibold">Floozy Opportunity AI</span>
         </div>
         <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/login" />}>
           Sign in
@@ -93,7 +93,7 @@ export default function PricingPage() {
           See the leads before your competitors even look.
         </h1>
         <p className="mt-4 text-pretty text-lg text-muted-foreground">
-          Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking
+          Floozy Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking
           for a plumber, electrician, contractor — whatever you do — near you, and
           scores which ones are worth calling first.
         </p>

@@ -37,7 +37,7 @@ async function dispatchToGHL(opportunity: Opportunity) {
     phone: opportunity.phone_number || undefined,
     locationId,
     tags,
-    source: "Opportunity AI",
+    source: "Floozy Opportunity AI",
     customFields: [],
   };
 

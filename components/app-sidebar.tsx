@@ -42,7 +42,7 @@ export function AppSidebar({ userEmail }: { userEmail?: string }) {
                 <span className="font-bold text-white">O</span>
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">Opportunity AI</span>
+                <span className="truncate font-semibold">Floozy Opportunity AI</span>
                 <span className="truncate text-xs text-muted-foreground">Growth Engine</span>
               </div>
             </SidebarMenuButton>

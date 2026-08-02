@@ -98,7 +98,7 @@ export default function LoginPage() {
             <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 shadow-sm shadow-blue-600/30">
               <span className="font-bold text-white">O</span>
             </div>
-            <span className="font-semibold">Opportunity AI</span>
+            <span className="font-semibold">Floozy Opportunity AI</span>
           </div>
           <CardTitle>{mode === "magic-link" ? "Sign in" : isSignUp ? "Create account" : "Sign in"}</CardTitle>
           <CardDescription>

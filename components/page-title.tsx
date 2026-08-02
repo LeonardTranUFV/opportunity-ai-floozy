@@ -16,6 +16,6 @@ const TITLES: Record<string, string> = {
 
 export function PageTitle() {
   const pathname = usePathname()
-  const title = TITLES[pathname] ?? "Opportunity AI"
+  const title = TITLES[pathname] ?? "Floozy Opportunity AI"
   return <h1 className="font-semibold text-sm">{title}</h1>
 }

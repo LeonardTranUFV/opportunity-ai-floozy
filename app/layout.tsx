@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Opportunity AI",
+  title: "Floozy Opportunity AI",
   description: "Your 24/7 AI business development assistant",
 };
 
