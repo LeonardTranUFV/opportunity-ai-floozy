@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 export function SourceGuideCard({
   icon,
   iconColor,
+  accentColor,
   tag,
   title,
   description,
@@ -18,9 +19,11 @@ export function SourceGuideCard({
   useNowHref,
   useNowLabel = "Use now",
   comingSoon = false,
+  defaultOpen = false,
 }: {
   icon: React.ReactNode
   iconColor: string
+  accentColor?: string
   tag: string
   title: string
   description: string
@@ -29,13 +32,15 @@ export function SourceGuideCard({
   useNowHref: string
   useNowLabel?: string
   comingSoon?: boolean
+  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
 
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-shadow",
+        "flex flex-col gap-3 rounded-xl border border-t-2 border-border bg-card p-4 transition-shadow",
+        accentColor,
         !comingSoon && "hover:shadow-sm"
       )}
     >

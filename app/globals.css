@@ -40,6 +40,7 @@
   --color-card: var(--card);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-brand-2: var(--brand-2);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -50,7 +51,7 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
+  --background: oklch(0.995 0.002 264);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -58,16 +59,16 @@
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  --secondary: oklch(0.97 0.005 264);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
+  --muted: oklch(0.97 0.005 264);
+  --muted-foreground: oklch(0.545 0.01 264);
+  --accent: oklch(0.965 0.012 264);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: oklch(0.915 0.006 264);
+  --input: oklch(0.915 0.006 264);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -77,13 +78,14 @@
   --radius: 0.625rem;
   --brand: oklch(0.588 0.158 241.966);
   --brand-foreground: oklch(0.985 0 0);
-  --sidebar: oklch(0.985 0 0);
+  --brand-2: oklch(0.62 0.19 320.5);
+  --sidebar: oklch(0.98 0.006 264);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.955 0.012 264);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: oklch(0.915 0.006 264);
   --sidebar-ring: oklch(0.708 0 0);
 }
 
@@ -117,6 +119,7 @@
      better on dark surfaces, same family Linear/Vercel lean on. */
   --brand: oklch(0.623 0.214 259.815);
   --brand-foreground: oklch(0.985 0 0);
+  --brand-2: oklch(0.63 0.2 320.5);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -157,5 +160,32 @@
   *::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
     background-clip: padding-box;
+  }
+}
+
+@layer utilities {
+  /* Soft, blurred multi-color backdrop — the "atmosphere" behind hero/header
+     sections, same idea as the blob on /login but reusable anywhere. Kept
+     very low-opacity so it reads as depth, not a loud background. */
+  .aurora-bg {
+    position: relative;
+    isolation: isolate;
+  }
+  .aurora-bg::before {
+    content: "";
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 22rem;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(38rem 16rem at 12% 0%, color-mix(in oklch, var(--brand), transparent 82%), transparent 70%),
+      radial-gradient(30rem 14rem at 85% 10%, color-mix(in oklch, var(--brand-2), transparent 86%), transparent 70%),
+      radial-gradient(26rem 14rem at 50% 30%, color-mix(in oklch, oklch(0.75 0.16 165), transparent 90%), transparent 70%);
+    filter: blur(2px);
+  }
+
+  .brand-gradient {
+    background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
   }
 }

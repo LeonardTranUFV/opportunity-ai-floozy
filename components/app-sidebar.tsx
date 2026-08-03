@@ -17,21 +17,36 @@ import {
 import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+// Each section gets its own accent color — same rotation the dashboard stat
+// cards already use (rose/blue/amber/emerald) — so the whole nav reads as
+// colorful sections instead of one flat brand-blue highlight.
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/opportunities", label: "Opportunities", icon: ListTodo },
-  { href: "/agents", label: "AI Agents", icon: Users },
-  { href: "/communities", label: "Communities", icon: Compass },
-  { href: "/accounts", label: "Connect Accounts", icon: KeyRound },
-  { href: "/crm", label: "CRM Pipeline", icon: Briefcase },
-  { href: "/guide", label: "How It Works", icon: BookOpen },
-  { href: "/tools", label: "Tools", icon: Wrench },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Dashboard", icon: Home, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", dot: "before:bg-blue-500" },
+  { href: "/opportunities", label: "Opportunities", icon: ListTodo, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10", dot: "before:bg-rose-500" },
+  { href: "/agents", label: "AI Agents", icon: Users, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", dot: "before:bg-violet-500" },
+  { href: "/communities", label: "Communities", icon: Compass, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", dot: "before:bg-emerald-500" },
+  { href: "/accounts", label: "Connect Accounts", icon: KeyRound, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", dot: "before:bg-amber-500" },
+  { href: "/crm", label: "CRM Pipeline", icon: Briefcase, color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-500/10", dot: "before:bg-cyan-500" },
+  { href: "/guide", label: "How It Works", icon: BookOpen, color: "text-fuchsia-600 dark:text-fuchsia-400", bg: "bg-fuchsia-500/10", dot: "before:bg-fuchsia-500" },
+  { href: "/tools", label: "Tools", icon: Wrench, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-500/10", dot: "before:bg-orange-500" },
+  { href: "/settings", label: "Settings", icon: Settings, color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-500/10", dot: "before:bg-slate-500" },
 ]
 
 export function AppSidebar({ userEmail, isAdmin }: { userEmail?: string; isAdmin?: boolean }) {
   const pathname = usePathname()
-  const navItems = isAdmin ? [...NAV_ITEMS, { href: "/admin", label: "Admin", icon: ShieldCheck }] : NAV_ITEMS
+  const navItems = isAdmin
+    ? [
+        ...NAV_ITEMS,
+        {
+          href: "/admin",
+          label: "Admin",
+          icon: ShieldCheck,
+          color: "text-indigo-600 dark:text-indigo-400",
+          bg: "bg-indigo-500/10",
+          dot: "before:bg-indigo-500",
+        },
+      ]
+    : NAV_ITEMS
 
   return (
     <Sidebar variant="inset" collapsible="icon" style={{ "--sidebar-width": "17.5rem" } as React.CSSProperties}>
@@ -55,7 +70,7 @@ export function AppSidebar({ userEmail, isAdmin }: { userEmail?: string; isAdmin
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1.5">
-              {navItems.map(({ href, label, icon: Icon }) => {
+              {navItems.map(({ href, label, icon: Icon, color, bg, dot }) => {
                 const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href)
                 return (
                   <SidebarMenuItem key={href}>
@@ -67,11 +82,22 @@ export function AppSidebar({ userEmail, isAdmin }: { userEmail?: string; isAdmin
                       className={cn(
                         "relative transition-colors",
                         isActive &&
-                          "bg-brand/10! text-brand! font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-brand"
+                          cn(
+                            bg,
+                            dot,
+                            "font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full"
+                          )
                       )}
                     >
-                      <Icon className={cn("size-4.5", isActive && "text-brand")} />
-                      <span className="text-[0.925rem]">{label}</span>
+                      <span
+                        className={cn(
+                          "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+                          isActive ? bg : "bg-transparent group-hover/menu-button:bg-muted"
+                        )}
+                      >
+                        <Icon className={cn("size-4", isActive ? color : "text-muted-foreground")} />
+                      </span>
+                      <span className={cn("text-[0.925rem]", isActive && color)}>{label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )
