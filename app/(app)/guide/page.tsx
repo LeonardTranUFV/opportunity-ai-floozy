@@ -1,7 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { SourceGuideCard } from "@/components/guide/source-guide-card"
+import { WalkthroughVideo } from "@/components/guide/walkthrough-video"
 import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
 import { KeyRound, Compass, Users, ListTodo, Briefcase, Sparkles } from "lucide-react"
+
+// Drop an embed URL here when the walkthrough video is ready (YouTube/Vimeo/
+// Loom embed link, or a direct file URL) — the placeholder swaps out on its own.
+const WALKTHROUGH_VIDEO_URL: string | undefined = undefined
 
 const PIPELINE = [
   {
@@ -60,6 +65,8 @@ export default function GuidePage() {
           A quick guide to connecting your accounts, adding sources, and turning posts into real leads.
         </p>
       </div>
+
+      <WalkthroughVideo videoUrl={WALKTHROUGH_VIDEO_URL} />
 
       <Card>
         <CardHeader>
