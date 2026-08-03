@@ -35,12 +35,29 @@ export async function POST(request: Request) {
 
     const page = await browser.newPage();
     const searchUrl = `https://www.facebook.com/search/groups/?q=${encodeURIComponent(searchQuery)}`;
-    
+
     let discoveredResults: { name: string; url: string; platform: string; description: string }[] = [];
+    let failure: string | null = null;
 
     try {
-      await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 20000 });
-      await page.waitForTimeout(4000); // Allow search results to load and settle
+      // NOT 'networkidle': Facebook holds long-poll/websocket connections open
+      // forever, so it never reaches network idle and goto always threw a
+      // timeout here — which was caught below and silently reported to the
+      // user as "no groups found" even though search worked fine. Wait for the
+      // result links themselves instead; that's the actual signal we need.
+      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+      if (/\/login|\/checkpoint/.test(page.url())) {
+        throw new Error('SESSION_EXPIRED');
+      }
+
+      try {
+        await page.waitForSelector('a[href*="/groups/"]', { timeout: 15000 });
+        await page.waitForTimeout(2500); // let the rest of the result list paint
+      } catch {
+        // No group links ever appeared — a genuinely empty result set, not a
+        // failure. Fall through and return [] so the UI says "no matches".
+      }
 
       // Robust semantic class-agnostic extractor
       discoveredResults = await page.evaluate((targetLocation) => {
@@ -98,8 +115,19 @@ export async function POST(request: Request) {
 
     } catch (err: any) {
       console.error(`⚠️ Facebook Live search crawler failed: ${err.message}`);
+      failure =
+        err.message === 'SESSION_EXPIRED'
+          ? 'Your Facebook session has expired. Reconnect it under Connect Accounts, then try again.'
+          : `Facebook search failed: ${err.message}`;
     } finally {
       await browser.close();
+    }
+
+    // Surface real failures instead of returning [] — an empty array renders as
+    // "no groups found for that search", which blamed the user's search terms
+    // for what was actually a crawler/session problem.
+    if (failure) {
+      return NextResponse.json({ error: failure }, { status: 502 });
     }
 
     // Facebook glues activity metadata onto the link text ("...Last active 3 hours ago")
