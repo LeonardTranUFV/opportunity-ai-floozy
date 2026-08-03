@@ -5,6 +5,12 @@ import { generateOutreachDrafts, type AgentProfile, type BusinessProfile, type O
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
 
   const { data: opportunity, error: oppError } = await supabase
     .from("opportunities")

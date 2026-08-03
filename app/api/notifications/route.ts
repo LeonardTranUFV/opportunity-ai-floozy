@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
   try {
     const { data: notifications, error } = await supabase
       .from("opportunities")

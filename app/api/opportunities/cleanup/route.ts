@@ -11,6 +11,13 @@ const CLEARABLE_STATUSES = ["new", "lost"];
 
 export async function POST(request: Request) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
   const body = await request.json().catch(() => ({}));
   const days = ALLOWED_DAYS.includes(body.days) ? body.days : 14;
 

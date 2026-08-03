@@ -68,6 +68,12 @@ async function dispatchToGHL(opportunity: Opportunity) {
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
 
   const body = await request.json();
   const { status } = body;
@@ -126,6 +132,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
 
   const { error, count } = await supabase
     .from("opportunities")
