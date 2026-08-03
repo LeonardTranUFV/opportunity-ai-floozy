@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 import { createClient } from '@/lib/supabase/server';
 import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
+import { spendCredits, CREDIT_COSTS, InsufficientCreditsError } from '@/lib/credits';
 
 export async function POST(request: Request) {
   try {
@@ -15,6 +16,10 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { industry, location } = body;
+    // URLs the user has already been shown — "See more" sends these back so a
+    // second search scrolls deeper and returns genuinely new groups rather
+    // than repeating page one.
+    const exclude: string[] = Array.isArray(body.exclude) ? body.exclude : [];
 
     if (!industry || !location) {
       return NextResponse.json({ error: 'Both industry and location are required.' }, { status: 400 });
@@ -54,6 +59,14 @@ export async function POST(request: Request) {
       try {
         await page.waitForSelector('a[href*="/groups/"]', { timeout: 15000 });
         await page.waitForTimeout(2500); // let the rest of the result list paint
+
+        // Facebook lazy-loads results, so page one is all you get without
+        // scrolling. Scroll further on "See more" runs to reach new groups.
+        const rounds = exclude.length > 0 ? 6 : 2;
+        for (let i = 0; i < rounds; i++) {
+          await page.mouse.wheel(0, 2200);
+          await page.waitForTimeout(1200);
+        }
       } catch {
         // No group links ever appeared — a genuinely empty result set, not a
         // failure. Fall through and return [] so the UI says "no matches".
@@ -132,6 +145,27 @@ export async function POST(request: Request) {
 
     // Facebook glues activity metadata onto the link text ("...Last active 3 hours ago")
     discoveredResults = discoveredResults.map(r => ({ ...r, name: cleanGroupName(r.name) }));
+
+    if (exclude.length > 0) {
+      const seen = new Set(exclude);
+      discoveredResults = discoveredResults.filter(r => !seen.has(r.url));
+    }
+
+    // Charged only once a real search completed — a crawler failure above
+    // returns early, so a broken search never costs the customer credits.
+    try {
+      await spendCredits(supabase, user.id, CREDIT_COSTS.discoverGroups, 'discover_groups', {
+        industry,
+        location,
+        returned: discoveredResults.length,
+        loadMore: exclude.length > 0,
+      });
+    } catch (creditError) {
+      if (creditError instanceof InsufficientCreditsError) {
+        return NextResponse.json({ error: creditError.message }, { status: 402 });
+      }
+      throw creditError;
+    }
 
     // No invented fallback groups: an empty result is an honest answer the UI can explain.
     return NextResponse.json(discoveredResults);

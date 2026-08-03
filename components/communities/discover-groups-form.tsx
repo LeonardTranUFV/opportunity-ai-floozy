@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Search, Plus } from "lucide-react"
+import { Search, Plus, ExternalLink, ChevronDown } from "lucide-react"
 
 interface DiscoveredGroup {
   name: string
@@ -23,11 +23,14 @@ export function DiscoverGroupsForm() {
   const [addedUrls, setAddedUrls] = useState<Set<string>>(new Set())
   const [isSearching, startSearch] = useTransition()
   const [addingUrl, setAddingUrl] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [exhausted, setExhausted] = useState(false)
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setResults(null)
+    setExhausted(false)
     startSearch(async () => {
       try {
         const res = await fetch("/api/groups/discover", {
@@ -45,6 +48,35 @@ export function DiscoverGroupsForm() {
         setError("Discovery failed — check the server log.")
       }
     })
+  }
+
+  // Sends back everything already on screen so the crawler scrolls deeper and
+  // returns groups the user hasn't seen, instead of repeating the first page.
+  const handleLoadMore = async () => {
+    if (!results) return
+    setLoadingMore(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/groups/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ industry, location, exclude: results.map((r) => r.url) }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Couldn't load more")
+        return
+      }
+      if (!Array.isArray(data) || data.length === 0) {
+        setExhausted(true)
+        return
+      }
+      setResults((prev) => [...(prev ?? []), ...data])
+    } catch {
+      setError("Couldn't load more — check the server log.")
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   const handleAdd = async (group: DiscoveredGroup) => {
@@ -92,7 +124,7 @@ export function DiscoverGroupsForm() {
         </div>
         <Button type="submit" disabled={isSearching}>
           <Search className="h-3.5 w-3.5" />
-          {isSearching ? "Searching Facebook…" : "Discover Groups"}
+          {isSearching ? "Searching Facebook…" : "Discover Groups (5 credits)"}
         </Button>
       </form>
 
@@ -113,27 +145,50 @@ export function DiscoverGroupsForm() {
         <div className="flex flex-col gap-2">
           {results.map((g) => (
             <div key={g.url} className="flex items-center justify-between gap-4 rounded-lg border p-3">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium">{g.name}</span>
-                <span className="text-xs text-muted-foreground">{g.description}</span>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-sm font-medium">{g.name}</span>
+                <span className="line-clamp-2 text-xs text-muted-foreground">{g.description}</span>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={addedUrls.has(g.url) || addingUrl === g.url}
-                onClick={() => handleAdd(g)}
-              >
-                {addedUrls.has(g.url) ? (
-                  "Added"
-                ) : (
-                  <>
-                    <Plus className="h-3.5 w-3.5" />
-                    {addingUrl === g.url ? "Adding…" : "Add"}
-                  </>
-                )}
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={g.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-[0.8rem] font-medium transition-colors hover:bg-muted"
+                >
+                  View
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={addedUrls.has(g.url) || addingUrl === g.url}
+                  onClick={() => handleAdd(g)}
+                >
+                  {addedUrls.has(g.url) ? (
+                    "Added"
+                  ) : (
+                    <>
+                      <Plus className="h-3.5 w-3.5" />
+                      {addingUrl === g.url ? "Adding…" : "Add"}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           ))}
+
+          {exhausted ? (
+            <p className="text-sm text-muted-foreground">
+              That&apos;s everything Facebook returned for this search. Try a different industry or a
+              nearby town to surface more.
+            </p>
+          ) : (
+            <Button variant="outline" size="sm" className="w-fit" onClick={handleLoadMore} disabled={loadingMore}>
+              <ChevronDown className="h-3.5 w-3.5" />
+              {loadingMore ? "Searching deeper…" : "See more groups (5 credits)"}
+            </Button>
+          )}
         </div>
       )}
     </div>

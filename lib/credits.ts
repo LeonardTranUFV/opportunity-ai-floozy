@@ -9,6 +9,10 @@ export const CREDIT_COSTS = {
   draftGeneration: 1, // generate or regenerate an outreach draft
   agentSetup: 1, // one-time AI-enhanced agent setup
   groupRecommendations: 1, // AI shortlist of which groups to go join
+  // Live Facebook search: drives a real browser session rather than an API,
+  // so it costs wall-clock time and carries the platform/ToS risk that the
+  // cheap AI-only actions don't. Priced well above them to reflect that.
+  discoverGroups: 5,
 } as const;
 
 export const PLAN_ALLOWANCES: Record<string, number> = {
