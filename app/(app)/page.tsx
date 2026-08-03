@@ -6,6 +6,7 @@ import { Activity, Target, MessageSquare, ListChecks, Compass, Flame, MessageCir
 import { createClient } from "@/lib/supabase/server"
 import { RecentAlertsList } from "@/components/dashboard/recent-alerts-list"
 import { LocationMapSheet } from "@/components/dashboard/location-map-sheet"
+import { CallFirst } from "@/components/dashboard/call-first"
 
 export const dynamic = "force-dynamic"
 
@@ -60,12 +61,21 @@ export default async function Home() {
     .slice(0, 8)
   const maxHeat = heatMap.length > 0 ? heatMap[0][1] : 1
 
+  // recentOpportunities is already newest-first, so the first urgent one is
+  // also the freshest — which is exactly the one worth calling first.
+  const callFirstLead =
+    (recentOpportunities ?? []).find((o) => o.urgency === "asap") ??
+    (recentOpportunities ?? []).find((o) => o.urgency === "high") ??
+    null
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-3xl font-bold tracking-tight">Today&apos;s Opportunities</h2>
+        <h2 className="font-heading text-3xl font-bold tracking-tight">Today&apos;s Opportunities</h2>
         <p className="text-muted-foreground">Here is your daily AI digest.</p>
       </div>
+
+      <CallFirst lead={callFirstLead} />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Link href="/opportunities?highIntent=1" className="block">
@@ -73,7 +83,7 @@ export default async function Home() {
             <CardContent className="flex items-start justify-between">
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-muted-foreground">High Intent Leads</span>
-                <span className="text-3xl font-bold tracking-tight">{highIntentCount ?? 0}</span>
+                <span className="font-heading text-2xl font-semibold tracking-tight">{highIntentCount ?? 0}</span>
                 <span className="text-xs text-muted-foreground">ASAP or high-urgency leads</span>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/15 dark:text-rose-400">
@@ -87,7 +97,7 @@ export default async function Home() {
             <CardContent className="flex items-start justify-between">
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-muted-foreground">Active Conversations</span>
-                <span className="text-3xl font-bold tracking-tight">{activeConversations ?? 0}</span>
+                <span className="font-heading text-2xl font-semibold tracking-tight">{activeConversations ?? 0}</span>
                 <span className="text-xs text-muted-foreground">Approved leads</span>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
@@ -101,7 +111,7 @@ export default async function Home() {
             <CardContent className="flex items-start justify-between">
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-muted-foreground">Pending Review</span>
-                <span className="text-3xl font-bold tracking-tight">{pendingReview ?? 0}</span>
+                <span className="font-heading text-2xl font-semibold tracking-tight">{pendingReview ?? 0}</span>
                 <span className="text-xs text-muted-foreground">Leads awaiting your decision</span>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400">
@@ -115,7 +125,7 @@ export default async function Home() {
             <CardContent className="flex items-start justify-between">
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
-                <span className="text-3xl font-bold tracking-tight">{communitiesMonitored ?? 0}</span>
+                <span className="font-heading text-2xl font-semibold tracking-tight">{communitiesMonitored ?? 0}</span>
                 <span className="text-xs text-muted-foreground">Active groups being scraped</span>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
