@@ -8,6 +8,7 @@ export const CREDIT_COSTS = {
   scanBatch: 2, // evaluating up to 100 posts in one Gemini call
   draftGeneration: 1, // generate or regenerate an outreach draft
   agentSetup: 1, // one-time AI-enhanced agent setup
+  groupRecommendations: 1, // AI shortlist of which groups to go join
 } as const;
 
 export const PLAN_ALLOWANCES: Record<string, number> = {

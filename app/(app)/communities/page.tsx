@@ -1,9 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Compass, Search, Link2 } from "lucide-react"
+import { Compass, Search, Link2, Sparkles } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { DiscoverGroupsForm } from "@/components/communities/discover-groups-form"
+import { GroupRecommendations } from "@/components/communities/group-recommendations"
 import { AddSourceForm } from "@/components/communities/add-source-form"
 import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
 import { GroupName } from "@/components/communities/group-name"
@@ -53,6 +54,22 @@ export default async function CommunitiesPage() {
           Find and monitor the communities most likely to contain your opportunities.
         </p>
       </div>
+
+      <Card className="transition-shadow hover:shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-brand" />
+            Not sure which groups to join?
+          </CardTitle>
+          <CardDescription>
+            You can only pull leads from groups you&apos;re a member of — so joining the right 10 matters
+            more than anything else here. Tell us your trade and area and we&apos;ll suggest where to look.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <GroupRecommendations />
+        </CardContent>
+      </Card>
 
       {!hosted && (
         <Card className="transition-shadow hover:shadow-sm">

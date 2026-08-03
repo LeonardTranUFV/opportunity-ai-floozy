@@ -243,6 +243,79 @@ Respond with a JSON object matching this schema exactly:
   }
 }
 
+export interface GroupSuggestion {
+  query: string;
+  category: string;
+  why: string;
+}
+
+/**
+ * Suggests which Facebook groups a business should go join.
+ *
+ * This exists because of a hard constraint in how the app works: Facebook only
+ * lets us read groups the user is already a member of, so lead volume is
+ * capped by their group memberships, not by the scraper. Most owners join a
+ * handful of trade groups and stop — but trade groups are mostly full of
+ * competitors, while the actual customers are posting in neighbourhood,
+ * buy/sell, and community groups. That insight is encoded in the prompt below,
+ * because it's the whole reason this feature is worth a credit.
+ */
+export async function recommendGroupsToJoin(
+  trade: string,
+  location: string,
+  businessProfile: BusinessProfile = {}
+): Promise<GroupSuggestion[]> {
+  const systemInstruction = `
+You advise local service businesses (trades, home services, salons) on which Facebook groups to join so
+they can find customers who are publicly asking for their service.
+
+### What actually works, and why
+The single biggest mistake owners make is only joining industry groups for their own trade. Those are
+full of other contractors — competitors, not customers. The groups where real customers post are:
+- Neighbourhood / community groups for specific suburbs and towns ("<suburb> Community Notice Board")
+- Buy & sell / marketplace-style local groups, where people also ask for recommendations
+- Homeowner, renovation, gardening, and "moms of <town>" groups
+- Town-wide "recommendations" or "tradies/tradespeople wanted" groups
+Include a few trade-specific groups for referrals and overflow work, but they should be the minority.
+
+Cover the surrounding suburbs and nearby towns too, not just the one city named — demand clusters in
+the smaller places around a metro, and those groups are less saturated with other contractors.
+
+### Output
+Respond with a JSON object matching this schema exactly:
+{
+  "suggestions": [
+    {
+      "query": string (the exact phrase to type into Facebook's group search — natural, how a group would really be named, e.g. "Burnaby Community Notice Board" or "North Vancouver buy and sell"),
+      "category": string (one of: "Neighbourhood", "Buy & sell", "Homeowners", "Community", "Trade"),
+      "why": string (one short sentence on why this group tends to produce leads for this business — concrete, not generic filler)
+    }
+  ]
+}
+Return 10-12 suggestions, ordered by how likely they are to produce real leads. Vary the suburbs/towns.
+`;
+
+  const profileLine = businessProfile.businessName
+    ? `\nBusiness name: ${businessProfile.businessName}`
+    : "";
+  const userText = `Trade / service: ${trade}\nPrimary location: ${location}${profileLine}`;
+  const text = await callGemini(systemInstruction, userText);
+
+  try {
+    const parsed = JSON.parse(text);
+    const list = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+    return list
+      .filter((s: GroupSuggestion) => s && typeof s.query === "string" && s.query.trim())
+      .map((s: GroupSuggestion) => ({
+        query: s.query.trim(),
+        category: s.category || "Community",
+        why: s.why || "",
+      }));
+  } catch {
+    throw new Error("AI couldn't generate group suggestions — try again in a moment.");
+  }
+}
+
 export interface BusinessProfile {
   ownerName?: string;
   businessName?: string;
