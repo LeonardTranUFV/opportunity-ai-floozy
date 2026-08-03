@@ -29,7 +29,7 @@ export default function LoginPage() {
     setMessage(null)
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: `${window.location.origin}/` },
     })
     setLoading(false)
     if (error) {
@@ -49,7 +49,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: { emailRedirectTo: `${window.location.origin}/` },
       })
       setLoading(false)
       if (error) {
@@ -79,7 +79,7 @@ export default function LoginPage() {
     setError(null)
     setMessage(null)
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/auth/update-password`,
+      redirectTo: `${window.location.origin}/auth/update-password`,
     })
     setLoading(false)
     if (error) {
