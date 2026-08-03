@@ -3,8 +3,10 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { PageTitle } from "@/components/page-title"
 import { NotificationsBell } from "@/components/notifications-bell"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { CreditBar } from "@/components/credit-bar"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/admin"
+import { PLAN_ALLOWANCES } from "@/lib/credits"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -12,6 +14,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     data: { user },
   } = await supabase.auth.getUser()
   const userIsAdmin = user ? await isAdmin(supabase, user.id) : false
+
+  let credits: { balance: number; allowance: number } | null = null
+  if (user) {
+    const { data } = await supabase
+      .from("user_credits")
+      .select("balance, plan")
+      .eq("user_id", user.id)
+      .maybeSingle()
+    if (data) {
+      credits = { balance: data.balance, allowance: PLAN_ALLOWANCES[data.plan] ?? data.balance }
+    }
+  }
 
   return (
     <SidebarProvider>
@@ -22,6 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="w-full flex justify-between items-center px-4">
             <PageTitle />
             <div className="flex items-center gap-1">
+              {credits && <CreditBar balance={credits.balance} allowance={credits.allowance} />}
               <ThemeToggle />
               <NotificationsBell />
             </div>
