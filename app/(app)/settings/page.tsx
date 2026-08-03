@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { SettingsForm } from "@/components/settings/settings-form"
 import { BusinessProfileForm } from "@/components/settings/business-profile-form"
 import { GhlToggle } from "@/components/settings/ghl-toggle"
+import { CreditsPanel, type CreditTx } from "@/components/settings/credits-panel"
 import { PLAN_ALLOWANCES } from "@/lib/credits"
 import { platformMeta } from "@/lib/platform-meta"
 
@@ -32,15 +33,6 @@ function formatWhen(iso: string | null): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }
 
-const REASON_LABELS: Record<string, string> = {
-  scan_batch: "Scanned a batch of posts",
-  draft_generation: "Generated an outreach draft",
-  admin_grant: "Credits added",
-  admin_deduct: "Credits removed",
-  monthly_allowance: "Monthly allowance",
-  top_up_purchase: "Credit pack purchased",
-}
-
 export default async function SettingsPage() {
   const supabase = await createClient()
   const { data: rows } = await supabase.from("settings").select("key, value")
@@ -57,22 +49,26 @@ export default async function SettingsPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  let creditSummary: { balance: number; allowance: number } | null = null
-  let transactions: { id: string; amount: number; reason: string; balance_after: number; created_at: string }[] = []
+  let creditSummary: { balance: number; allowance: number; plan: string } | null = null
+  let transactions: CreditTx[] = []
   if (user) {
     const [{ data: creditRow }, { data: txRows }] = await Promise.all([
       supabase.from("user_credits").select("balance, plan").eq("user_id", user.id).maybeSingle(),
       supabase
         .from("credit_transactions")
-        .select("id, amount, reason, balance_after, created_at")
+        .select("id, amount, reason, balance_after, created_at, metadata")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
-        .limit(10),
+        .limit(200),
     ])
     if (creditRow) {
-      creditSummary = { balance: creditRow.balance, allowance: PLAN_ALLOWANCES[creditRow.plan] ?? creditRow.balance }
+      creditSummary = {
+        balance: creditRow.balance,
+        allowance: PLAN_ALLOWANCES[creditRow.plan] ?? creditRow.balance,
+        plan: creditRow.plan,
+      }
     }
-    transactions = txRows ?? []
+    transactions = (txRows ?? []) as CreditTx[]
   }
 
   const { data: groupRows } = await supabase
@@ -164,39 +160,21 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Gem className="h-4 w-4 text-brand" />
-            Credit Usage
+            Credits &amp; Billing
           </CardTitle>
           <CardDescription>
             {creditSummary
-              ? `${creditSummary.balance} of ${creditSummary.allowance} credits left this cycle. Unused credits roll over.`
+              ? "Every credit spent, what it went to, and your plan. Unused credits roll over."
               : "Credit tracking isn't set up on this account yet."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {transactions.length === 0 ? (
-            <EmptyState
-              icon={Gem}
-              title="No credit activity yet"
-              description="Scans and draft generations will show up here as they happen."
-            />
-          ) : (
-            <div className="flex flex-col divide-y divide-border">
-              {transactions.map((tx) => (
-                <div key={tx.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <div className="flex flex-col">
-                    <span className="font-medium">{REASON_LABELS[tx.reason] ?? tx.reason}</span>
-                    <span className="text-xs text-muted-foreground">{formatWhen(tx.created_at)}</span>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className={tx.amount < 0 ? "font-medium text-destructive" : "font-medium text-emerald-600 dark:text-emerald-400"}>
-                      {tx.amount > 0 ? `+${tx.amount}` : tx.amount}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{tx.balance_after} left</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <CreditsPanel
+            balance={creditSummary?.balance ?? null}
+            allowance={creditSummary?.allowance ?? null}
+            plan={creditSummary?.plan ?? null}
+            transactions={transactions}
+          />
         </CardContent>
       </Card>
 
