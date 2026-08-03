@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ConnectAccountsForm } from "@/components/accounts/connect-accounts-form"
 import { SessionStatus } from "@/components/accounts/session-status"
 import { EmptyState } from "@/components/ui/empty-state"
-import { ServerOff } from "lucide-react"
+import { ServerOff, ShieldAlert } from "lucide-react"
 import { isHostedDeployment } from "@/lib/deployment"
 
 export default function AccountsPage() {
@@ -72,6 +72,29 @@ export default function AccountsPage() {
           <p className="rounded-md border border-brand/20 bg-brand/5 px-3 py-2 text-xs text-brand">
             Cookies are kept locally on disk inside an auth profile — never sent anywhere else.
           </p>
+
+          {/* Shown before the connect buttons, not buried in the Terms. Reading a
+              feed through your own logged-in session is against these platforms'
+              terms, and the realistic downside lands on the customer's personal
+              account — so they get to see that before they opt in, not after. */}
+          <div className="flex gap-3 rounded-md border border-amber-500/25 bg-amber-500/5 px-3 py-2.5">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex flex-col gap-1 text-xs text-amber-700 dark:text-amber-400">
+              <span className="font-medium">Before you connect — please read</span>
+              <p>
+                This reads your feed through your own logged-in session, which these platforms&apos;
+                terms of service don&apos;t allow. It&apos;s paced to look like normal human browsing, and
+                every customer uses only their own account — never a shared or fake one. Even so, any
+                account used with automation can be restricted or suspended, and that would affect your
+                personal account and its group memberships. Scanning less often lowers the risk.{" "}
+                <a href="/terms" className="underline decoration-dotted underline-offset-2">
+                  Full terms
+                </a>
+                .
+              </p>
+            </div>
+          </div>
+
           <ConnectAccountsForm />
         </CardContent>
       </Card>
