@@ -2,9 +2,10 @@ import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Activity, Target, MessageSquare, ListChecks, MapPin, Compass, Flame, MessageCircle, Send } from "lucide-react"
+import { Activity, Target, MessageSquare, ListChecks, Compass, Flame, MessageCircle, Send } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { RecentAlertsList } from "@/components/dashboard/recent-alerts-list"
+import { LocationMapSheet } from "@/components/dashboard/location-map-sheet"
 
 export const dynamic = "force-dynamic"
 
@@ -225,15 +226,17 @@ export default async function Home() {
           ) : (
             <div className="flex flex-col gap-1">
               {heatMap.map(([location, count]) => (
-                <Link
+                <div
                   key={location}
-                  href={`/opportunities?location=${encodeURIComponent(location)}`}
                   className="flex items-center gap-3 rounded-lg p-1.5 -mx-1.5 transition-colors hover:bg-muted/50"
                 >
-                  <div className="flex w-32 shrink-0 items-center gap-1.5 text-sm">
-                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                  <LocationMapSheet location={location} count={count} />
+                  <Link
+                    href={`/opportunities?location=${encodeURIComponent(location)}`}
+                    className="flex w-28 shrink-0 items-center text-sm hover:underline"
+                  >
                     <span className="truncate">{location}</span>
-                  </div>
+                  </Link>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-brand/70 to-brand transition-all"
@@ -241,7 +244,7 @@ export default async function Home() {
                     />
                   </div>
                   <span className="w-6 shrink-0 text-right text-sm font-medium tabular-nums">{count}</span>
-                </Link>
+                </div>
               ))}
             </div>
           )}
