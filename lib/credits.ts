@@ -23,6 +23,23 @@ export class InsufficientCreditsError extends Error {
   }
 }
 
+// PostgREST error codes (NOT raw Postgres SQLSTATE codes — confirmed by
+// checking the actual error shape live, since PostgREST wraps these
+// differently) for "table not in schema cache" / "function not in schema
+// cache" — thrown if supabase/migrations/0006_credits.sql hasn't been
+// applied yet. Every credit check/spend below fails OPEN in that case
+// (treats the action as allowed) rather than failing closed: a metering
+// system that isn't set up yet must never be able to take down the app's
+// core functionality (scanning, draft generation) for every user. The
+// worst case of failing open is a few free actions before the migration
+// runs; the worst case of failing closed is the whole product looking
+// broken.
+const MIGRATION_NOT_APPLIED_CODES = new Set(["PGRST205", "PGRST202"]);
+
+function isMigrationNotAppliedError(error: { code?: string } | null | undefined): boolean {
+  return !!error?.code && MIGRATION_NOT_APPLIED_CODES.has(error.code);
+}
+
 /**
  * Spends credits for an AI-driven action. Throws InsufficientCreditsError if
  * the balance would go negative — callers should catch this specifically to
@@ -50,6 +67,7 @@ export async function spendCredits(
   });
 
   if (error) {
+    if (isMigrationNotAppliedError(error)) return -1; // credit system not active yet — nothing to record
     if (error.message?.includes("insufficient_credits")) {
       throw new InsufficientCreditsError();
     }
@@ -79,7 +97,11 @@ export async function grantCredits(
 }
 
 export async function getCreditBalance(supabase: SupabaseClient, userId: string): Promise<number> {
-  const { data } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
+  const { data, error } = await supabase.from("user_credits").select("balance").eq("user_id", userId).maybeSingle();
+  if (error) {
+    if (isMigrationNotAppliedError(error)) return Number.POSITIVE_INFINITY;
+    throw new Error(error.message);
+  }
   return data?.balance ?? 0;
 }
 
