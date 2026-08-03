@@ -178,6 +178,15 @@ export default function PricingPage() {
         <p className="mt-8 text-center text-xs text-muted-foreground">
           No contracts. Cancel anytime. Prices in CAD.
         </p>
+        <p className="mt-2 text-center text-xs text-muted-foreground">
+          <Link href="/terms" className="underline decoration-dotted underline-offset-4 hover:text-foreground">
+            Terms of Service
+          </Link>
+          {" · "}
+          <Link href="/privacy" className="underline decoration-dotted underline-offset-4 hover:text-foreground">
+            Privacy Policy
+          </Link>
+        </p>
       </section>
     </div>
   )

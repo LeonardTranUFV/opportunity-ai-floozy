@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateOutreachDrafts, type AgentProfile, type BusinessProfile, type OutreachDrafts } from "@/lib/ai";
+import { CREDIT_COSTS, hasCredits, spendCredits, InsufficientCreditsError } from "@/lib/credits";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -52,6 +53,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ? { comment: opportunity.suggested_comment, dm: opportunity.suggested_dm }
       : undefined;
 
+  if (!(await hasCredits(supabase, user.id, CREDIT_COSTS.draftGeneration))) {
+    return NextResponse.json(
+      { success: false, error: new InsufficientCreditsError().message },
+      { status: 402 }
+    );
+  }
+
   let drafts;
   try {
     drafts = await generateOutreachDrafts(
@@ -64,6 +72,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const message = error instanceof Error ? error.message : "AI reply generation failed";
     return NextResponse.json({ success: false, error: message }, { status: 502 });
   }
+
+  await spendCredits(supabase, user.id, CREDIT_COSTS.draftGeneration, "draft_generation", {
+    opportunity_id: opportunityId,
+  });
 
   await supabase
     .from("opportunities")

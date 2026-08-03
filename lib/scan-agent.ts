@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePostsForAgent, type AgentProfile, type RawPostInput } from "@/lib/ai";
+import { CREDIT_COSTS, hasCredits, spendCredits, InsufficientCreditsError } from "@/lib/credits";
 
 // Posts per Gemini request. Larger batches mean fewer total requests (less
 // time spent on inter-batch pacing below) — these are short social posts, so
@@ -87,6 +88,17 @@ export async function evaluateAgentPosts(
   for (let i = 0; i < unevaluated.length; i += BATCH_SIZE) {
     if (i > 0) await sleep(BATCH_PACING_MS);
     const batch = unevaluated.slice(i, i + BATCH_SIZE);
+
+    // Check credits before spending real Gemini cost on this batch — not
+    // after, since a customer with 0 credits shouldn't cause an API call at
+    // all. Deduction itself happens only after a successful evaluation
+    // (below), same "only charge for what actually worked" principle as the
+    // rest of this function's error handling.
+    if (!(await hasCredits(supabase, userId, CREDIT_COSTS.scanBatch))) {
+      if (totalEvaluated > 0) break; // keep whatever was already found this run
+      throw new InsufficientCreditsError();
+    }
+
     const postsForAI: RawPostInput[] = batch.map((p) => ({
       post_id: p.id,
       platform: p.platform,
@@ -105,6 +117,11 @@ export async function evaluateAgentPosts(
         `${message} (evaluated ${totalEvaluated} of ${unevaluated.length} posts before this failure — already-found opportunities were saved)`
       );
     }
+
+    await spendCredits(supabase, userId, CREDIT_COSTS.scanBatch, "scan_batch", {
+      agent_id: agent.id,
+      batch_size: batch.length,
+    });
 
     const opportunitiesToInsert: {
       user_id: string;

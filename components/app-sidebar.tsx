@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen } from "lucide-react"
+import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
@@ -29,8 +29,9 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 
-export function AppSidebar({ userEmail }: { userEmail?: string }) {
+export function AppSidebar({ userEmail, isAdmin }: { userEmail?: string; isAdmin?: boolean }) {
   const pathname = usePathname()
+  const navItems = isAdmin ? [...NAV_ITEMS, { href: "/admin", label: "Admin", icon: ShieldCheck }] : NAV_ITEMS
 
   return (
     <Sidebar variant="inset" collapsible="icon" style={{ "--sidebar-width": "17.5rem" } as React.CSSProperties}>
@@ -54,7 +55,7 @@ export function AppSidebar({ userEmail }: { userEmail?: string }) {
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1.5">
-              {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+              {navItems.map(({ href, label, icon: Icon }) => {
                 const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href)
                 return (
                   <SidebarMenuItem key={href}>

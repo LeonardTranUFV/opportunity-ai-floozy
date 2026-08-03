@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { type AgentProfile } from "@/lib/ai";
 import { evaluateAgentPosts } from "@/lib/scan-agent";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
+import { InsufficientCreditsError } from "@/lib/credits";
 
 const ALLOWED_RANGE_DAYS = [1, 3, 7];
 
@@ -62,7 +63,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         scraped,
         scrape_log: scrapeLog,
       },
-      { status: 502 }
+      { status: error instanceof InsufficientCreditsError ? 402 : 502 }
     );
   }
 }
