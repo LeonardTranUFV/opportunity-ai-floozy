@@ -5,13 +5,21 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { MapPin, Plus, Search } from "lucide-react"
+import { MapPin, Plus, Search, Store as StoreIcon } from "lucide-react"
 import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
 
-type Platform = "facebook" | "linkedin" | "nextdoor" | "twitter" | "reddit"
+type Platform = "facebook" | "marketplace" | "linkedin" | "nextdoor" | "twitter" | "reddit"
 
-const PLATFORM_TABS: { id: Platform; label: string; Icon: typeof FacebookIcon; activeClass: string }[] = [
+const PLATFORM_TABS: {
+  id: Platform
+  label: string
+  // Loosened from `typeof FacebookIcon` so Lucide icons work here too — the
+  // in-house brand icons and Lucide both just take a className.
+  Icon: React.ComponentType<{ className?: string }>
+  activeClass: string
+}[] = [
   { id: "facebook", label: "Facebook", Icon: FacebookIcon, activeClass: "bg-[#1877F2] text-white hover:bg-[#1877F2]/90" },
+  { id: "marketplace", label: "Marketplace", Icon: StoreIcon, activeClass: "bg-[#1877F2] text-white hover:bg-[#1877F2]/90" },
   { id: "linkedin", label: "LinkedIn", Icon: LinkedInIcon, activeClass: "bg-[#0A66C2] text-white hover:bg-[#0A66C2]/90" },
   { id: "nextdoor", label: "Nextdoor", Icon: NextdoorIcon, activeClass: "bg-[#8fca43] text-white hover:bg-[#8fca43]/90" },
   { id: "twitter", label: "X", Icon: XIcon, activeClass: "bg-black text-white hover:bg-black/85 dark:bg-white dark:text-black dark:hover:bg-white/85" },
@@ -20,6 +28,7 @@ const PLATFORM_TABS: { id: Platform; label: string; Icon: typeof FacebookIcon; a
 
 const PLATFORM_HOSTS: Record<Platform, string[]> = {
   facebook: ["facebook.com", "fb.com"],
+  marketplace: ["facebook.com", "fb.com"],
   linkedin: ["linkedin.com"],
   nextdoor: ["nextdoor.com"],
   twitter: ["x.com", "twitter.com"],
@@ -63,6 +72,7 @@ export function AddSourceForm() {
   const [name, setName] = useState("")
   // X keyword field
   const [keyword, setKeyword] = useState("")
+  const [marketplaceCity, setMarketplaceCity] = useState("")
   // Nextdoor advanced toggle
   const [showAnotherNeighborhood, setShowAnotherNeighborhood] = useState(false)
   // Reddit fields
@@ -121,6 +131,35 @@ export function AddSourceForm() {
     setIsSubmitting(false)
     if (result.ok) {
       setSuccess(`Added "My Neighborhood" — it'll be scraped on the next run.`)
+      router.refresh()
+    } else {
+      setError(result.error)
+    }
+  }
+
+  const handleMarketplaceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    resetMessages()
+    const term = keyword.trim()
+    const city = marketplaceCity.trim()
+    if (!term) {
+      setError('Enter what to watch for, e.g. "ISO handyman" or "help needed".')
+      return
+    }
+    if (!city) {
+      setError('Enter a city, e.g. "vancouver" — Marketplace results are always location-scoped.')
+      return
+    }
+
+    // Marketplace search is city-scoped in the path, not a query param.
+    const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, "")
+    const searchUrl = `https://www.facebook.com/marketplace/${slug}/search?query=${encodeURIComponent(term)}`
+    setIsSubmitting(true)
+    const result = await addGroup("marketplace", `${term} · ${city}`, searchUrl)
+    setIsSubmitting(false)
+    if (result.ok) {
+      setSuccess(`Added "${term}" in ${city} — it'll be scraped on the next run.`)
+      setKeyword("")
       router.refresh()
     } else {
       setError(result.error)
@@ -304,6 +343,49 @@ export function AddSourceForm() {
             </form>
           )}
         </div>
+      )}
+
+      {platform === "marketplace" && (
+        <form onSubmit={handleMarketplaceSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex min-w-56 flex-1 flex-col gap-1.5">
+              <Label htmlFor="mp-keyword">What are you watching for?</Label>
+              <Input
+                id="mp-keyword"
+                value={keyword}
+                onChange={(e) => {
+                  setKeyword(e.target.value)
+                  resetMessages()
+                }}
+                placeholder='e.g. ISO handyman, help needed, house for sale'
+                required
+              />
+            </div>
+            <div className="flex w-44 flex-col gap-1.5">
+              <Label htmlFor="mp-city">City</Label>
+              <Input
+                id="mp-city"
+                value={marketplaceCity}
+                onChange={(e) => {
+                  setMarketplaceCity(e.target.value)
+                  resetMessages()
+                }}
+                placeholder="e.g. Vancouver"
+                required
+              />
+            </div>
+            <Button type="submit" disabled={isSubmitting}>
+              <Search className="h-3.5 w-3.5" />
+              {isSubmitting ? "Adding…" : "Add"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Uses your Facebook login — no separate connection needed. Marketplace is mostly people
+            <em> selling</em>, so search the way a customer would post: &ldquo;ISO&rdquo;, &ldquo;looking
+            for&rdquo;, &ldquo;help needed&rdquo;. The AI still scores each listing, so ads from other
+            businesses get filtered out.
+          </p>
+        </form>
       )}
 
       {platform === "twitter" && (

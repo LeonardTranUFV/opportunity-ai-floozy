@@ -282,6 +282,79 @@ function extractNextdoorPosts(groupUrl: string): RawExtractedPost[] {
 }
 
 /** X (Twitter) search-results timeline — `data-testid` hooks are the stable, documented markers X itself uses for automated testing, so these are lower-risk than the Nextdoor guesses above. Still unverified live. */
+/**
+ * Which saved login a source type actually uses. Marketplace has no login of
+ * its own — it's Facebook — so it must resolve to the Facebook session both
+ * for the profile directory and for concurrency bucketing.
+ */
+export function sessionPlatform(platform: string): string {
+  return platform === "marketplace" ? "facebook" : platform;
+}
+
+/**
+ * Facebook Marketplace listings.
+ *
+ * Written against the real DOM (verified live, not guessed): every listing is
+ * an `a[href*="/marketplace/item/<id>"]` whose innerText is a short line stack
+ * of the shape
+ *     ["Just listed"?, "CA$120", "Title of the listing", "Burnaby, BC"]
+ * — the "Just listed" badge and a strikethrough original price are both
+ * optional, so lines are classified by pattern rather than by position.
+ *
+ * Worth knowing what this source actually is: Marketplace skews heavily toward
+ * people ADVERTISING services rather than asking for them, so for a contractor
+ * most results are competitors. It earns its place for buy/sell, rental and
+ * "in search of" style goals — the AI scoring step is what separates a real
+ * request from another supplier's ad.
+ */
+function extractMarketplaceListings(groupUrl: string): RawExtractedPost[] {
+  const results: RawExtractedPost[] = [];
+  const seen = new Set<string>();
+
+  document.querySelectorAll('a[href*="/marketplace/item/"]').forEach((anchor) => {
+    const href = anchor.getAttribute("href") || "";
+    const id = (href.match(/\/marketplace\/item\/(\d+)/) || [])[1];
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+
+    const lines = (anchor.textContent ? (anchor as HTMLElement).innerText : "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return;
+
+    const isPrice = (s: string) => /^(CA)?\$[\d,]+/.test(s) || /^free$/i.test(s);
+    const isBadge = (s: string) => /^just listed$/i.test(s);
+    // Location is the trailing "City, PROV" line; titles rarely match this.
+    const isLocation = (s: string) => /,\s*[A-Z]{2}$/.test(s);
+
+    const price = lines.find(isPrice) || null;
+    const location = [...lines].reverse().find(isLocation) || null;
+    const title = lines.find((l) => !isPrice(l) && !isBadge(l) && !isLocation(l)) || "";
+    if (!title || title.length < 3) return;
+
+    // The evaluator reads raw_text, so fold price and location into it —
+    // otherwise a listing is just a bare title with no context to score.
+    const raw_text = [title, price ? `Price: ${price}` : null, location ? `Location: ${location}` : null]
+      .filter(Boolean)
+      .join(" — ");
+
+    results.push({
+      post_id: `fbmp_${id}`,
+      post_url: `https://www.facebook.com/marketplace/item/${id}`,
+      // Marketplace hides the seller on the search grid; it's only on the
+      // listing page. Claiming a name we didn't read would be worse than
+      // being honest that we don't have one yet.
+      author_name: "Marketplace seller",
+      author_profile_url: null,
+      timestamp: null,
+      raw_text,
+    });
+  });
+
+  return results;
+}
+
 function extractXPosts(groupUrl: string): RawExtractedPost[] {
   const results: RawExtractedPost[] = [];
   const seenTexts = new Set<string>();
@@ -439,20 +512,24 @@ async function scrapeBrowserPlatform(
   const posts: ScrapedPost[] = [];
   const scrapedGroupIds: string[] = [];
 
-  const extractor =
-    platform === "facebook"
+  // Chosen per group, not per bucket: Marketplace rides inside the Facebook
+  // bucket (it shares that login), so one bucket can hold two source types.
+  const extractorFor = (p: string) =>
+    p === "facebook"
       ? extractFacebookPosts
-      : platform === "linkedin"
+      : p === "linkedin"
         ? extractLinkedInPosts
-        : platform === "nextdoor"
+        : p === "nextdoor"
           ? extractNextdoorPosts
-          : platform === "twitter"
+          : p === "twitter"
             ? extractXPosts
-            : null;
+            : p === "marketplace"
+              ? extractMarketplaceListings
+              : null;
 
-  if (!extractor) {
+  if (!platformGroups.some((g) => extractorFor(g.platform))) {
     for (const group of platformGroups) {
-      log.push(`Skipped "${group.name}" — ${platform} scraping isn't supported yet.`);
+      log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
     }
     return { posts, log, scrapedGroupIds };
   }
@@ -493,6 +570,11 @@ async function scrapeBrowserPlatform(
     });
 
     for (const group of platformGroups) {
+      const extractor = extractorFor(group.platform);
+      if (!extractor) {
+        log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
+        continue;
+      }
       try {
         await page.goto(group.url, { waitUntil: "domcontentloaded", timeout: 30000 });
         await page.waitForTimeout(4000);
@@ -566,11 +648,16 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
   // time doesn't make either look more automated than scraping them one
   // after another already does — it just stops one from idling while the
   // other finishes.
+  // Bucket by *session*, not by source type. Marketplace is part of Facebook
+  // and uses the same login, so it must share Facebook's profile directory —
+  // giving it its own bucket would run two Chromium processes against the same
+  // profile concurrently, which Chromium refuses, breaking both.
   const groupsByPlatform = new Map<string, GroupToScrape[]>();
   for (const group of groups) {
-    const list = groupsByPlatform.get(group.platform) ?? [];
+    const sessionKey = sessionPlatform(group.platform);
+    const list = groupsByPlatform.get(sessionKey) ?? [];
     list.push(group);
-    groupsByPlatform.set(group.platform, list);
+    groupsByPlatform.set(sessionKey, list);
   }
 
   const platformResults = await Promise.all(
