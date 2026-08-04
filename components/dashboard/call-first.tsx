@@ -116,7 +116,10 @@ export function CallFirst({ lead }: { lead: Lead | null }) {
           </div>
 
           <Link
-            href={`/opportunities?highIntent=1`}
+            // Deep-link to this exact lead. Previously this opened the
+            // high-intent *list*, leaving the user to re-find the one they
+            // just read — the whole point of this card is one-tap action.
+            href={`/opportunities?id=${lead.id}`}
             className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-foreground px-3.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
           >
             Open lead
