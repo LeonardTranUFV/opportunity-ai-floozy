@@ -4,6 +4,7 @@ import { PageTitle } from "@/components/page-title"
 import { NotificationsBell } from "@/components/notifications-bell"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { CreditBar } from "@/components/credit-bar"
+import { MobileNav } from "@/components/mobile-nav"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/admin"
 import { PLAN_ALLOWANCES } from "@/lib/credits"
@@ -42,8 +43,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">{children}</main>
+        {/* pb-24 on mobile keeps the last card clear of the fixed bottom bar. */}
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-6 lg:p-8">{children}</main>
       </div>
+      <MobileNav />
     </SidebarProvider>
   )
 }
