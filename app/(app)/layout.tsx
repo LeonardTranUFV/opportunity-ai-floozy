@@ -5,6 +5,8 @@ import { NotificationsBell } from "@/components/notifications-bell"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { CreditBar } from "@/components/credit-bar"
 import { MobileNav } from "@/components/mobile-nav"
+import { TourProvider } from "@/components/tour/tour-provider"
+import { TourOverlay } from "@/components/tour/tour-overlay"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/admin"
 import { PLAN_ALLOWANCES } from "@/lib/credits"
@@ -30,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <SidebarProvider>
+      <TourProvider>
       <AppSidebar userEmail={user?.email} isAdmin={userIsAdmin} />
       <div className="aurora-bg flex-1 w-full flex flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -47,6 +50,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-6 lg:p-8">{children}</main>
       </div>
       <MobileNav />
+      <TourOverlay />
+      </TourProvider>
     </SidebarProvider>
   )
 }

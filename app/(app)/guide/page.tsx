@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { SourceGuideCard } from "@/components/guide/source-guide-card"
 import { WalkthroughVideo } from "@/components/guide/walkthrough-video"
+import { StartTourButton } from "@/components/tour/start-tour-button"
 import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
 import { KeyRound, Compass, Users, ListTodo, Briefcase, Sparkles } from "lucide-react"
 
@@ -64,6 +65,16 @@ export default function GuidePage() {
         <p className="text-muted-foreground">
           A quick guide to connecting your accounts, adding sources, and turning posts into real leads.
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-xl bg-gradient-to-r from-brand/[0.07] to-transparent bg-card p-4 ring-1 ring-foreground/10">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="font-heading text-sm font-medium">Take the guided tour</span>
+          <span className="text-sm text-muted-foreground">
+            Walks you through the app and points at each button as you go — about two minutes.
+          </span>
+        </div>
+        <StartTourButton />
       </div>
 
       <WalkthroughVideo videoUrl={WALKTHROUGH_VIDEO_URL} />

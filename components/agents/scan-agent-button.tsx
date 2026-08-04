@@ -110,6 +110,7 @@ export function ScanAgentButton({ id }: { id: string }) {
           className="relative flex-1 overflow-hidden"
           onClick={handleScan}
           disabled={isPending}
+          data-tour="agent-scan"
         >
           {isPending && (
             <span

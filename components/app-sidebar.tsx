@@ -78,7 +78,10 @@ export function AppSidebar({ userEmail, isAdmin }: { userEmail?: string; isAdmin
                       size="lg"
                       tooltip={label}
                       isActive={isActive}
-                      render={<Link href={href} />}
+                      // data-tour anchors the product tour's spotlight to the
+                      // real nav item, so the walkthrough points at the actual
+                      // button rather than a mock of it.
+                      render={<Link href={href} data-tour={`nav-${href === "/" ? "dashboard" : href.slice(1)}`} />}
                       className={cn(
                         "relative transition-colors",
                         isActive &&
