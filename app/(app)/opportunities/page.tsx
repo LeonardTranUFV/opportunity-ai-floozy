@@ -245,19 +245,38 @@ export default async function OpportunitiesPage({
       {!opportunities || opportunities.length === 0 ? (
         <Card>
           <CardContent className="py-6">
-            <EmptyState
-              icon={Search}
-              title="No opportunities match these filters yet"
-              description="Go to AI Agents and run a scan to find new ones."
-              action={
-                <a
-                  href="/agents"
-                  className="text-sm font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
-                >
-                  Go to AI Agents →
-                </a>
-              }
-            />
+            {/* A search that finds nothing needs different advice than an
+                empty account — telling someone to "run a scan" when they just
+                mistyped a name sends them the wrong way entirely. */}
+            {params.q?.trim() ? (
+              <EmptyState
+                icon={Search}
+                title={`Nothing matches “${params.q.trim()}”`}
+                description="Search looks at the poster's name, the AI summary and the original post. Try a shorter or more general word."
+                action={
+                  <a
+                    href="/opportunities"
+                    className="text-sm font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
+                  >
+                    Clear search →
+                  </a>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Search}
+                title="No opportunities match these filters yet"
+                description="Go to AI Agents and run a scan to find new ones."
+                action={
+                  <a
+                    href="/agents"
+                    className="text-sm font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
+                  >
+                    Go to AI Agents →
+                  </a>
+                }
+              />
+            )}
           </CardContent>
         </Card>
       ) : (
