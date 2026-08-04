@@ -103,6 +103,7 @@ export default async function OpportunitiesPage({
     id?: string
     highIntent?: string
     location?: string
+    q?: string
   }>
 }) {
   const params = await searchParams
@@ -146,6 +147,19 @@ export default async function OpportunitiesPage({
     }
     if (params.platform) query = query.eq("platform", params.platform)
     if (params.location) query = query.eq("location_mentioned", params.location)
+    const term = params.q?.trim()
+    if (term) {
+      // Search the three fields a person would actually recall: who posted it,
+      // the AI's one-line summary, and the original text. Commas and parens are
+      // stripped because PostgREST uses them as syntax inside or(...) and an
+      // unescaped one turns a normal search into a 400.
+      const safe = term.replace(/[,()*]/g, " ").trim()
+      if (safe) {
+        query = query.or(
+          `author_name.ilike.%${safe}%,ai_summary.ilike.%${safe}%,content.ilike.%${safe}%`
+        )
+      }
+    }
     if (params.status) {
       query = query.eq("status", params.status)
     } else {
@@ -223,6 +237,7 @@ export default async function OpportunitiesPage({
             status={params.status || ""}
             platform={params.platform || ""}
             sort={sort}
+            q={params.q || ""}
           />
         </div>
       )}

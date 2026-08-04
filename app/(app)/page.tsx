@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server"
 import { RecentAlertsList } from "@/components/dashboard/recent-alerts-list"
 import { LocationMapSheet } from "@/components/dashboard/location-map-sheet"
 import { CallFirst } from "@/components/dashboard/call-first"
+import { SetupChecklist } from "@/components/dashboard/setup-checklist"
 
 export const dynamic = "force-dynamic"
 
@@ -61,6 +62,22 @@ export default async function Home() {
     .slice(0, 8)
   const maxHeat = heatMap.length > 0 ? heatMap[0][1] : 1
 
+  // Setup progress, derived from real evidence rather than a stored flag —
+  // head-only count queries so this costs almost nothing on every load.
+  const [{ count: agentCount }, { count: postCount }, { count: anySourceCount }] = await Promise.all([
+    supabase.from("agents").select("*", { count: "exact", head: true }),
+    supabase.from("posts").select("*", { count: "exact", head: true }),
+    supabase.from("groups").select("*", { count: "exact", head: true }),
+  ])
+  const setupState = {
+    // A scraped post is the only proof a login actually worked — the session
+    // itself lives on disk and isn't visible from the hosted deployment.
+    hasScrapedPosts: (postCount ?? 0) > 0,
+    hasSources: (anySourceCount ?? 0) > 0,
+    hasAgents: (agentCount ?? 0) > 0,
+    hasOpportunities: (pendingReview ?? 0) + (highIntentCount ?? 0) + (activeConversations ?? 0) > 0,
+  }
+
   // recentOpportunities is already newest-first, so the first urgent one is
   // also the freshest — which is exactly the one worth calling first.
   const callFirstLead =
@@ -74,6 +91,8 @@ export default async function Home() {
         <h2 className="font-heading text-3xl font-bold tracking-tight">Today&apos;s Opportunities</h2>
         <p className="text-muted-foreground">Here is your daily AI digest.</p>
       </div>
+
+      <SetupChecklist state={setupState} />
 
       <CallFirst lead={callFirstLead} />
 

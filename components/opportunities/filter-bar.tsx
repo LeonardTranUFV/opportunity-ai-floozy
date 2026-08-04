@@ -2,7 +2,7 @@
 
 import { useTransition } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { ListFilter, X, ArrowDownWideNarrow, RefreshCw } from "lucide-react"
+import { ListFilter, X, ArrowDownWideNarrow, RefreshCw, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
@@ -49,6 +49,7 @@ export function FilterBar({
   status,
   platform,
   sort,
+  q = "",
 }: {
   agents: { id: string; name: string }[]
   agentId: string
@@ -56,18 +57,27 @@ export function FilterBar({
   status: string
   platform: string
   sort: SortOption
+  q?: string
 }) {
   const router = useRouter()
   const pathname = usePathname()
   const [isRefreshing, startRefresh] = useTransition()
 
-  const navigate = (next: { agent?: string; urgency?: string; status?: string; platform?: string; sort?: SortOption }) => {
+  const navigate = (next: {
+    agent?: string
+    urgency?: string
+    status?: string
+    platform?: string
+    sort?: SortOption
+    q?: string
+  }) => {
     const merged = {
       agent: next.agent ?? agentId,
       urgency: next.urgency ?? urgency,
       status: next.status ?? status,
       platform: next.platform ?? platform,
       sort: next.sort ?? sort,
+      q: next.q ?? q,
     }
     const search = new URLSearchParams()
     if (merged.agent) search.set("agent", merged.agent)
@@ -75,15 +85,39 @@ export function FilterBar({
     if (merged.status) search.set("status", merged.status)
     if (merged.platform) search.set("platform", merged.platform)
     if (merged.sort !== "relevance") search.set("sort", merged.sort)
+    if (merged.q.trim()) search.set("q", merged.q.trim())
     const qs = search.toString()
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
-  const hasActiveFilters = !!(agentId || urgency || status || platform || sort !== "relevance")
+  const hasActiveFilters = !!(agentId || urgency || status || platform || q || sort !== "relevance")
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/50 p-2">
       <ListFilter className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
+
+      {/* Submits on Enter rather than per keystroke: each search is a server
+          round-trip against up to 100 rows, so searching as you type would fire
+          a request per character. */}
+      <form
+        className="relative min-w-[11rem] flex-1 sm:max-w-xs"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const value = new FormData(e.currentTarget).get("q")
+          navigate({ q: typeof value === "string" ? value : "" })
+        }}
+      >
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <input
+          name="q"
+          type="search"
+          defaultValue={q}
+          key={q}
+          placeholder="Search leads…"
+          aria-label="Search opportunities"
+          className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        />
+      </form>
 
       <Select value={agentId} onValueChange={(v) => navigate({ agent: v ?? "" })}>
         <SelectTrigger className="min-w-[9rem]">
@@ -165,7 +199,11 @@ export function FilterBar({
       </Select>
 
       {hasActiveFilters && (
-        <Button variant="ghost" size="sm" onClick={() => navigate({ agent: "", urgency: "", status: "", platform: "", sort: "relevance" })}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate({ agent: "", urgency: "", status: "", platform: "", sort: "relevance", q: "" })}
+        >
           <X className="h-3.5 w-3.5" />
           Clear
         </Button>

@@ -111,8 +111,11 @@ export default function NewAgentPage() {
     (step === TOTAL_STEPS && !canDeploy)
 
   return (
-    <div className="flex h-[80vh] w-full items-center justify-center">
-      <Card className="w-[520px]">
+    // min-h + py rather than a locked 80vh: the later steps are taller than the
+    // first, and on a phone a fixed-height centred box pushed content off-screen
+    // with no way to scroll to it.
+    <div className="flex min-h-[80vh] w-full items-start justify-center py-4 sm:items-center">
+      <Card className="w-full max-w-[520px]">
         <CardHeader>
           <CardTitle>Create AI Agent</CardTitle>
           <CardDescription>
