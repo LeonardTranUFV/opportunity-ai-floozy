@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { createClient } from '@/lib/supabase/server';
 import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
 import { spendCredits, CREDIT_COSTS, InsufficientCreditsError } from '@/lib/credits';
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
@@ -13,6 +14,9 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+
+  const rl = rateLimit(`group-discover:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "searches");
 
     const body = await request.json();
     const { industry, location } = body;

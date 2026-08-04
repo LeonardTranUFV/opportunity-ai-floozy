@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateOutreachDrafts, type AgentProfile, type BusinessProfile, type OutreachDrafts } from "@/lib/ai";
 import { CREDIT_COSTS, hasCredits, spendCredits, InsufficientCreditsError } from "@/lib/credits";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -12,6 +13,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = rateLimit(`reply-gen:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "draft generations");
 
   const { data: opportunity, error: oppError } = await supabase
     .from("opportunities")

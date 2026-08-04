@@ -4,6 +4,7 @@ import { type AgentProfile } from "@/lib/ai";
 import { evaluateAgentPosts } from "@/lib/scan-agent";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 import { InsufficientCreditsError } from "@/lib/credits";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 const ALLOWED_RANGE_DAYS = [1, 3, 7];
 
@@ -20,6 +21,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = rateLimit(`agent-scan:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "scans");
 
   const { data: agent, error: agentError } = await supabase
     .from("agents")

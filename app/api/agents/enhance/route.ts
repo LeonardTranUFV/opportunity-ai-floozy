@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { enhanceAgentProfile, type BusinessProfile } from "@/lib/ai";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -10,6 +11,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = rateLimit(`agent-enhance:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "AI requests");
 
   const body = await request.json().catch(() => ({}));
   const description = typeof body.description === "string" ? body.description.trim() : "";

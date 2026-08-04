@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { generateWebsiteReport, type WebsiteCheck } from "@/lib/ai";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { readJsonBody, httpUrl, validationErrorResponse } from "@/lib/validate";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -11,14 +13,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => ({}));
-  const rawUrl = (body.url || "").trim();
+  // This route makes an outbound fetch AND an AI call per request, so it's the
+  // most expensive thing an authenticated user can loop on.
+  const limit = rateLimit(`website-scan:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
+  if (!limit.allowed) return tooManyRequests(limit, "website scans");
 
-  if (!rawUrl) {
-    return NextResponse.json({ success: false, error: "A URL is required" }, { status: 400 });
+  let targetUrl: string;
+  try {
+    const body = await readJsonBody(request);
+    const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
+    if (!rawUrl) {
+      return NextResponse.json({ success: false, error: "A URL is required" }, { status: 400 });
+    }
+    // Normalise first (people type "example.com"), then validate — httpUrl
+    // rejects loopback/private/link-local hosts, so this can't be pointed at
+    // internal services or cloud metadata endpoints.
+    targetUrl = httpUrl(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`, "Website");
+  } catch (err) {
+    const res = validationErrorResponse(err);
+    if (res) return NextResponse.json({ success: false, error: (await res.json()).error }, { status: 400 });
+    throw err;
   }
-
-  const targetUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
 
   const startTime = Date.now();
   let response: Response;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { recommendGroupsToJoin, type BusinessProfile } from "@/lib/ai";
 import { spendCredits, CREDIT_COSTS, InsufficientCreditsError } from "@/lib/credits";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -11,6 +12,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = rateLimit(`group-recommend:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "suggestion requests");
 
   const body = await request.json().catch(() => ({}));
   const trade = typeof body.trade === "string" ? body.trade.trim() : "";
