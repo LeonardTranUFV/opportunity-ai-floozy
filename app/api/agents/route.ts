@@ -29,12 +29,25 @@ export async function POST(request: Request) {
   }
 }
 
+// RLS already scopes every query below to the caller, and the policies on
+// `agents` are correct. This check is the second lock, not the first: without
+// it, the only thing standing between an anonymous request and every user's
+// agents is one `alter table ... enable row level security` staying switched
+// on. Handlers should fail closed on their own.
 export async function GET() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const { data: agents, error } = await supabase
       .from('agents')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -46,16 +59,31 @@ export async function GET() {
   }
 }
 
+// Deletes an agent *and every opportunity it found*, addressed only by an id
+// taken from the request body. That is a lot of destruction to hang on a single
+// RLS policy, so this checks the session and scopes both deletes to the
+// caller's own rows explicitly.
 export async function DELETE(request: Request) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const { id } = await request.json();
     if (id === undefined) {
       return NextResponse.json({ success: false, error: 'Agent id is required' }, { status: 400 });
     }
 
-    await supabase.from('opportunities').delete().eq('agent_id', id);
-    const { error, count } = await supabase.from('agents').delete({ count: 'exact' }).eq('id', id);
+    await supabase.from('opportunities').delete().eq('agent_id', id).eq('user_id', user.id);
+    const { error, count } = await supabase
+      .from('agents')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (error) throw error;
     if (!count) {

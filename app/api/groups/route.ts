@@ -1,11 +1,24 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-// GET all groups
+// GET the caller's own groups. The auth check is the second lock behind RLS —
+// a handler that returns rows to an anonymous caller and relies entirely on a
+// database policy to make that list empty is one migration away from leaking.
 export async function GET() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
-    const { data, error } = await supabase.from('groups').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('groups')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
     if (error) throw error;
     return NextResponse.json(data);
   } catch (error) {
@@ -58,6 +71,13 @@ export async function POST(request: Request) {
 // PUT to update a group (active toggle or details)
 export async function PUT(request: Request) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { id, active, name, url } = body;
@@ -72,7 +92,11 @@ export async function PUT(request: Request) {
     if (url !== undefined) updates.url = url;
 
     if (Object.keys(updates).length > 0) {
-      const { error } = await supabase.from('groups').update(updates).eq('id', id);
+      const { error } = await supabase
+        .from('groups')
+        .update(updates)
+        .eq('id', id)
+        .eq('user_id', user.id);
       if (error) throw error;
     }
 
@@ -80,6 +104,7 @@ export async function PUT(request: Request) {
       .from('groups')
       .select('*')
       .eq('id', id)
+      .eq('user_id', user.id)
       .single();
     if (fetchError) throw fetchError;
 
@@ -93,6 +118,13 @@ export async function PUT(request: Request) {
 // DELETE a group (posts keep their history; group_id becomes NULL via FK rule)
 export async function DELETE(request: Request) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { id } = body;
@@ -101,7 +133,11 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Group ID is required.' }, { status: 400 });
     }
 
-    const { error, count } = await supabase.from('groups').delete({ count: 'exact' }).eq('id', id);
+    const { error, count } = await supabase
+      .from('groups')
+      .delete({ count: 'exact' })
+      .eq('id', id)
+      .eq('user_id', user.id);
     if (error) throw error;
     if (!count) {
       return NextResponse.json({ error: 'Group not found.' }, { status: 404 });

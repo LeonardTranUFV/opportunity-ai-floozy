@@ -76,13 +76,25 @@ done
 ```
 Any output here is a **critical** finding — stop and fix.
 
-## 3. Every API route is authenticated
+## 3. Every API handler is authenticated
 
 ```bash
-for f in $(find app/api -name route.ts); do
-  grep -q "auth.getUser()\|CRON_SECRET" "$f" || echo "UNPROTECTED: $f"
-done
+node scripts/check-route-auth.mjs
 ```
+Exits non-zero and names any handler without its own session check.
+
+> **This check used to be wrong, and it mattered.** It grepped each route
+> *file* for `auth.getUser()`, so a file with a guarded `POST` and an unguarded
+> `GET` passed — the string was present somewhere in it. Six handlers were
+> hiding in that blind spot, including two `DELETE`s, one of which removes an
+> agent and every opportunity it ever found, addressed only by an id from the
+> request body.
+>
+> Nothing was leaking: the RLS policies scope every table to
+> `auth.uid() = user_id` and they are correct. But that made row-level security
+> the *only* thing between an anonymous request and other people's data, and a
+> single `disable row level security` during a migration would have been enough.
+> A per-file grep cannot see this. A per-handler check can.
 
 ## 4. Tenant isolation still holds
 

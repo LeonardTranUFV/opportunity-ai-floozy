@@ -1,10 +1,22 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Settings can hold connected-account details, so this fails closed rather than
+// trusting RLS alone to keep one user's keys out of another's session.
 export async function GET() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
   try {
-    const { data: rows, error } = await supabase.from('settings').select('key, value');
+    const { data: rows, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .eq('user_id', user.id);
     if (error) throw error;
 
     const settingsMap = (rows ?? []).reduce((acc, row) => {
