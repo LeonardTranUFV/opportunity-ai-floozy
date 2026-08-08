@@ -3,27 +3,37 @@ import type { NextConfig } from "next";
 /**
  * Security response headers.
  *
- * ── Why the CSP is Report-Only ─────────────────────────────────────────────
+ * ── The CSP is now enforced ────────────────────────────────────────────────
  *
- * This app is live and public, and a Content-Security-Policy is the one header
- * that can take a working product offline by being slightly wrong. This one has
- * more moving parts than most:
+ * It shipped as `Report-Only` first, deliberately. This app is live and public,
+ * and a Content-Security-Policy is the one header that can take a working
+ * product offline by being slightly wrong — and this one has more moving parts
+ * than most: the browser talks to Supabase directly, the location sheet
+ * geocodes against nominatim from a *client* component and pulls tiles from
+ * OpenStreetMap, and the walkthrough embeds an iframe whose src is a prop.
  *
- *   - the browser talks to Supabase directly for auth and data
- *   - the location sheet geocodes against nominatim.openstreetmap.org from a
- *     *client* component, and loads map tiles from {s}.tile.openstreetmap.org
- *   - the walkthrough embeds an <iframe> whose src is a prop, so the provider
- *     is not known at build time
+ * Before enforcing, the whole client-side surface was enumerated rather than
+ * assumed:
  *
- * Every one of those is a separate chance to break something real. Report-Only
- * gives the same visibility with none of the risk: violations are reported by
- * the browser, nothing is blocked. Watch the console on the live site for a few
- * days, confirm the policy is clean, then rename the header to
- * `Content-Security-Policy` to start enforcing. That rename is the entire
- * change — the policy below is already the one to enforce.
+ *   - **No client component fetches an absolute URL.** Every `fetch` in a
+ *     `"use client"` file targets a relative `/api/…` path, which `'self'`
+ *     always allows.
+ *   - The only cross-origin traffic the browser makes is **Supabase** (through
+ *     supabase-js) and **nominatim**, both named in `connect-src`, plus **OSM
+ *     tiles** as images, named in `img-src`.
+ *   - **Nothing loads from a CDN.** Leaflet's CSS is imported from
+ *     `node_modules` and bundled, so it and its assets are same-origin; there
+ *     is no `unpkg`/`jsdelivr`/`cdnjs` reference anywhere, and no dynamic
+ *     script injection.
+ *   - No third-party client SDK in the dependency list — nothing from
+ *     analytics, Sentry, Stripe.js or similar that would phone home.
  *
- * Everything else here is enforced immediately, because none of it can break a
- * working page: they only remove abilities the app never uses.
+ * `connect-src` is the directive that actually breaks a working app when
+ * enforced, which is why that first point is the one that mattered.
+ *
+ * If something is ever added that legitimately needs another origin, the
+ * symptom is a blocked request in the console and the fix is one entry here —
+ * not turning the policy off.
  */
 
 const isDev = process.env.NODE_ENV === "development";
@@ -66,11 +76,9 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          // Report-only until the policy is confirmed clean against the live
-          // site. See the note at the top of this file.
-          { key: "Content-Security-Policy-Report-Only", value: csp },
+          { key: "Content-Security-Policy", value: csp },
 
-          // Enforced. None of these can break a page that was already working.
+          // None of these can break a page that was already working.
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

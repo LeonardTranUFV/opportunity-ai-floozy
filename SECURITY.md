@@ -41,6 +41,12 @@ Ground truth: the admin key sees 5 `settings` rows across 2 users; a signed-in u
 
 - **Rate limiting is per-process.** On Vercel each serverless instance keeps its own counters, so a determined attacker hitting N instances gets N× the limit. It's a real brake on runaway cost and casual abuse, **not a hard boundary**. Durable fix = shared store (Postgres table or Upstash Redis); deferred because it needs a migration and migrations here are hand-pasted.
 - **Auth rate limit is per-IP and shared.** 5/5min covers sign-ups *and* sign-ins together. Office/NAT users share that budget, and it counts your own testing. If legitimate users get locked out, raise it — this is a tuning dial, not a fixed truth.
+- **CSP `script-src` allows `'unsafe-inline'`.** Next injects inline bootstrap
+  scripts on every page; locking them down needs a per-request nonce in
+  middleware, which makes every page dynamic. React escapes what it renders and
+  this app renders no user-supplied HTML, so the injection surface is small —
+  and `default-src 'self'` still stops an injected script from loading or
+  exfiltrating off-origin, which is the step that turns an XSS into a breach.
 - **GitHub repo is Public.** No secrets in it, but all source and business logic is visible to competitors. Business decision, still open.
 - **No error monitoring.** Runtime errors in production are invisible unless a user reports them.
 
