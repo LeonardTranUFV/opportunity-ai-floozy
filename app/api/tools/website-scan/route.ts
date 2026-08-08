@@ -15,7 +15,7 @@ export async function POST(request: Request) {
 
   // This route makes an outbound fetch AND an AI call per request, so it's the
   // most expensive thing an authenticated user can loop on.
-  const limit = rateLimit(`website-scan:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
+  const limit = await rateLimit(`website-scan:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
   if (!limit.allowed) return tooManyRequests(limit, "website scans");
 
   let targetUrl: string;

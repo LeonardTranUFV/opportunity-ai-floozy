@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  const rl = rateLimit(`agent-enhance:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
+  const rl = await rateLimit(`agent-enhance:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
   if (!rl.allowed) return tooManyRequests(rl, "AI requests");
 
   const body = await request.json().catch(() => ({}));

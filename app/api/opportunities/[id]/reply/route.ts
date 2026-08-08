@@ -14,7 +14,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  const rl = rateLimit(`reply-gen:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
+  const rl = await rateLimit(`reply-gen:${user.id}`, LIMITS.ai.limit, LIMITS.ai.windowMs);
   if (!rl.allowed) return tooManyRequests(rl, "draft generations");
 
   const { data: opportunity, error: oppError } = await supabase

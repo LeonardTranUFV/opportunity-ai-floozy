@@ -39,7 +39,7 @@ Ground truth: the admin key sees 5 `settings` rows across 2 users; a signed-in u
 
 ## Known limitations — accepted, not hidden
 
-- **Rate limiting is per-process.** On Vercel each serverless instance keeps its own counters, so a determined attacker hitting N instances gets N× the limit. It's a real brake on runaway cost and casual abuse, **not a hard boundary**. Durable fix = shared store (Postgres table or Upstash Redis); deferred because it needs a migration and migrations here are hand-pasted.
+- **Rate limiting is shared-store, once migration 0007 is applied.** Counts live in the `rate_limits` table and the increment is atomic inside `bump_rate_limit()`, so every serverless instance counts against the same total. **Until that migration is pasted it falls back to the old per-process counter** — same behaviour as before, never worse — and logs `[rate-limit] shared store unavailable` on every fallback, naming the migration. It re-probes each minute, so applying the SQL takes effect without a redeploy. Check the Vercel logs for that string to confirm which mode is live.
 - **Auth rate limit is per-IP and shared.** 5/5min covers sign-ups *and* sign-ins together. Office/NAT users share that budget, and it counts your own testing. If legitimate users get locked out, raise it — this is a tuning dial, not a fixed truth.
 - **CSP `script-src` allows `'unsafe-inline'`.** Next injects inline bootstrap
   scripts on every page; locking them down needs a per-request nonce in

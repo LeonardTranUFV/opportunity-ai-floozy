@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  const rl = rateLimit(`agent-scan:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  const rl = await rateLimit(`agent-scan:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
   if (!rl.allowed) return tooManyRequests(rl, "scans");
 
   const { data: agent, error: agentError } = await supabase

@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-  const rl = rateLimit(`group-discover:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  const rl = await rateLimit(`group-discover:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
   if (!rl.allowed) return tooManyRequests(rl, "searches");
 
     const body = await request.json();
