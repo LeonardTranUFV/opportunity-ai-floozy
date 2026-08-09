@@ -30,11 +30,18 @@ export async function POST(request: Request) {
     // than repeating page one.
     const exclude: string[] = Array.isArray(body.exclude) ? body.exclude : [];
 
-    if (!industry || !location) {
+    // "Track" on an AI suggestion sends the suggested group name verbatim.
+    // That phrase already names its own suburb ("Burnaby Community Notice
+    // Board"), so appending the location the way the industry+location form
+    // does would search "Burnaby Community Notice Board Vancouver" and match
+    // nothing. An exact query skips the concatenation.
+    const exactQuery = typeof body.query === 'string' ? body.query.trim() : '';
+
+    if (!exactQuery && (!industry || !location)) {
       return NextResponse.json({ error: 'Both industry and location are required.' }, { status: 400 });
     }
 
-    const searchQuery = `${industry} ${location}`;
+    const searchQuery = exactQuery || `${industry} ${location}`;
     console.log(`📡 Launching Live Facebook Group Search for query: "${searchQuery}"...`);
 
     const authPath = getAuthSessionPath(user.id, 'facebook');
@@ -51,7 +58,7 @@ export async function POST(request: Request) {
     const page = await browser.newPage();
     const searchUrl = `https://www.facebook.com/search/groups/?q=${encodeURIComponent(searchQuery)}`;
 
-    let discoveredResults: { name: string; url: string; platform: string; description: string }[] = [];
+    let discoveredResults: { name: string; url: string; platform: string; description: string; joined: boolean }[] = [];
     let failure: string | null = null;
 
     try {
@@ -84,7 +91,7 @@ export async function POST(request: Request) {
 
       // Robust semantic class-agnostic extractor
       discoveredResults = await page.evaluate((targetLocation) => {
-        const results: { name: string; url: string; platform: string; description: string }[] = [];
+        const results: { name: string; url: string; platform: string; description: string; joined: boolean }[] = [];
         
         // Facebook search result cards typically contain group links
         document.querySelectorAll('a').forEach(a => {
@@ -107,13 +114,23 @@ export async function POST(request: Request) {
                   // Crawl upwards or adjacent to find member counts or group descriptions
                   let description = `Active Facebook group matching interests in ${targetLocation}.`;
                   const parentCard = a.closest('div[role="article"], div.x1y1aw1k, div.x193iq5w');
-                  
+
+                  // Facebook labels each search card with the viewer's own
+                  // relationship to the group — a "Joined" pill when you're a
+                  // member, a "Join group" button when you aren't. That single
+                  // word decides whether we can ever read this group's posts,
+                  // so capture it instead of filtering it out as noise.
+                  let joined = false;
+
                   if (parentCard) {
+                    const cardLabels = Array.from(parentCard.querySelectorAll('span, div, a[role="button"], div[role="button"]'))
+                      .map(el => el.textContent?.trim() || '');
+                    joined = cardLabels.some(txt => /^joined$/i.test(txt) || /^visit group$/i.test(txt));
+
                     // Gather all readable subtext from the card (like member counts or post frequency)
-                    const subtexts = Array.from(parentCard.querySelectorAll('span, div'))
-                      .map(el => el.textContent?.trim() || '')
+                    const subtexts = cardLabels
                       .filter(txt => txt.length > 10 && txt !== text && !txt.includes('Joined') && !txt.includes('Join'));
-                    
+
                     if (subtexts.length > 0) {
                       description = subtexts.slice(0, 2).join(' • ');
                     }
@@ -123,7 +140,8 @@ export async function POST(request: Request) {
                     name: text,
                     url: cleanUrl,
                     platform: 'facebook',
-                    description: description
+                    description: description,
+                    joined
                   });
                 }
               }
@@ -132,7 +150,7 @@ export async function POST(request: Request) {
         });
 
         return results;
-      }, location);
+      }, location || searchQuery);
 
       console.log(`✅ Live search complete. Scraped ${discoveredResults.length} groups matching "${searchQuery}" directly from Facebook.`);
 
@@ -165,8 +183,9 @@ export async function POST(request: Request) {
     // returns early, so a broken search never costs the customer credits.
     try {
       await spendCredits(supabase, user.id, CREDIT_COSTS.discoverGroups, 'discover_groups', {
-        industry,
-        location,
+        industry: industry ?? null,
+        location: location ?? null,
+        query: exactQuery || null,
         returned: discoveredResults.length,
         loadMore: exclude.length > 0,
       });

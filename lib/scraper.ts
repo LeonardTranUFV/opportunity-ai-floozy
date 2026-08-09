@@ -604,6 +604,29 @@ async function scrapeBrowserPlatform(
         }
 
         const groupPosts = [...collected.values()];
+
+        // A group you haven't joined does not error. Facebook and LinkedIn
+        // both serve a perfectly valid page with a join prompt where the feed
+        // would be, so extraction finds nothing and this reported "found 0
+        // post(s)" — which reads exactly like a group where nobody happened to
+        // need a plumber this week. A mis-tracked source could sit there
+        // collecting nothing for weeks with no reason to suspect it. Check for
+        // the join wall before accepting zero as an answer.
+        if (groupPosts.length === 0) {
+          const behindJoinWall = await page
+            .getByRole("button", { name: /^(join group|join community|request to join)$/i })
+            .count()
+            .catch(() => 0);
+          if (behindJoinWall > 0) {
+            log.push(
+              `"${group.name}": you're not a member yet — join it on ${platform}, then it will start collecting.`
+            );
+            // Deliberately left out of scrapedGroupIds: last_scraped_at is the
+            // heartbeat the UI shows as "working", and nothing was read here.
+            continue;
+          }
+        }
+
         log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
         scrapedGroupIds.push(group.id);
 
