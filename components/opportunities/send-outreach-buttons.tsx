@@ -1,10 +1,29 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, Send, Check } from "lucide-react"
 import { formatApiError } from "@/lib/format-error"
+
+/**
+ * Two different actions that only look alike.
+ *
+ * **Comment** posts automatically. A comment is published on a public post, not
+ * sent to anybody's inbox, so it sits outside the anti-spam rules that govern
+ * electronic messages — and it is visible to the author's whole audience, which
+ * keeps it self-policing.
+ *
+ * **DM** is prepared here and sent by the operator, in their own Messenger, in
+ * their own name. A direct message to somebody who never asked to hear from us
+ * is a commercial electronic message under CASL: it needs consent, sender
+ * identification and an unsubscribe route, none of which a stranger's group post
+ * provides. Having the software send it made the software the sender. Having a
+ * person send it means a person looked at the recipient and decided.
+ *
+ * The two-step is deliberate friction. It is the difference between outreach
+ * and a bot.
+ */
 
 interface Props {
   id: string
@@ -21,26 +40,76 @@ export function SendOutreachButtons({ id, platform, hasComment, hasDm, hasPostUr
   const router = useRouter()
   const [pending, setPending] = useState<"comment" | "dm" | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Set once the message is on the clipboard and Messenger is open, so the
+  // button can stop offering "prepare" and start offering "I sent it".
+  const [dmPrepared, setDmPrepared] = useState(false)
 
   if (platform !== "facebook" || (!hasComment && !hasDm)) return null
 
-  const send = (kind: "comment" | "dm") => {
-    const label = kind === "comment" ? "post this as a public comment on the original post" : "send this as a Facebook DM to the author"
-    if (!confirm(`This will actually ${label}, right now, using your connected Facebook account. Continue?`)) return
-
+  const sendComment = () => {
+    if (!confirm("This will post this as a public comment on the original post, right now, using your connected Facebook account. Continue?")) return
     setError(null)
-    setPending(kind)
+    setPending("comment")
     ;(async () => {
       try {
-        const res = await fetch(`/api/opportunities/${id}/${kind}`, { method: "POST" })
+        const res = await fetch(`/api/opportunities/${id}/comment`, { method: "POST" })
         const data = await res.json()
         if (!res.ok || !data.success) {
-          setError(formatApiError(data.error) || `Failed to send ${kind}`)
+          setError(formatApiError(data.error) || "Failed to post comment")
           return
         }
         router.refresh()
       } catch {
-        setError(`Failed to send ${kind}`)
+        setError("Failed to post comment")
+      } finally {
+        setPending(null)
+      }
+    })()
+  }
+
+  /** Copies the message and opens the thread. Sends nothing. */
+  const prepareDm = () => {
+    setError(null)
+    setPending("dm")
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/opportunities/${id}/dm`, { method: "POST" })
+        const data = await res.json()
+        if (!res.ok || !data.success) {
+          setError(formatApiError(data.error) || "Could not prepare the message")
+          return
+        }
+        try {
+          await navigator.clipboard.writeText(data.message)
+        } catch {
+          // Clipboard can be refused; the thread still opens and the text is
+          // on screen, so this is a convenience rather than the mechanism.
+        }
+        window.open(data.openUrl, "_blank", "noopener,noreferrer")
+        setDmPrepared(true)
+      } catch {
+        setError("Could not prepare the message")
+      } finally {
+        setPending(null)
+      }
+    })()
+  }
+
+  const markDmSent = () => {
+    setError(null)
+    setPending("dm")
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/opportunities/${id}/dm`, { method: "PATCH" })
+        const data = await res.json()
+        if (!res.ok || !data.success) {
+          setError(formatApiError(data.error) || "Could not record that")
+          return
+        }
+        setDmPrepared(false)
+        router.refresh()
+      } catch {
+        setError("Could not record that")
       } finally {
         setPending(null)
       }
@@ -55,22 +124,36 @@ export function SendOutreachButtons({ id, platform, hasComment, hasDm, hasPostUr
           size="sm"
           className="flex-1"
           disabled={!hasComment || !hasPostUrl || pending !== null}
-          onClick={() => send("comment")}
+          onClick={sendComment}
         >
           {commentSentAt ? <Check className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
-          {pending === "comment" ? "Posting…" : commentSentAt ? "Comment Sent" : "Send Comment"}
+          {pending === "comment" ? "Posting…" : commentSentAt ? "Comment posted" : "Post comment"}
         </Button>
+
         <Button
           variant="outline"
           size="sm"
           className="flex-1"
           disabled={!hasDm || !hasProfileUrl || pending !== null}
-          onClick={() => send("dm")}
+          onClick={dmPrepared ? markDmSent : prepareDm}
         >
           {dmSentAt ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-          {pending === "dm" ? "Sending…" : dmSentAt ? "DM Sent" : "Send DM"}
+          {pending === "dm"
+            ? "Working…"
+            : dmSentAt
+              ? "DM sent"
+              : dmPrepared
+                ? "I sent it"
+                : "Open DM"}
         </Button>
       </div>
+
+      {dmPrepared && !dmSentAt && (
+        <p className="text-xs text-muted-foreground">
+          Copied and opened in Messenger. Read it, change anything that does not fit, and send it
+          yourself — then mark it here.
+        </p>
+      )}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )

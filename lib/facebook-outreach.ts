@@ -61,6 +61,23 @@ export async function postFacebookComment(postUrl: string, message: string, user
 /**
  * Sends a personalized Messenger DM to a post author via their profile page.
  * Does not require group membership.
+ *
+ * ⚠️ **Deliberately not called. Read this before wiring it back up.**
+ *
+ * The DM route used to call this, which made the software the sender of an
+ * unsolicited commercial message to a stranger. Sent from Canada that engages
+ * CASL: a DM goes to an electronic address, so it needs consent, sender
+ * identification and an unsubscribe route. A stranger's group post supplies
+ * none of the three, and penalties reach CAD $1M for an individual. It also
+ * automates a logged-in session, which Meta's platform terms prohibit.
+ *
+ * DMs are now prepared by the API and sent by a person, from their own
+ * Messenger. Public comments still post automatically — a comment is published
+ * on a post rather than sent to an address, so the anti-spam rules do not
+ * attach to it.
+ *
+ * Kept rather than deleted because a *consented* flow — somebody who asked us
+ * to follow up — would legitimately use it. That flow does not exist yet.
  */
 export async function sendFacebookMessage(profileUrl: string, message: string, userId: string): Promise<OutreachResult> {
   let context;
