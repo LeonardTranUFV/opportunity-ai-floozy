@@ -10,3 +10,12 @@
 export function isHostedDeployment(): boolean {
   return process.env.VERCEL === "1";
 }
+
+/**
+ * What a browser-dependent API route tells the caller when it runs on the
+ * hosted deployment. The pages already hide these buttons; this is the
+ * backstop for anything that reaches the route anyway, so the answer is an
+ * explanation rather than a crash.
+ */
+export const BROWSER_UNAVAILABLE =
+  "This step drives a real Chrome window on the operator's machine, which the hosted site can't do. Run the app locally to use it.";

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { postFacebookComment } from "@/lib/facebook-outreach";
+import { isHostedDeployment, BROWSER_UNAVAILABLE } from "@/lib/deployment";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -11,6 +12,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
+  if (isHostedDeployment()) {
+    return NextResponse.json({ success: false, error: BROWSER_UNAVAILABLE }, { status: 501 });
   }
 
   const { data: opportunity, error: oppError } = await supabase

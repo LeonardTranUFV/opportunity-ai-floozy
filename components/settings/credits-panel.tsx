@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState } from "react"
 import Link from "next/link"
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Gem, ChevronDown, ChevronUp, CreditCard, Radar, PenLine, Sparkles, Wand2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { formatDateTime } from "@/lib/format-date"
 
 export interface CreditTx {
   id: string
@@ -50,8 +51,8 @@ function detailFor(tx: CreditTx): string | null {
       const trade = s("trade")
       const loc = s("location")
       const got = n("returned")
-      const who = [trade, loc].filter(Boolean).join(" · ")
-      return who ? `${who}${got ? ` — ${got} suggestions` : ""}` : null
+      const who = [trade, loc].filter(Boolean).join(" Â· ")
+      return who ? `${who}${got ? ` â€” ${got} suggestions` : ""}` : null
     }
     case "admin_grant":
     case "admin_deduct":
@@ -64,12 +65,7 @@ function detailFor(tx: CreditTx): string | null {
 function formatWhen(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ""
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
+  return formatDateTime(d)
 }
 
 export function CreditsPanel({
@@ -88,7 +84,7 @@ export function CreditsPanel({
   const spends = transactions.filter((t) => t.amount < 0)
   const totalUsed = spends.reduce((sum, t) => sum + Math.abs(t.amount), 0)
 
-  // Credits spent grouped by what they were spent on — the "what did my
+  // Credits spent grouped by what they were spent on â€” the "what did my
   // credits actually go to" question the raw ledger doesn't answer at a glance.
   const byAction = new Map<string, { credits: number; count: number }>()
   for (const t of spends) {
@@ -107,7 +103,7 @@ export function CreditsPanel({
       {/* Summary */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-lg border border-border p-3">
-          <div className="font-heading text-2xl font-semibold tabular-nums">{balance ?? "—"}</div>
+          <div className="font-heading text-2xl font-semibold tabular-nums">{balance ?? "â€”"}</div>
           <div className="mt-0.5 text-xs text-muted-foreground">Credits remaining</div>
         </div>
         <div className="rounded-lg border border-border p-3">
@@ -115,14 +111,14 @@ export function CreditsPanel({
           <div className="mt-0.5 text-xs text-muted-foreground">Credits used</div>
         </div>
         <div className="rounded-lg border border-border p-3">
-          <div className="font-heading text-2xl font-semibold capitalize">{plan ?? "—"}</div>
+          <div className="font-heading text-2xl font-semibold capitalize">{plan ?? "â€”"}</div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {allowance ? `${allowance}/mo allowance` : "Current plan"}
           </div>
         </div>
         <div className="rounded-lg border border-border p-3">
           <div className="font-heading text-2xl font-semibold">
-            {lastPayment ? formatWhen(lastPayment.created_at) : "—"}
+            {lastPayment ? formatWhen(lastPayment.created_at) : "â€”"}
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {lastPayment ? "Last payment" : "No payments yet"}
@@ -132,7 +128,7 @@ export function CreditsPanel({
 
       {!lastPayment && (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          Billing isn&apos;t connected yet — credits are added manually for now. Plans and top-ups live on the{" "}
+          Billing isn&apos;t connected yet â€” credits are added manually for now. Plans and top-ups live on the{" "}
           <Link href="/pricing" className="text-brand underline decoration-dotted underline-offset-4">
             pricing page
           </Link>
@@ -155,7 +151,7 @@ export function CreditsPanel({
                   <div className="h-full rounded-full bg-brand" style={{ width: `${Math.max(pct, 3)}%` }} />
                 </div>
                 <span className="w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-                  {stat.credits} cr · {stat.count}×
+                  {stat.credits} cr Â· {stat.count}Ã—
                 </span>
               </div>
             )
@@ -187,7 +183,7 @@ export function CreditsPanel({
                         <span className="truncate font-medium">{label}</span>
                         <span className="truncate text-xs text-muted-foreground">
                           {formatWhen(tx.created_at)}
-                          {detail ? ` · ${detail}` : ""}
+                          {detail ? ` Â· ${detail}` : ""}
                         </span>
                       </div>
                     </div>

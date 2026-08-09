@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { chromium } from 'playwright';
 import { createClient } from '@/lib/supabase/server';
+import { getChromium } from '@/lib/browser';
+import { isHostedDeployment, BROWSER_UNAVAILABLE } from '@/lib/deployment';
 import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
 
 export async function POST() {
@@ -12,11 +13,16 @@ export async function POST() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
+  if (isHostedDeployment()) {
+    return NextResponse.json({ error: BROWSER_UNAVAILABLE }, { status: 501 });
+  }
+
   const authPath = getAuthSessionPath(user.id, 'nextdoor');
 
   console.log(`🔑 Launching headed Playwright browser for Nextdoor login at session folder: ${authPath}`);
 
   try {
+    const chromium = await getChromium();
     const browser = await chromium.launchPersistentContext(authPath, {
       headless: false,
       channel: 'chrome',

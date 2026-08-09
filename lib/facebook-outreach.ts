@@ -1,4 +1,5 @@
-import { chromium, type Page } from "playwright";
+import type { Page } from "playwright";
+import { getChromium } from "@/lib/browser";
 import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 
 async function typeLikeHuman(page: Page, text: string) {
@@ -19,6 +20,7 @@ export interface OutreachResult {
 export async function postFacebookComment(postUrl: string, message: string, userId: string): Promise<OutreachResult> {
   let context;
   try {
+    const chromium = await getChromium();
     context = await chromium.launchPersistentContext(getAuthSessionPath(userId, "facebook"), {
       headless: true,
       channel: "chrome",
@@ -82,6 +84,7 @@ export async function postFacebookComment(postUrl: string, message: string, user
 export async function sendFacebookMessage(profileUrl: string, message: string, userId: string): Promise<OutreachResult> {
   let context;
   try {
+    const chromium = await getChromium();
     context = await chromium.launchPersistentContext(getAuthSessionPath(userId, "facebook"), {
       headless: true,
       channel: "chrome",

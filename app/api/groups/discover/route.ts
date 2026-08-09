@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { chromium } from 'playwright';
 import { createClient } from '@/lib/supabase/server';
+import { getChromium } from '@/lib/browser';
+import { isHostedDeployment, BROWSER_UNAVAILABLE } from '@/lib/deployment';
 import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
 import { spendCredits, CREDIT_COSTS, InsufficientCreditsError } from '@/lib/credits';
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
@@ -14,6 +15,10 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+
+  if (isHostedDeployment()) {
+    return NextResponse.json({ error: BROWSER_UNAVAILABLE }, { status: 501 });
+  }
 
   const rl = await rateLimit(`group-discover:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
   if (!rl.allowed) return tooManyRequests(rl, "searches");
@@ -35,6 +40,7 @@ export async function POST(request: Request) {
     const authPath = getAuthSessionPath(user.id, 'facebook');
 
     // Launch headless Playwright context utilizing saved session cookies
+    const chromium = await getChromium();
     const browser = await chromium.launchPersistentContext(authPath, {
       headless: true,
       channel: 'chrome',

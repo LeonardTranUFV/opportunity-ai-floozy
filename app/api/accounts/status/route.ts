@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { chromium } from "playwright";
 import { createClient } from "@/lib/supabase/server";
+import { getChromium } from "@/lib/browser";
+import { isHostedDeployment, BROWSER_UNAVAILABLE } from "@/lib/deployment";
 import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 
 interface CheckResult {
@@ -9,6 +10,7 @@ interface CheckResult {
 }
 
 async function checkFacebook(authPath: string): Promise<CheckResult> {
+  const chromium = await getChromium();
   const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
@@ -48,6 +50,7 @@ async function checkFacebook(authPath: string): Promise<CheckResult> {
 }
 
 async function checkNextdoor(authPath: string): Promise<CheckResult> {
+  const chromium = await getChromium();
   const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
@@ -76,6 +79,7 @@ async function checkNextdoor(authPath: string): Promise<CheckResult> {
 }
 
 async function checkTwitter(authPath: string): Promise<CheckResult> {
+  const chromium = await getChromium();
   const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
@@ -100,6 +104,7 @@ async function checkTwitter(authPath: string): Promise<CheckResult> {
 }
 
 async function checkLinkedIn(authPath: string): Promise<CheckResult> {
+  const chromium = await getChromium();
   const context = await chromium.launchPersistentContext(authPath, { headless: true, channel: "chrome" });
   try {
     const page = await context.newPage();
@@ -134,6 +139,10 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
+  }
+
+  if (isHostedDeployment()) {
+    return NextResponse.json({ success: false, error: BROWSER_UNAVAILABLE }, { status: 501 });
   }
 
   // Each platform now gets its own persistent-context profile directory

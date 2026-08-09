@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import { Activity, ExternalLink } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { isExactPostUrl } from "@/lib/post-url"
+import { formatDateTime } from "@/lib/format-date"
 
 const urgencyLabel: Record<string, string> = {
   asap: "ASAP",
@@ -19,14 +20,11 @@ const urgencyVariant: Record<string, "destructive" | "warning" | "brand" | "seco
   low: "secondary",
 }
 
-function formatAlertTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
-}
+// Was toLocaleString(undefined, …) — formatted with whatever locale and time
+// zone the runtime happened to have, which is Node's on the server and the
+// browser's on the client. That is the hydration mismatch on this very row, and
+// the reason a UTC server rendered Vancouver timestamps hours out of date.
+const formatAlertTime = formatDateTime
 
 interface Lead {
   id: string

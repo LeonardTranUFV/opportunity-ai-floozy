@@ -10,6 +10,7 @@ import { ApproveRejectButtons } from "@/components/opportunities/approve-reject-
 import { SendOutreachButtons } from "@/components/opportunities/send-outreach-buttons"
 import { DeleteOpportunityButton } from "@/components/opportunities/delete-opportunity-button"
 import { FilterBar, type SortOption } from "@/components/opportunities/filter-bar"
+import { formatDate, formatDateTimeFull } from "@/lib/format-date"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { isExactPostUrl } from "@/lib/post-url"
 
@@ -79,15 +80,12 @@ function formatPostAge(postedAt: string | null, scrapedAt: string | null): { lab
   else if (minutes < 60) label = `${minutes}m ago`;
   else if (hours < 24) label = `${hours}h ago`;
   else if (days < 7) label = `${days}d ago`;
-  else label = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  // Pinned locale and time zone. `undefined` means "whatever this runtime has",
+  // which differs between the Node server and the browser — the mismatch that
+  // broke hydration on the dashboard. See lib/format-date.ts.
+  else label = formatDate(date);
 
-  const exact = date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const exact = formatDateTimeFull(date);
   return { label: (postedAt ? "" : "~") + label, exact };
 }
 

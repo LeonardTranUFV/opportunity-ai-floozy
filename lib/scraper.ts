@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { getChromium } from "@/lib/browser";
 import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -536,6 +536,7 @@ async function scrapeBrowserPlatform(
 
   let context;
   try {
+    const chromium = await getChromium();
     context = await chromium.launchPersistentContext(getAuthSessionPath(userId, platform), {
       headless: true,
       channel: "chrome",

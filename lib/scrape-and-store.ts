@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { scrapeActiveGroups } from "@/lib/scraper";
+import { isHostedDeployment } from "@/lib/deployment";
 
 export interface ScrapeAndStoreResult {
   scraped: number;
@@ -24,6 +25,18 @@ export async function scrapeAndStorePosts(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string
 ): Promise<ScrapeAndStoreResult> {
+  // Scraping needs a real Chrome profile on the operator's disk, which the
+  // hosted deployment doesn't have. Say so plainly and return — Scan's caller
+  // treats this as a skipped step and still evaluates the posts already in
+  // Supabase, which is the whole point of keeping Scan ungated.
+  if (isHostedDeployment()) {
+    return {
+      scraped: 0,
+      inserted: 0,
+      log: ["Scraping runs on the operator's machine, so this scan evaluated the posts already collected."],
+    };
+  }
+
   const { data: activeGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, platform, name, url, last_scraped_at")

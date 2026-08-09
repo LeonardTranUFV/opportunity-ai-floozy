@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+﻿import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { CheckCircle2, XCircle, Gem, Radar } from "lucide-react"
@@ -9,13 +9,14 @@ import { GhlToggle } from "@/components/settings/ghl-toggle"
 import { CreditsPanel, type CreditTx } from "@/components/settings/credits-panel"
 import { PLAN_ALLOWANCES } from "@/lib/credits"
 import { platformMeta } from "@/lib/platform-meta"
+import { formatDate } from "@/lib/format-date"
 
 export const dynamic = "force-dynamic"
 
 function maskKey(key: string | undefined): string {
   if (!key) return "Not configured"
-  if (key.length <= 8) return "••••••••"
-  return `${key.slice(0, 4)}••••••••${key.slice(-4)}`
+  if (key.length <= 8) return "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+  return `${key.slice(0, 4)}â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢${key.slice(-4)}`
 }
 
 function formatWhen(iso: string | null): string {
@@ -30,7 +31,7 @@ function formatWhen(iso: string | null): string {
   if (minutes < 60) return `${minutes}m ago`
   if (hours < 24) return `${hours}h ago`
   if (days < 7) return `${days}d ago`
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return formatDate(date)
 }
 
 export default async function SettingsPage() {
@@ -99,7 +100,7 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>Business Profile</CardTitle>
           <CardDescription>
-            Optional, but recommended — used to personalize AI-generated replies so they sound like you.
+            Optional, but recommended â€” used to personalize AI-generated replies so they sound like you.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -131,7 +132,7 @@ export default async function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Integrations</CardTitle>
-          <CardDescription>API keys are read from your .env file — never edited here.</CardDescription>
+          <CardDescription>API keys are read from your .env file â€” never edited here.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           {integrations.map((integration) => (
@@ -206,7 +207,7 @@ export default async function SettingsPage() {
                       <div className="flex flex-col min-w-0">
                         <span className="truncate font-medium">{g.name}</span>
                         <span className="text-xs text-muted-foreground">
-                          {label} · {g.post_count} posts collected
+                          {label} Â· {g.post_count} posts collected
                         </span>
                       </div>
                     </div>
@@ -226,7 +227,7 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>AI Agents</CardTitle>
           <CardDescription>
-            Each agent has its own goal, location, and keywords — manage them from the{" "}
+            Each agent has its own goal, location, and keywords â€” manage them from the{" "}
             <a href="/agents" className="text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80">
               AI Agents
             </a>{" "}
