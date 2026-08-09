@@ -13,6 +13,7 @@ import { FilterBar, type SortOption } from "@/components/opportunities/filter-ba
 import { formatDate, formatDateTimeFull } from "@/lib/format-date"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { isExactPostUrl } from "@/lib/post-url"
+import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
 
 export const dynamic = "force-dynamic"
 
@@ -118,6 +119,7 @@ export default async function OpportunitiesPage({
     .eq("key", "ghl_dispatch_enabled")
     .maybeSingle()
   const ghlEnabled = ghlSetting?.value === "true"
+  const privacyMode = await isPrivacyMode(supabase)
 
   let query = supabase
     .from("opportunities")
@@ -308,7 +310,7 @@ export default async function OpportunitiesPage({
                         >
                           <source.Icon className="h-3.5 w-3.5" />
                         </div>
-                        <span className="font-medium">{opp.author_name}</span>
+                        <span className="font-medium">{maskName(opp.author_name, privacyMode)}</span>
                         <Badge variant="outline" className="text-[0.7rem] font-normal text-muted-foreground">
                           {source.label}
                         </Badge>
@@ -337,7 +339,7 @@ export default async function OpportunitiesPage({
                       <Badge variant={URGENCY_VARIANT[opp.urgency] ?? "secondary"} className="capitalize">
                         {opp.urgency}
                       </Badge>
-                      <DeleteOpportunityButton id={opp.id} name={opp.author_name} />
+                      <DeleteOpportunityButton id={opp.id} name={maskName(opp.author_name, privacyMode)} />
                     </div>
                   </div>
 

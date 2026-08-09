@@ -8,6 +8,7 @@ import { RecentAlertsList } from "@/components/dashboard/recent-alerts-list"
 import { LocationMapSheet } from "@/components/dashboard/location-map-sheet"
 import { CallFirst } from "@/components/dashboard/call-first"
 import { SetupChecklist } from "@/components/dashboard/setup-checklist"
+import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
 
 export const dynamic = "force-dynamic"
 
@@ -78,11 +79,19 @@ export default async function Home() {
     hasOpportunities: (pendingReview ?? 0) + (highIntentCount ?? 0) + (activeConversations ?? 0) > 0,
   }
 
-  // recentOpportunities is already newest-first, so the first urgent one is
+  // Masked once, here, so every card downstream inherits it. Masking inside
+  // each card instead would mean one of them eventually gets missed.
+  const privacyMode = await isPrivacyMode(supabase)
+  const recentAlerts = (recentOpportunities ?? []).map((o) => ({
+    ...o,
+    author_name: maskName(o.author_name, privacyMode),
+  }))
+
+  // recentAlerts is already newest-first, so the first urgent one is
   // also the freshest — which is exactly the one worth calling first.
   const callFirstLead =
-    (recentOpportunities ?? []).find((o) => o.urgency === "asap") ??
-    (recentOpportunities ?? []).find((o) => o.urgency === "high") ??
+    recentAlerts.find((o) => o.urgency === "asap") ??
+    recentAlerts.find((o) => o.urgency === "high") ??
     null
 
   return (
@@ -145,7 +154,7 @@ export default async function Home() {
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
                 <span className="font-heading text-2xl font-semibold tracking-tight">{communitiesMonitored ?? 0}</span>
-                <span className="text-xs text-muted-foreground">Active groups being scraped</span>
+                <span className="text-xs text-muted-foreground">Active sources being monitored</span>
               </div>
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
                 <Activity className="h-5 w-5" />
@@ -159,17 +168,17 @@ export default async function Home() {
         <Card className="col-span-4">
           <CardHeader>
             <CardTitle>Recent Alerts</CardTitle>
-            <CardDescription>Latest leads found by your scraping engine.</CardDescription>
+            <CardDescription>Latest leads your agents found.</CardDescription>
           </CardHeader>
           <CardContent>
             {!recentOpportunities || recentOpportunities.length === 0 ? (
               <EmptyState
                 icon={Activity}
                 title="No leads yet"
-                description="Run a scrape to populate this feed."
+                description="Check your sources for new posts to populate this feed."
               />
             ) : (
-              <RecentAlertsList leads={recentOpportunities} />
+              <RecentAlertsList leads={recentAlerts} />
             )}
           </CardContent>
         </Card>
@@ -177,7 +186,7 @@ export default async function Home() {
         <Card className="col-span-3">
           <CardHeader>
             <CardTitle>Communities You&apos;re Monitoring</CardTitle>
-            <CardDescription>Groups actively being scraped for opportunities.</CardDescription>
+            <CardDescription>Sources actively being monitored for opportunities.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-1">

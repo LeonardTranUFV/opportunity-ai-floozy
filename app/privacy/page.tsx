@@ -54,7 +54,7 @@ export default function PrivacyPage() {
               for that platform.
             </li>
             <li>
-              <strong className="text-foreground">Scraped public post content</strong> — text, author
+              <strong className="text-foreground">Collected public post content</strong> — text, author
               name, and public profile links from posts in the community groups you choose to monitor,
               collected only from content that platform already shows to your own logged-in account —
               never anything behind a wall your account cannot already see.
@@ -85,7 +85,7 @@ export default function PrivacyPage() {
           <h2 className="mb-2 text-lg font-semibold text-foreground">4. Third Parties We Share Data With</h2>
           <p className="mb-2">We use the following third-party services to operate the Service. Each processes data on our behalf, under their own terms:</p>
           <ul className="ml-5 list-disc space-y-1">
-            <li><strong className="text-foreground">Google Gemini API</strong> — evaluates scraped post text and generates outreach drafts.</li>
+            <li><strong className="text-foreground">Google Gemini API</strong> — evaluates collected post text and generates outreach drafts.</li>
             <li><strong className="text-foreground">Supabase</strong> — hosts our database and handles authentication.</li>
             <li><strong className="text-foreground">Vercel</strong> — hosts the application.</li>
             <li><strong className="text-foreground">Stripe</strong> — processes subscription payments.</li>
@@ -97,7 +97,7 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="mb-2 text-lg font-semibold text-foreground">5. Data Retention</h2>
           <p>
-            We retain your account and business data for as long as your account is active. Scraped post
+            We retain your account and business data for as long as your account is active. Collected post
             data and opportunities are retained until you delete them or they are removed by an automated
             cleanup you configure. You can request deletion of your account and associated data at any
             time.

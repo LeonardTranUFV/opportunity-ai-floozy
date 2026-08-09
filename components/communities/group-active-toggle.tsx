@@ -41,7 +41,7 @@ export function GroupActiveToggle({ id, active }: { id: string; active: boolean 
         }
       />
       <TooltipContent>
-        {active ? "Pause monitoring — keeps the group, stops scraping it" : "Resume monitoring"}
+        {active ? "Pause monitoring — keeps the source, stops checking it" : "Resume monitoring"}
       </TooltipContent>
     </Tooltip>
   )

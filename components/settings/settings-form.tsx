@@ -68,7 +68,7 @@ export function SettingsForm({
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          This is the default goal used by the legacy scraping pipeline. Individual AI Agents
+          This is the default goal used by the legacy monitoring pipeline. Individual AI Agents
           each have their own goal set when created.
         </p>
       </div>

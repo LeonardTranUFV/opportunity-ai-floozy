@@ -8,7 +8,7 @@ import { AddSourceForm } from "@/components/communities/add-source-form"
 import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
 import { GroupName } from "@/components/communities/group-name"
 import { DeleteGroupButton } from "@/components/communities/delete-group-button"
-import { ScrapeNowButton } from "@/components/communities/scrape-now-button"
+import { CheckSourcesButton } from "@/components/communities/check-sources-button"
 import { isHostedDeployment } from "@/lib/deployment"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 
@@ -89,14 +89,14 @@ export default async function CommunitiesPage() {
         <CardHeader>
           <CardTitle>Monitored Sources</CardTitle>
           <CardDescription>
-            {groups.length} sources being tracked. Scanning an agent now scrapes these automatically first —
-            you only need this button if you want to pull fresh posts without running a scan.
+            {groups.length} sources being tracked. Finding opportunities checks these automatically first —
+            you only need this button if you want fresh posts without running a full scan.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <ScrapeNowButton
+          <CheckSourcesButton
             disabledReason={
-              hosted ? "Scraping requires the operator's local machine — not available on this hosted preview." : undefined
+              hosted ? "Checking sources needs the operator's local machine — not available on this hosted preview." : undefined
             }
           />
           {groups.length === 0 ? (

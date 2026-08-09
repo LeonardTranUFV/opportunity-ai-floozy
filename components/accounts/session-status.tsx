@@ -144,7 +144,7 @@ export function SessionStatus() {
           />
           {(!status.facebook || !status.linkedin || !status.nextdoor || !status.twitter) && (
             <p className="text-xs text-muted-foreground">
-              Not logged in means group discovery and scraping won&apos;t find anything for that
+              Not logged in means group discovery and monitoring won&apos;t find anything for that
               platform. Use Connect below and make sure to actually finish logging in before closing
               the popup. &quot;Check failed&quot; is different — the check itself broke (usually a
               leftover window locking the profile), it says nothing about whether you&apos;re

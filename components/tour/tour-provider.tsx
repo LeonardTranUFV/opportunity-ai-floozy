@@ -48,8 +48,8 @@ export const TOUR_STEPS: TourStep[] = [
   {
     target: "agent-scan",
     route: "/agents",
-    title: "4 — Run a scan",
-    body: "Scan reads everything collected from your sources and scores it. Anything that looks like a real customer becomes a lead, with a reply already drafted for you. This is the button that does the actual work.",
+    title: "4 — Find opportunities",
+    body: "Find Opportunities reads everything collected from your sources and scores it. Anything that looks like a real customer becomes a lead, with a reply already drafted for you. This is the button that does the actual work.",
   },
   {
     target: "nav-opportunities",

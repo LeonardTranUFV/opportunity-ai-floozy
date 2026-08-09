@@ -53,10 +53,10 @@ export function SetupChecklist({ state }: { state: SetupState }) {
     {
       done: state.hasOpportunities,
       icon: Sparkles,
-      title: "Run your first scan",
-      body: "Scan turns collected posts into scored leads with a reply already drafted.",
+      title: "Find your first opportunities",
+      body: "Turns collected posts into scored leads with a reply already drafted.",
       href: "/agents",
-      cta: "Run a scan",
+      cta: "Find opportunities",
       tone: "text-rose-600 dark:text-rose-400",
       bg: "bg-rose-500/10",
     },

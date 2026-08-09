@@ -138,7 +138,7 @@ export default function GuidePage() {
             "Close that popup window once you're logged in (don't leave it open, or it'll block future checks/logins).",
             "Go to Communities → Find groups to monitor, enter your trade and area, and Track the ones you want. Not sure what to search for? Open the AI suggestions. You can also paste a group URL under Add a Source.",
             "Join the groups you want to reply in — tracking collects the leads, membership is what lets you answer them.",
-            "Run Scan on an AI Agent to pull fresh posts and score them.",
+            "Hit Find Opportunities on an AI Agent — it collects the newest posts and scores them for you.",
           ]}
           caveat="Reading and replying are different things. A public group collects posts the moment you track it, no membership needed — but Facebook only lets members comment. The app will still find the lead and write your reply; you just can't send it until you've joined. Private groups collect nothing until your join request is approved."
           useNowHref="/accounts"
@@ -203,7 +203,7 @@ export default function GuidePage() {
             "Go to Communities → Add a Source → Reddit and type what you're looking for, e.g. \"need a roofer Vancouver\" to search all of Reddit.",
             "Or click \"Or watch a specific subreddit\" and enter just the name, e.g. \"roofing\", to follow one subreddit's new posts.",
           ]}
-          caveat="Backend wiring for the Reddit API is still in progress — sources can be added now, but scraping won't return real posts until that's finished."
+          caveat="Backend wiring for the Reddit API is still in progress — sources can be added now, but monitoring won't return real posts until that's finished."
           useNowHref="/communities"
         />
 
@@ -213,7 +213,7 @@ export default function GuidePage() {
           accentColor="border-t-purple-500"
           tag="Tool"
           title="Screenshot-to-Lead"
-          description="Paste a screenshot of a post from anywhere — even a platform or area you can't scrape directly — and let AI extract the lead."
+          description="Paste a screenshot of a post from anywhere — even a platform or area the app can't reach directly — and let AI extract the lead."
           steps={[]}
           useNowHref="/opportunities"
           comingSoon

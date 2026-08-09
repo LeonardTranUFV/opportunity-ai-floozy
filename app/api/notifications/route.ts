@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isPrivacyMode, maskName } from "@/lib/privacy-mode";
 
 export async function GET() {
   const supabase = await createClient();
@@ -21,9 +22,19 @@ export async function GET() {
 
     if (error) throw error;
 
+    // Masked server-side rather than in the bell component: while privacy mode
+    // is on the real name must not reach the browser at all, or it surfaces in
+    // devtools and in any recording that happens to show the network tab.
+    const privacyMode = await isPrivacyMode(supabase);
+
     const flattened = (notifications ?? []).map((n) => {
       const agent = Array.isArray(n.agents) ? n.agents[0] : n.agents;
-      return { ...n, agent_name: agent?.name ?? "Unknown agent", agents: undefined };
+      return {
+        ...n,
+        author_name: maskName(n.author_name, privacyMode),
+        agent_name: agent?.name ?? "Unknown agent",
+        agents: undefined,
+      };
     });
 
     return NextResponse.json({ success: true, notifications: flattened, count: flattened.length });

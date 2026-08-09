@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Briefcase } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
+import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
 
 export const dynamic = "force-dynamic"
 
@@ -23,6 +24,8 @@ export default async function CrmPage() {
     .from("opportunities")
     .select("id, status, intent_score, urgency, ai_summary, content, author_name, estimated_value, agents(name)")
     .order("intent_score", { ascending: false })
+
+  const privacyMode = await isPrivacyMode(supabase)
 
   const byStatus = new Map<string, typeof opportunities>()
   for (const col of COLUMNS) byStatus.set(col.key, [])
@@ -84,7 +87,7 @@ export default async function CrmPage() {
                       >
                         <CardContent className="flex flex-col gap-2">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-sm font-medium">{opp.author_name}</span>
+                            <span className="truncate text-sm font-medium">{maskName(opp.author_name, privacyMode)}</span>
                             <span className="shrink-0 rounded-full bg-brand/10 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-brand">
                               {opp.intent_score ?? "—"}
                             </span>

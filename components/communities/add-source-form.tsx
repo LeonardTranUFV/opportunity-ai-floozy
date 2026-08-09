@@ -115,7 +115,7 @@ export function AddSourceForm() {
     const result = await addGroup(platform, name.trim(), url.trim())
     setIsSubmitting(false)
     if (result.ok) {
-      setSuccess(`Added "${name.trim()}" — it'll be scraped on the next run.`)
+      setSuccess(`Added "${name.trim()}" — it'll be checked on the next run.`)
       setUrl("")
       setName("")
       router.refresh()
@@ -130,7 +130,7 @@ export function AddSourceForm() {
     const result = await addGroup("nextdoor", "My Neighborhood", "https://nextdoor.com/news_feed/")
     setIsSubmitting(false)
     if (result.ok) {
-      setSuccess(`Added "My Neighborhood" — it'll be scraped on the next run.`)
+      setSuccess(`Added "My Neighborhood" — it'll be checked on the next run.`)
       router.refresh()
     } else {
       setError(result.error)
@@ -158,7 +158,7 @@ export function AddSourceForm() {
     const result = await addGroup("marketplace", `${term} · ${city}`, searchUrl)
     setIsSubmitting(false)
     if (result.ok) {
-      setSuccess(`Added "${term}" in ${city} — it'll be scraped on the next run.`)
+      setSuccess(`Added "${term}" in ${city} — it'll be checked on the next run.`)
       setKeyword("")
       router.refresh()
     } else {
@@ -179,7 +179,7 @@ export function AddSourceForm() {
     const result = await addGroup("twitter", keyword.trim(), searchUrl)
     setIsSubmitting(false)
     if (result.ok) {
-      setSuccess(`Added "${keyword.trim()}" — it'll be scraped on the next run.`)
+      setSuccess(`Added "${keyword.trim()}" — it'll be checked on the next run.`)
       setKeyword("")
       router.refresh()
     } else {
@@ -199,7 +199,7 @@ export function AddSourceForm() {
     const result = await addGroup("reddit", redditQuery.trim(), searchUrl)
     setIsSubmitting(false)
     if (result.ok) {
-      setSuccess(`Added "${redditQuery.trim()}" — it'll be scraped on the next run.`)
+      setSuccess(`Added "${redditQuery.trim()}" — it'll be checked on the next run.`)
       setRedditQuery("")
       router.refresh()
     } else {
@@ -220,7 +220,7 @@ export function AddSourceForm() {
     const result = await addGroup("reddit", `r/${clean}`, subUrl)
     setIsSubmitting(false)
     if (result.ok) {
-      setSuccess(`Added "r/${clean}" — it'll be scraped on the next run.`)
+      setSuccess(`Added "r/${clean}" — it'll be checked on the next run.`)
       setSubreddit("")
       router.refresh()
     } else {
@@ -461,7 +461,7 @@ export function AddSourceForm() {
           )}
           <p className="text-xs text-muted-foreground">
             Reddit access is still being wired up on the backend — adding a source here works, but
-            scraping it won&apos;t return posts yet.
+            monitoring it won&apos;t return posts yet.
           </p>
         </div>
       )}

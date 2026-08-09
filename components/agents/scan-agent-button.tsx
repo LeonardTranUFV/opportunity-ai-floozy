@@ -63,9 +63,9 @@ export function ScanAgentButton({ id }: { id: string }) {
           body: JSON.stringify({ rangeDays }),
         })
         const data = await res.json()
-        const scrapedNote = data.scraped > 0 ? ` (+${data.scraped} freshly scraped)` : ""
+        const scrapedNote = data.scraped > 0 ? ` (+${data.scraped} new posts collected)` : ""
         if (!res.ok || !data.success) {
-          setResult((formatApiError(data.error) || "Scan failed") + scrapedNote)
+          setResult((formatApiError(data.error) || "Couldn't finish — try again.") + scrapedNote)
           finishProgress()
           return
         }
@@ -120,7 +120,7 @@ export function ScanAgentButton({ id }: { id: string }) {
           )}
           <span className="relative flex items-center gap-1.5">
             <Sparkles className={`h-3.5 w-3.5 ${isPending ? "animate-pulse" : ""}`} />
-            {isPending ? "Scraping & scanning… (can take a few minutes)" : "Scan for Opportunities"}
+            {isPending ? "Finding opportunities… (can take a few minutes)" : "Find Opportunities"}
           </span>
         </Button>
       </div>

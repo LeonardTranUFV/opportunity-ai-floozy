@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { SettingsForm } from "@/components/settings/settings-form"
 import { BusinessProfileForm } from "@/components/settings/business-profile-form"
 import { GhlToggle } from "@/components/settings/ghl-toggle"
+import { PrivacyModeToggle } from "@/components/settings/privacy-mode-toggle"
 import { CreditsPanel, type CreditTx } from "@/components/settings/credits-panel"
 import { PLAN_ALLOWANCES } from "@/lib/credits"
 import { platformMeta } from "@/lib/platform-meta"
@@ -45,6 +46,7 @@ export default async function SettingsPage() {
   ]
 
   const ghlDispatchEnabled = settingsMap.ghl_dispatch_enabled === "true"
+  const privacyModeEnabled = settingsMap.privacy_mode === "on"
 
   const {
     data: { user },
@@ -154,6 +156,7 @@ export default async function SettingsPage() {
             </div>
           ))}
           <GhlToggle initialEnabled={ghlDispatchEnabled} />
+          <PrivacyModeToggle initialEnabled={privacyModeEnabled} />
         </CardContent>
       </Card>
 
@@ -183,9 +186,9 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Radar className="h-4 w-4 text-brand" />
-            Scrape Activity
+            Source Activity
           </CardTitle>
-          <CardDescription>When each community was last scraped and how many posts it's collected.</CardDescription>
+          <CardDescription>When each community was last checked and how many posts it's collected.</CardDescription>
         </CardHeader>
         <CardContent>
           {scrapeActivity.length === 0 ? (
