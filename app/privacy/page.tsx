@@ -56,7 +56,8 @@ export default function PrivacyPage() {
             <li>
               <strong className="text-foreground">Scraped public post content</strong> — text, author
               name, and public profile links from posts in the community groups you choose to monitor,
-              collected only from content that platform already shows to a logged-in member of that group.
+              collected only from content that platform already shows to your own logged-in account —
+              never anything behind a wall your account cannot already see.
             </li>
             <li>
               <strong className="text-foreground">Payment information</strong> — subscription payments are

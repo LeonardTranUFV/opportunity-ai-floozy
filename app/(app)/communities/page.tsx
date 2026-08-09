@@ -62,7 +62,9 @@ export default async function CommunitiesPage() {
           </CardTitle>
           <CardDescription>
             Search Facebook for groups in your trade and area, then track the ones worth watching.
-            If you&apos;re not sure what to search for, the AI can suggest phrases.
+            If you&apos;re not sure what to search for, the AI can suggest phrases. Public groups
+            start collecting posts without joining — but you have to be a member to comment, so join
+            the ones you actually want to reply in.
           </CardDescription>
         </CardHeader>
         <CardContent>

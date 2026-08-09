@@ -429,11 +429,18 @@ export function FindGroups({
             )
           })}
 
-          {results.some((g) => !g.joined && g.visibility === "private") && (
-            <p className="text-xs text-muted-foreground">
-              Public groups are readable without joining — you can track those right away. The
-              private ones will collect nothing until your join request is approved.
-            </p>
+          {results.some((g) => !g.joined) && (
+            <div className="flex flex-col gap-1 rounded-md bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground">
+              <p>
+                <strong className="text-foreground">Reading and replying are different things.</strong>{" "}
+                A public group is readable without joining, so tracking it starts collecting posts
+                right away — but Facebook only lets <em>members</em> comment. The app still finds the
+                lead and drafts your reply; you&apos;ll need to join the group before you can send it.
+              </p>
+              {results.some((g) => !g.joined && g.visibility === "private") && (
+                <p>Private groups collect nothing at all until your join request is approved.</p>
+              )}
+            </div>
           )}
 
           {exhausted ? (

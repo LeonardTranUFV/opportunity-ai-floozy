@@ -132,14 +132,15 @@ export default function GuidePage() {
           accentColor="border-t-[#1877F2]"
           tag="Connector"
           title="Facebook Groups"
-          description="Scrape posts from Facebook groups you're a member of, looking for people who need what you offer."
+          description="Watch Facebook groups for people who need what you offer. Public groups work without joining; private ones need you to be a member."
           steps={[
             "Go to Connect Accounts and click Connect Facebook — a real browser window opens, you log in yourself.",
             "Close that popup window once you're logged in (don't leave it open, or it'll block future checks/logins).",
-            "Go to Communities → Add a Source → Facebook, paste a group URL and give it a name. Or use Discover Facebook Groups to search by industry + location.",
+            "Go to Communities → Find groups to monitor, enter your trade and area, and Track the ones you want. Not sure what to search for? Open the AI suggestions. You can also paste a group URL under Add a Source.",
+            "Join the groups you want to reply in — tracking collects the leads, membership is what lets you answer them.",
             "Run Scan on an AI Agent to pull fresh posts and score them.",
           ]}
-          caveat="Commenting on a post requires your account to already be a member of that group — Facebook won't let you comment otherwise."
+          caveat="Reading and replying are different things. A public group collects posts the moment you track it, no membership needed — but Facebook only lets members comment. The app will still find the lead and write your reply; you just can't send it until you've joined. Private groups collect nothing until your join request is approved."
           useNowHref="/accounts"
           defaultOpen
         />
