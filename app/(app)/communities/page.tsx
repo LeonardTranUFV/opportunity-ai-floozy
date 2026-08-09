@@ -1,10 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Compass, Search, Link2, Sparkles } from "lucide-react"
+import { Compass, Search, Link2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
-import { DiscoverGroupsForm } from "@/components/communities/discover-groups-form"
-import { GroupRecommendations } from "@/components/communities/group-recommendations"
+import { FindGroups } from "@/components/communities/find-groups"
 import { AddSourceForm } from "@/components/communities/add-source-form"
 import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
 import { GroupName } from "@/components/communities/group-name"
@@ -58,35 +57,18 @@ export default async function CommunitiesPage() {
       <Card className="transition-shadow hover:shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-brand" />
-            Not sure which groups to join?
+            <Search className="h-4 w-4 text-brand" />
+            Find groups to monitor
           </CardTitle>
           <CardDescription>
-            You can only pull leads from groups you&apos;re a member of — so joining the right 10 matters
-            more than anything else here. Tell us your trade and area and we&apos;ll suggest where to look.
+            Search Facebook for groups in your trade and area, then track the ones worth watching.
+            If you&apos;re not sure what to search for, the AI can suggest phrases.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <GroupRecommendations />
+          <FindGroups hosted={hosted} />
         </CardContent>
       </Card>
-
-      {!hosted && (
-        <Card className="transition-shadow hover:shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-brand" />
-              Discover Facebook Groups
-            </CardTitle>
-            <CardDescription>
-              Searches Facebook live using your saved session — this can take up to 20 seconds.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DiscoverGroupsForm />
-          </CardContent>
-        </Card>
-      )}
 
       <Card className="transition-shadow hover:shadow-sm">
         <CardHeader>

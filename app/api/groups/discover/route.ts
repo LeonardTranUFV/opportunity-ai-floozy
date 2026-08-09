@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const page = await browser.newPage();
     const searchUrl = `https://www.facebook.com/search/groups/?q=${encodeURIComponent(searchQuery)}`;
 
-    let discoveredResults: { name: string; url: string; platform: string; description: string; joined: boolean }[] = [];
+    let discoveredResults: { name: string; url: string; platform: string; description: string; joined: boolean; visibility: 'public' | 'private' | null }[] = [];
     let failure: string | null = null;
 
     try {
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
       // Robust semantic class-agnostic extractor
       discoveredResults = await page.evaluate((targetLocation) => {
-        const results: { name: string; url: string; platform: string; description: string; joined: boolean }[] = [];
+        const results: { name: string; url: string; platform: string; description: string; joined: boolean; visibility: 'public' | 'private' | null }[] = [];
         
         // Facebook search result cards typically contain group links
         document.querySelectorAll('a').forEach(a => {
@@ -115,17 +115,32 @@ export async function POST(request: Request) {
                   let description = `Active Facebook group matching interests in ${targetLocation}.`;
                   const parentCard = a.closest('div[role="article"], div.x1y1aw1k, div.x193iq5w');
 
-                  // Facebook labels each search card with the viewer's own
-                  // relationship to the group — a "Joined" pill when you're a
-                  // member, a "Join group" button when you aren't. That single
-                  // word decides whether we can ever read this group's posts,
-                  // so capture it instead of filtering it out as noise.
+                  // Two different facts, previously conflated.
+                  //
+                  // `joined` is the viewer's own relationship to the group — a
+                  // "Joined" pill when you're a member, a "Join group" button
+                  // when you aren't.
+                  //
+                  // `visibility` is what actually decides whether we can read
+                  // the group's posts. A **public** group serves its posts to
+                  // anyone, member or not; only a **private** group requires
+                  // membership. This was originally read the other way round —
+                  // the code assumed not-joined meant no posts — and it isn't
+                  // true: thirteen unjoined public groups added on 2026-08-09
+                  // returned 4-14 posts each on the very next scrape.
                   let joined = false;
+                  let visibility: 'public' | 'private' | null = null;
 
                   if (parentCard) {
                     const cardLabels = Array.from(parentCard.querySelectorAll('span, div, a[role="button"], div[role="button"]'))
                       .map(el => el.textContent?.trim() || '');
                     joined = cardLabels.some(txt => /^joined$/i.test(txt) || /^visit group$/i.test(txt));
+
+                    // Facebook prints "Public"/"Private" in the card's metadata
+                    // row, next to the member count.
+                    const meta = cardLabels.find(txt => /\b(public|private)\s*(group)?\s*·/i.test(txt))
+                      ?? cardLabels.find(txt => /^\s*(public|private)\s*(group)?\s*$/i.test(txt));
+                    if (meta) visibility = /\bprivate\b/i.test(meta) ? 'private' : 'public';
 
                     // Gather all readable subtext from the card (like member counts or post frequency)
                     const subtexts = cardLabels
@@ -141,7 +156,8 @@ export async function POST(request: Request) {
                     url: cleanUrl,
                     platform: 'facebook',
                     description: description,
-                    joined
+                    joined,
+                    visibility
                   });
                 }
               }
