@@ -5,13 +5,23 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Search, Plus, ExternalLink, ChevronDown } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { addSource } from "@/lib/add-source"
+import { Search, Plus, ExternalLink, ChevronDown, Check, CircleAlert } from "lucide-react"
 
 interface DiscoveredGroup {
   name: string
   url: string
   platform: string
   description: string
+  /**
+   * Whether the connected Facebook account is already a member. The search
+   * has always returned this and this form used to discard it — which made
+   * "Add" feel effortless right up until the group collected nothing, because
+   * Facebook only serves posts to members. Surfacing it is the difference
+   * between a source that works and one that is silently dead.
+   */
+  joined?: boolean
 }
 
 export function DiscoverGroupsForm() {
@@ -81,18 +91,14 @@ export function DiscoverGroupsForm() {
 
   const handleAdd = async (group: DiscoveredGroup) => {
     setAddingUrl(group.url)
+    setError(null)
     try {
-      const res = await fetch("/api/groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: group.platform, name: group.name, url: group.url, active: true }),
-      })
-      if (res.ok || res.status === 409) {
+      const result = await addSource(group)
+      if (result.ok) {
         setAddedUrls((prev) => new Set(prev).add(group.url))
         router.refresh()
       } else {
-        const data = await res.json()
-        alert(data.error || "Failed to add group")
+        setError(result.error)
       }
     } finally {
       setAddingUrl(null)
@@ -146,7 +152,26 @@ export function DiscoverGroupsForm() {
           {results.map((g) => (
             <div key={g.url} className="flex items-center justify-between gap-4 rounded-lg border p-3">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-sm font-medium">{g.name}</span>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="truncate text-sm font-medium">{g.name}</span>
+                  {g.joined ? (
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    >
+                      <Check className="h-3 w-3" />
+                      Joined
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                    >
+                      <CircleAlert className="h-3 w-3" />
+                      Not joined
+                    </Badge>
+                  )}
+                </div>
                 <span className="line-clamp-2 text-xs text-muted-foreground">{g.description}</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -156,7 +181,7 @@ export function DiscoverGroupsForm() {
                   rel="noopener noreferrer"
                   className="flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-[0.8rem] font-medium transition-colors hover:bg-muted"
                 >
-                  View
+                  {g.joined ? "View" : "Join"}
                   <ExternalLink className="h-3 w-3" />
                 </a>
                 <Button
@@ -177,6 +202,13 @@ export function DiscoverGroupsForm() {
               </div>
             </div>
           ))}
+
+          {results.some((g) => !g.joined) && (
+            <p className="text-xs text-muted-foreground">
+              You can add a group before joining it, but Facebook only shows posts to members — a
+              group you haven&apos;t joined will collect nothing until you&apos;re in.
+            </p>
+          )}
 
           {exhausted ? (
             <p className="text-sm text-muted-foreground">

@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { addSource } from "@/lib/add-source"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -50,6 +52,7 @@ const CATEGORY_TONE: Record<string, string> = {
 }
 
 export function GroupRecommendations({ defaultLocation = "" }: { defaultLocation?: string }) {
+  const router = useRouter()
   const [trade, setTrade] = useState("")
   const [location, setLocation] = useState(defaultLocation)
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null)
@@ -58,6 +61,7 @@ export function GroupRecommendations({ defaultLocation = "" }: { defaultLocation
   const [tracked, setTracked] = useState<Record<string, TrackState>>({})
   const [addedUrls, setAddedUrls] = useState<Set<string>>(new Set())
   const [addingUrl, setAddingUrl] = useState<string | null>(null)
+  const [addError, setAddError] = useState<string | null>(null)
 
   const handleTrack = async (query: string) => {
     setTracked((prev) => ({ ...prev, [query]: { status: "searching", groups: [] } }))
@@ -86,16 +90,17 @@ export function GroupRecommendations({ defaultLocation = "" }: { defaultLocation
 
   const handleAdd = async (group: FoundGroup) => {
     setAddingUrl(group.url)
+    setAddError(null)
     try {
-      const res = await fetch("/api/groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: group.platform, name: group.name, url: group.url }),
-      })
-      // 409 means it is already on the monitored list, which is the state the
-      // click was asking for — showing it as an error would be a lie.
-      if (res.ok || res.status === 409) {
+      const result = await addSource(group)
+      if (result.ok) {
         setAddedUrls((prev) => new Set(prev).add(group.url))
+        // Monitored Sources lives on this same page and is server-rendered, so
+        // without this the row goes into the database and nothing visibly
+        // happens — which reads as a button that doesn't work.
+        router.refresh()
+      } else {
+        setAddError(result.error)
       }
     } finally {
       setAddingUrl(null)
@@ -156,6 +161,7 @@ export function GroupRecommendations({ defaultLocation = "" }: { defaultLocation
       </form>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {addError && <p className="text-sm text-destructive">{addError}</p>}
 
       {suggestions && suggestions.length === 0 && !error && (
         <EmptyState
