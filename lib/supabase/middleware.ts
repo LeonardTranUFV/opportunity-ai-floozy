@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   "/pricing",
   "/terms",
   "/privacy",
+  "/welcome",
   ...CRAWLER_PATHS,
 ];
 
@@ -45,6 +46,20 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isPublicPath = PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+
+  // A signed-out visitor at "/" is a stranger, not a locked-out user. Send them
+  // the marketing page instead of a sign-in form — this is the only page that
+  // describes the product to someone who hasn't bought it, and it is what a
+  // crawler indexes as the site's home.
+  //
+  // A rewrite, not a redirect: the URL stays "/", so the canonical page and the
+  // one Google indexes are the same. "/welcome" is disallowed in robots.txt so
+  // the rewrite target never competes with "/" in the index.
+  if (!user && request.nextUrl.pathname === "/") {
+    const welcome = request.nextUrl.clone();
+    welcome.pathname = "/welcome";
+    return NextResponse.rewrite(welcome);
+  }
 
   if (!user && !isPublicPath) {
     const loginUrl = request.nextUrl.clone();

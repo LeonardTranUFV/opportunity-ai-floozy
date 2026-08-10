@@ -22,6 +22,9 @@ export default function robots(): MetadataRoute.Robots {
       disallow: [
         "/api/",
         "/auth/",
+        // The rewrite target behind "/". Indexing it would put the same page in
+        // twice under two URLs.
+        "/welcome",
         "/agents",
         "/opportunities",
         "/communities",
