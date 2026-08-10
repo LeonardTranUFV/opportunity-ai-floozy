@@ -61,6 +61,12 @@ export const metadata: Metadata = {
     description:
       "An AI agent that reads the feeds your customers post in and scores every post for real buying intent.",
   },
+  // Google Search Console ownership for the URL-prefix property. It has to keep
+  // rendering on "/" forever — removing it un-verifies the property, which
+  // silently stops the indexing and coverage reports.
+  verification: {
+    google: "SmF0wzEoXulz6zvLQHvuVse6yFgWnn-OI-I0GP2Vq38",
+  },
   robots: {
     index: true,
     follow: true,
