@@ -41,10 +41,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // evaluating whatever posts are already sitting in Supabase.
   let scraped = 0;
   let scrapeLog: string[] = [];
+  let brokenPlatforms: string[] = [];
   try {
     const scrapeResult = await scrapeAndStorePosts(supabase, user.id);
     scraped = scrapeResult.inserted;
     scrapeLog = scrapeResult.log;
+    brokenPlatforms = scrapeResult.brokenPlatforms;
   } catch (error) {
     scrapeLog = [`Scrape skipped: ${error instanceof Error ? error.message : "unknown error"}`];
   }
@@ -55,8 +57,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       success: true,
       scraped,
       scrape_log: scrapeLog,
+      broken_platforms: brokenPlatforms,
       evaluated: result.evaluated,
       opportunities_found: result.opportunitiesFound,
+      locally_filtered: result.locallyFiltered,
+      ai_calls: result.aiCalls,
       message: result.message,
     });
   } catch (error) {

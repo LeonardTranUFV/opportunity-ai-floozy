@@ -6,6 +6,13 @@ export interface ScrapeAndStoreResult {
   scraped: number;
   inserted: number;
   log: string[];
+  /**
+   * Platforms whose extractors look broken this run (see `diagnosePlatform` in
+   * lib/scraper.ts). Distinct from an empty result: this means the code needs
+   * fixing, and the customer should be told rather than left thinking their
+   * sources are just quiet.
+   */
+  brokenPlatforms: string[];
 }
 
 // Skip re-scraping a group this soon after it was last visited. The biggest
@@ -34,6 +41,7 @@ export async function scrapeAndStorePosts(
       scraped: 0,
       inserted: 0,
       log: ["Scraping runs on the operator's machine, so this scan evaluated the posts already collected."],
+      brokenPlatforms: [],
     };
   }
 
@@ -47,7 +55,7 @@ export async function scrapeAndStorePosts(
   }
 
   if (!activeGroups || activeGroups.length === 0) {
-    return { scraped: 0, inserted: 0, log: ["No active groups to scrape."] };
+    return { scraped: 0, inserted: 0, log: ["No active groups to scrape."], brokenPlatforms: [] };
   }
 
   const cooldownCutoff = Date.now() - SCRAPE_COOLDOWN_MS;
@@ -61,11 +69,12 @@ export async function scrapeAndStorePosts(
   );
 
   if (dueGroups.length === 0) {
-    return { scraped: 0, inserted: 0, log };
+    return { scraped: 0, inserted: 0, log, brokenPlatforms: [] };
   }
 
   const scrapeResult = await scrapeActiveGroups(dueGroups, userId);
   const posts = scrapeResult.posts;
+  const brokenPlatforms = scrapeResult.brokenPlatforms;
   log.push(...scrapeResult.log);
 
   if (scrapeResult.scrapedGroupIds.length > 0) {
@@ -76,7 +85,7 @@ export async function scrapeAndStorePosts(
   }
 
   if (posts.length === 0) {
-    return { scraped: 0, inserted: 0, log };
+    return { scraped: 0, inserted: 0, log, brokenPlatforms };
   }
 
   // Dedupe across groups within this run — the scraper only dedupes per-group,
@@ -106,5 +115,5 @@ export async function scrapeAndStorePosts(
     throw new Error(insertError.message);
   }
 
-  return { scraped: posts.length, inserted: count ?? posts.length, log };
+  return { scraped: posts.length, inserted: count ?? posts.length, log, brokenPlatforms };
 }

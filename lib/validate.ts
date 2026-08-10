@@ -102,6 +102,28 @@ export function str(value: unknown, opts: StrOpts = {}): string {
   return cleaned;
 }
 
+/**
+ * True for hosts that must never be fetched server-side — loopback, link-local
+ * (which is where cloud instance-metadata lives) and the RFC1918 private
+ * ranges. Exported so every server-side fetch path shares one definition
+ * rather than each growing its own slightly different copy.
+ */
+export function isPrivateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "[::1]" ||
+    host === "::1" ||
+    host.endsWith(".local") ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  );
+}
+
 /** Validates a URL and restricts it to http/https on a public host. */
 export function httpUrl(value: unknown, label = "URL"): string {
   const raw = str(value, { label, max: 2048 });
@@ -115,17 +137,7 @@ export function httpUrl(value: unknown, label = "URL"): string {
     throw new ValidationError(`${label} must start with http or https.`);
   }
   // Blocks the obvious SSRF shapes — loopback, link-local and private ranges.
-  const host = parsed.hostname.toLowerCase();
-  const isPrivate =
-    host === "localhost" ||
-    host === "0.0.0.0" ||
-    host.endsWith(".local") ||
-    /^127\./.test(host) ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^169\.254\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-  if (isPrivate) {
+  if (isPrivateHost(parsed.hostname)) {
     throw new ValidationError(`${label} must be a public address.`);
   }
   return parsed.toString();

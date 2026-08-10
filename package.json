@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check": "tsx scripts/check-logic.ts",
     "auto-scrape": "tsx scripts/auto-scrape.ts"
   },
   "dependencies": {

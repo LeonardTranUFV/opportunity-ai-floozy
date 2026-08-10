@@ -69,10 +69,25 @@ export function ScanAgentButton({ id }: { id: string }) {
           finishProgress()
           return
         }
+        // Worth showing: posts the local filter resolved never reached the AI,
+        // so they cost nothing. Saying so turns an invisible optimization into
+        // a visible reason the scan was cheap.
+        const savedNote =
+          data.locally_filtered > 0 ? ` — ${data.locally_filtered} skipped the AI, free` : ""
+        // A broken extractor has to outrank the normal result line. Left to the
+        // scrape log it reads as an ordinary quiet run, which is how a dead
+        // source can go unnoticed for weeks.
+        const broken: string[] = data.broken_platforms ?? []
+        const brokenNote =
+          broken.length > 0
+            ? ` ⚠ ${broken.join(" and ")} collected nothing and looks broken — check the scrape log.`
+            : ""
         if (data.evaluated === 0) {
-          setResult((data.message || "Nothing new to scan.") + scrapedNote)
+          setResult((data.message || "Nothing new to scan.") + scrapedNote + brokenNote)
         } else {
-          setResult(`Scanned ${data.evaluated} posts${scrapedNote}, found ${data.opportunities_found} opportunities.`)
+          setResult(
+            `Scanned ${data.evaluated} posts${scrapedNote}, found ${data.opportunities_found} opportunities${savedNote}.${brokenNote}`
+          )
         }
         finishProgress()
         router.refresh()

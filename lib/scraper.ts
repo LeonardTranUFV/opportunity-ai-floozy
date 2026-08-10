@@ -1,5 +1,7 @@
 import { getChromium } from "@/lib/browser";
 import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
+import { attachFeedCapture } from "@/lib/feed-capture";
+import { DomainThrottle, fetchPaced } from "@/lib/fetchers";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randBetween = (min: number, max: number) => min + Math.floor(Math.random() * (max - min));
@@ -409,19 +411,124 @@ export interface ScrapeSummary {
   posts: ScrapedPost[];
   log: string[];
   scrapedGroupIds: string[];
+  /**
+   * Platforms where every source came back empty in a way that points at our
+   * code rather than at the feed — see `diagnosePlatform`. Callers should treat
+   * these as an alert, not as a quiet week.
+   */
+  brokenPlatforms: string[];
 }
 
 interface PlatformScrapeResult {
   posts: ScrapedPost[];
   log: string[];
   scrapedGroupIds: string[];
+  brokenPlatforms: string[];
 }
 
 /**
- * Reddit's public JSON API (append .json to any listing/search URL) is free
- * and unauthenticated for reading — no login, no browser, no persistent
- * session needed at all. Converts whatever URL shape "Add a Source" saved
- * (a subreddit URL or a /search/?q= URL) into its .json equivalent.
+ * The top-level container selector each extractor above starts from.
+ *
+ * This deliberately duplicates the first `querySelectorAll` in each extractor,
+ * because extractors are shipped into the page by `page.evaluate` and cannot
+ * close over anything in this module — they have to be self-contained. Probing
+ * with the same string separately is what lets us tell the two failure modes
+ * apart: zero containers means the outer selector died, while containers with
+ * zero extracted posts means the inner ones did. Keep in sync by hand; the
+ * canary reports a mismatch as a broken platform either way, so drift here
+ * degrades to a false alarm rather than to silence.
+ */
+const CONTAINER_SELECTORS: Record<string, string> = {
+  facebook: 'div[role="feed"] > div, div[role="article"]',
+  linkedin: "div.feed-shared-update-v2, div.search-content__result",
+  nextdoor: "div.post",
+  twitter: 'article[data-testid="tweet"]',
+  marketplace: 'a[href*="/marketplace/item/"]',
+};
+
+/** What a single group's scrape actually did, for the canary to reason over. */
+export interface GroupOutcome {
+  name: string;
+  /** Post containers the page exposed. -1 when the probe itself failed. */
+  containers: number;
+  /** Posts the DOM extractor produced, on its own. */
+  extracted: number;
+  /** Posts recovered from captured feed JSON that the DOM pass didn't find. */
+  capturedOnly: number;
+  /** True when the group is simply one we haven't joined — not a code failure. */
+  behindJoinWall: boolean;
+  /** True when the page bounced us to a login/checkpoint screen. */
+  loggedOut: boolean;
+  extractionError: string | null;
+}
+
+/**
+ * Decides whether a platform's empty run means "nobody posted" or "our
+ * selectors stopped matching", and says which.
+ *
+ * This is the failure this scraper was worst at: hardcoded class names like
+ * `div.feed-shared-update-v2` get renamed on the platform's schedule, every
+ * extraction round then throws or returns nothing, the per-round `catch` used
+ * to swallow it, and every source reported "found 0 post(s)" — indistinguishable
+ * from a genuinely quiet week. A source could sit dead for months with no
+ * reason to suspect it.
+ */
+export function diagnosePlatform(platform: string, outcomes: GroupOutcome[]): string | null {
+  const relevant = outcomes.filter((o) => !o.behindJoinWall);
+  if (relevant.length === 0) return null;
+  // Any source producing posts through the DOM proves that extractor still
+  // works; a different source being empty is then just an empty source.
+  if (relevant.some((o) => o.extracted > 0)) return null;
+
+  // The case the JSON capture layer exists for: the markup selectors have died,
+  // but the feed's own payload is still yielding posts, so no leads were lost.
+  // Report it anyway — it's a real regression, just not an urgent one, and the
+  // fallback shouldn't be allowed to hide it until that path breaks too.
+  const rescued = relevant.reduce((sum, o) => sum + o.capturedOnly, 0);
+  if (rescued > 0) {
+    return `⚠ ${platform}: the page markup changed and the DOM extractor found nothing — ${rescued} post(s) came through the captured feed JSON instead, so nothing was lost. Update the selectors in lib/scraper.ts when convenient.`;
+  }
+
+  if (relevant.some((o) => o.loggedOut)) {
+    return `⚠ ${platform}: signed out — reconnect the account in Settings, nothing was collected.`;
+  }
+
+  const errored = relevant.find((o) => o.extractionError);
+  if (errored) {
+    return `⚠ ${platform} extraction is broken — every source returned 0 posts and the page threw "${errored.extractionError}". The selectors in lib/scraper.ts probably need updating.`;
+  }
+
+  const withContainers = relevant.filter((o) => o.containers > 0);
+  if (withContainers.length > 0) {
+    const total = withContainers.reduce((sum, o) => sum + o.containers, 0);
+    return `⚠ ${platform} extraction is broken — the page showed ${total} post block(s) across ${relevant.length} source(s) but not one could be read. The inner selectors in lib/scraper.ts (text/author) have changed.`;
+  }
+
+  if (relevant.every((o) => o.containers === 0)) {
+    return `⚠ ${platform} extraction is broken — 0 post blocks found on any of ${relevant.length} source(s). The container selector in lib/scraper.ts has changed, or these feeds aren't loading.`;
+  }
+
+  return null;
+}
+
+/**
+ * Converts whatever URL shape "Add a Source" saved (a subreddit URL or a
+ * /search/?q= URL) into its `.json` equivalent.
+ *
+ * This path used to be the cheapest source we had — append `.json` to any
+ * listing URL and Reddit answered, no login, no browser, no session. That is
+ * no longer true. Verified 2026-08-09: `www.reddit.com/r/<sub>/new.json`
+ * returns 403 "You've been blocked by network security" for every header
+ * combination tried (descriptive UA, full Chrome UA, no headers at all), on
+ * old.reddit.com as well, and from inside a real headless Chromium too — so
+ * it is not a User-Agent problem and escalating to the browser tier does not
+ * fix it. Reddit now gates unauthenticated programmatic reads.
+ *
+ * The sanctioned fix is Reddit's OAuth API (register a script app, exchange
+ * client credentials for a token, call oauth.reddit.com — free, and 100
+ * requests/minute, far above what this needs). That needs a credential the
+ * operator has to create, so it is left as a decision rather than guessed at
+ * here; until then this source reports a clear reason instead of dying quietly.
  */
 function toRedditJsonUrl(rawUrl: string): string {
   const u = new URL(rawUrl);
@@ -436,16 +543,28 @@ function toRedditJsonUrl(rawUrl: string): string {
   return rawUrl.replace(/\/?$/, ".json");
 }
 
-async function scrapeRedditGroup(group: GroupToScrape): Promise<ScrapedPost[]> {
+async function scrapeRedditGroup(group: GroupToScrape, throttle: DomainThrottle): Promise<ScrapedPost[]> {
   const jsonUrl = toRedditJsonUrl(group.url);
-  // Reddit rate-limits/blocks requests without a descriptive User-Agent.
-  const res = await fetch(jsonUrl, {
+  // Reddit rate-limits/blocks requests without a descriptive User-Agent, so
+  // that one header overrides the generic browser set.
+  const res = await fetchPaced(jsonUrl, throttle, {
     headers: { "User-Agent": "OpportunityAI/1.0 (lead-discovery bot; contact: app admin)" },
   });
-  if (!res.ok) {
-    throw new Error(`Reddit request failed (${res.status})`);
+
+  if (res.verdict !== "ok") {
+    // Say which kind of failure it was — "rate limited, backing off", "Reddit
+    // has closed this door for good" and "that subreddit is gone" need
+    // completely different responses from whoever reads the log.
+    const detail =
+      res.verdict === "rate_limited"
+        ? `rate limited (429) — pacing slowed to ${throttle.delayFor(jsonUrl)}ms for reddit.com, it should recover on the next run`
+        : res.verdict === "blocked"
+          ? `Reddit is blocking unauthenticated reads (${res.status}). This won't fix itself — it needs Reddit OAuth credentials, not a retry.`
+          : (res.error ?? `HTTP ${res.status}`);
+    throw new Error(`Reddit request failed: ${detail}`);
   }
-  const data = await res.json();
+
+  const data = JSON.parse(res.body);
   const children: unknown[] = data?.data?.children ?? [];
 
   const posts: ScrapedPost[] = [];
@@ -489,18 +608,24 @@ async function scrapeRedditPlatform(platformGroups: GroupToScrape[]): Promise<Pl
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
   const scrapedGroupIds: string[] = [];
+  // One throttle for the whole Reddit pass, so each source's response informs
+  // the pacing of the next instead of every source guessing independently.
+  const throttle = new DomainThrottle();
+
   for (const group of platformGroups) {
     try {
-      const groupPosts = await scrapeRedditGroup(group);
+      const groupPosts = await scrapeRedditGroup(group, throttle);
       log.push(`"${group.name}": found ${groupPosts.length} post(s).`);
       posts.push(...groupPosts);
       scrapedGroupIds.push(group.id);
     } catch (err) {
       log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
     }
-    await sleep(randBetween(500, 1200));
+    // No fixed sleep here any more — the throttle paces the next request from
+    // how reddit.com actually responded, which is both faster when it's happy
+    // and properly cautious when it isn't.
   }
-  return { posts, log, scrapedGroupIds };
+  return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
 }
 
 async function scrapeBrowserPlatform(
@@ -511,6 +636,7 @@ async function scrapeBrowserPlatform(
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
   const scrapedGroupIds: string[] = [];
+  const outcomes: GroupOutcome[] = [];
 
   // Chosen per group, not per bucket: Marketplace rides inside the Facebook
   // bucket (it shares that login), so one bucket can hold two source types.
@@ -531,7 +657,7 @@ async function scrapeBrowserPlatform(
     for (const group of platformGroups) {
       log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
     }
-    return { posts, log, scrapedGroupIds };
+    return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
   }
 
   let context;
@@ -549,7 +675,7 @@ async function scrapeBrowserPlatform(
     for (const group of platformGroups) {
       log.push(`"${group.name}" failed: ${formatAuthLaunchError(message, platform)}`);
     }
-    return { posts, log, scrapedGroupIds };
+    return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
   }
 
   try {
@@ -576,9 +702,29 @@ async function scrapeBrowserPlatform(
         log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
         continue;
       }
+      const outcome: GroupOutcome = {
+        name: group.name,
+        containers: -1,
+        extracted: 0,
+        capturedOnly: 0,
+        behindJoinWall: false,
+        loggedOut: false,
+        extractionError: null,
+      };
+      outcomes.push(outcome);
+
+      // Start recording the feed's own JSON before navigating, so the first
+      // payload — which arrives with the initial page load — isn't missed.
+      const capture = attachFeedCapture(page, group.platform);
+
       try {
         await page.goto(group.url, { waitUntil: "domcontentloaded", timeout: 30000 });
         await page.waitForTimeout(4000);
+
+        // A bounce to login/checkpoint explains an empty run completely, and
+        // needs a different fix (reconnect the account) than a dead selector.
+        const landedOn = page.url();
+        outcome.loggedOut = /\/(login|checkpoint|authwall|uas\/login)/i.test(landedOn);
 
         const collected = new Map<string, RawExtractedPost>();
         let staleRounds = 0;
@@ -594,13 +740,57 @@ async function scrapeBrowserPlatform(
             for (const p of batch) {
               if (!collected.has(p.post_id)) collected.set(p.post_id, p);
             }
-          } catch {
-            // a single extraction round failing shouldn't abort the whole group
+          } catch (err) {
+            // A single round failing still shouldn't abort the group — but it
+            // must not vanish either. This used to be an empty catch, which is
+            // exactly how a broken extractor stayed invisible: every round
+            // threw, every group reported 0 posts, and nothing said why.
+            outcome.extractionError = err instanceof Error ? err.message : "unknown error";
           }
 
           if (round + 1 < MIN_SCROLL_ROUNDS) continue;
           staleRounds = collected.size === sizeBefore ? staleRounds + 1 : 0;
           if (staleRounds >= STALE_ROUNDS_TO_STOP) break;
+        }
+
+        // Count what the page actually offered, so an empty result can be
+        // attributed to the outer selector, the inner ones, or a real lull.
+        const containerSelector = CONTAINER_SELECTORS[group.platform];
+        if (containerSelector) {
+          outcome.containers = await page
+            .evaluate((sel: string) => document.querySelectorAll(sel).length, containerSelector)
+            .catch(() => -1);
+        }
+
+        // Fold in anything the feed's own JSON carried that the DOM pass
+        // didn't produce. DOM results are inserted first and never overwritten,
+        // so this can only add. Two things make it worth the trouble: the
+        // feeds are virtualized, so a post scrolled past is gone from the DOM
+        // but still present in the payload that delivered it; and on the day a
+        // class name changes, this is the path that keeps returning posts.
+        await capture.settle();
+        // Recorded before merging, so the canary can still tell that the DOM
+        // path died even on a run where capture quietly covered for it.
+        outcome.extracted = collected.size;
+        let capturedOnly = 0;
+        for (const captured of capture.drain()) {
+          if (collected.has(captured.post_id)) continue;
+          collected.set(captured.post_id, {
+            post_id: captured.post_id,
+            post_url: captured.post_url ?? group.url,
+            author_name: captured.author_name,
+            author_profile_url: captured.author_profile_url,
+            timestamp: captured.timestamp,
+            raw_text: captured.raw_text,
+          });
+          capturedOnly++;
+        }
+        outcome.capturedOnly = capturedOnly;
+        if (capturedOnly > 0) {
+          const { responses } = capture.stats();
+          log.push(
+            `"${group.name}": +${capturedOnly} post(s) recovered from ${responses} captured feed response(s) that the page markup didn't show.`
+          );
         }
 
         const groupPosts = [...collected.values()];
@@ -618,6 +808,7 @@ async function scrapeBrowserPlatform(
             .count()
             .catch(() => 0);
           if (behindJoinWall > 0) {
+            outcome.behindJoinWall = true;
             log.push(
               `"${group.name}": you're not a member yet — join it on ${platform}, then it will start collecting.`
             );
@@ -644,6 +835,11 @@ async function scrapeBrowserPlatform(
         }
       } catch (err) {
         log.push(`"${group.name}" failed: ${err instanceof Error ? err.message : "unknown error"}`);
+      } finally {
+        // Detach per group. The page is reused across every group on this
+        // platform, so leaving listeners attached would stack one per group
+        // and hold every captured body in memory until the browser closed.
+        capture.stop();
       }
 
       // Polite randomized pause between groups — keeps the crawl human-paced.
@@ -653,7 +849,17 @@ async function scrapeBrowserPlatform(
     await context.close();
   }
 
-  return { posts, log, scrapedGroupIds };
+  // One verdict for the whole platform, after every source has been seen. A
+  // single empty group proves nothing; every group on a platform coming back
+  // empty is a code problem until shown otherwise.
+  const brokenPlatforms: string[] = [];
+  const diagnosis = diagnosePlatform(platform, outcomes);
+  if (diagnosis) {
+    log.unshift(diagnosis);
+    brokenPlatforms.push(platform);
+  }
+
+  return { posts, log, scrapedGroupIds, brokenPlatforms };
 }
 
 /**
@@ -695,11 +901,13 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
   const posts: ScrapedPost[] = [];
   const log: string[] = [];
   const scrapedGroupIds: string[] = [];
+  const brokenPlatforms: string[] = [];
   for (const result of platformResults) {
     posts.push(...result.posts);
     log.push(...result.log);
     scrapedGroupIds.push(...result.scrapedGroupIds);
+    brokenPlatforms.push(...result.brokenPlatforms);
   }
 
-  return { posts, log, scrapedGroupIds };
+  return { posts, log, scrapedGroupIds, brokenPlatforms };
 }

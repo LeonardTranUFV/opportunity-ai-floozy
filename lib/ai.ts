@@ -27,7 +27,12 @@ export interface RawPostInput {
 }
 
 export interface OpportunityEvaluation {
-  post_id: string;
+  /**
+   * 1-based position of the post this verdict answers for, echoed back by the
+   * model. The caller matches by array position regardless (see scan-agent.ts)
+   * and uses this only to detect that the model dropped or reordered an item.
+   */
+  index: number;
   relevant: boolean;
   intent_score: number;
   urgency: "low" | "medium" | "high" | "asap";
@@ -156,11 +161,15 @@ Negative keywords — if a post is clearly about one of these, mark it not relev
 "Anyone recommend a flooring company?" -> high intent.
 "Selling my old couch" -> only relevant if the agent's goal is about buying used furniture.
 
+### Input format
+A JSON array of posts. Each has "i" (its position), "p" (platform), "a" (author name),
+and "t" (the post text).
+
 ### Output
 Respond with a JSON array with exactly one object per input post, in the same order, matching
 this schema exactly:
 {
-  "post_id": string (must match the input post_id exactly),
+  "index": number (the "i" value of the post this verdict is for),
   "relevant": boolean,
   "intent_score": number (0-100, how strongly this matches the agent's goal),
   "urgency": "low" | "medium" | "high" | "asap",
@@ -170,10 +179,27 @@ this schema exactly:
   "location_mentioned": string or null (city/neighborhood extracted from the post text, or null),
   "phone_number": string or null (ONLY if a phone number is explicitly written in the post text, else null — never invent one)
 }
-Always include every post_id from the input, even if relevant is false.
+Always include every input post, even if relevant is false.
 `;
 
-  const userText = `Evaluate these posts:\n\n${JSON.stringify(posts, null, 2)}`;
+  // Only the fields the model actually reasons over go on the wire. The post's
+  // UUID and both URLs used to be sent and were pure waste: nothing in the
+  // output schema derives from them, and the caller matches verdicts back by
+  // array position anyway (it deliberately distrusts any id the model echoes,
+  // because long UUIDs come back corrupted). Swapping a 36-char UUID for a
+  // 1-3 char index and dropping two URLs saves roughly 150 characters per
+  // post — on a full 100-post batch that's ~15k characters of prompt, every
+  // batch, forever. Keys are single letters for the same reason.
+  const wirePosts = posts.map((p, i) => ({
+    i: i + 1,
+    p: p.platform,
+    a: p.author_name,
+    t: p.raw_text,
+  }));
+
+  // Compact, not pretty-printed — the model does not need indentation and we
+  // were paying for two spaces on every line of every batch.
+  const userText = `Evaluate these posts:\n${JSON.stringify(wirePosts)}`;
   const text = await callGemini(systemInstruction, userText);
 
   try {
