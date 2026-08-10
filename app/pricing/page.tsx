@@ -11,10 +11,12 @@ import {
   CardFooter,
 } from "@/components/ui/card"
 
+// Title carries no product suffix — the root layout's template appends it.
 export const metadata = {
-  title: "Pricing — Floozy Opportunity AI",
+  title: "Pricing",
   description:
-    "Floozy Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking for your trade nearby, and scores which ones are worth calling first.",
+    "Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking for your trade nearby, and scores which ones are worth calling first. Credit-based plans, 7-day trial.",
+  alternates: { canonical: "/pricing" },
 }
 
 const STARTER_LINK = "https://buy.stripe.com/fZu9ALdvneGd0Ym17I5wI0g"

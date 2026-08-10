@@ -1,8 +1,11 @@
 import Link from "next/link"
 
+// Title carries no product suffix — the root layout's template appends it.
 export const metadata = {
-  title: "Privacy Policy — Floozy Opportunity AI",
-  description: "Privacy Policy for Floozy Opportunity AI.",
+  title: "Privacy Policy",
+  description:
+    "What Opportunity AI stores, why, and how each account's data is kept separate from every other account's.",
+  alternates: { canonical: "/privacy" },
 }
 
 const LAST_UPDATED = "August 2, 2026"

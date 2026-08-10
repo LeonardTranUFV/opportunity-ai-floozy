@@ -1,7 +1,22 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/confirm", "/auth/update-password", "/pricing", "/terms", "/privacy"];
+// Deny-by-default is right for this app, but it catches the two files a search
+// engine asks for before anything else. Without them here, a crawler requesting
+// robots.txt is redirected to /login and the site looks unindexable — the
+// sitemap never gets read and the disallow rules never apply.
+const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"];
+
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth/callback",
+  "/auth/confirm",
+  "/auth/update-password",
+  "/pricing",
+  "/terms",
+  "/privacy",
+  ...CRAWLER_PATHS,
+];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

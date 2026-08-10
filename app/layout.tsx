@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { siteUrl } from "@/lib/site-url";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,9 +26,46 @@ const archivo = Archivo({
   weight: ["500", "600", "700"],
 });
 
+// `metadataBase` has to be absolute or Next resolves OG/canonical URLs against
+// the request host, which on Vercel means preview deployments advertise
+// themselves as the canonical site.
 export const metadata: Metadata = {
-  title: "Floozy Opportunity AI",
-  description: "Your 24/7 AI business development assistant",
+  metadataBase: new URL(siteUrl()),
+  title: {
+    default: "Opportunity AI — find the people already asking for what you sell",
+    template: "%s · Opportunity AI",
+  },
+  description:
+    "Opportunity AI reads the groups and feeds your customers already post in, and tells you which posts are real buying intent. Set a goal in plain language; the agent scores every post and hands you the ones worth answering.",
+  applicationName: "Opportunity AI",
+  keywords: [
+    "AI lead generation",
+    "buying intent",
+    "opportunity intelligence",
+    "contractor leads",
+    "social listening",
+    "AI sales agent",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Opportunity AI",
+    url: "/",
+    title: "Find the people already asking for what you sell",
+    description:
+      "An AI agent that reads the feeds your customers post in and scores every post for real buying intent.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Find the people already asking for what you sell",
+    description:
+      "An AI agent that reads the feeds your customers post in and scores every post for real buying intent.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
 };
 
 export default function RootLayout({
