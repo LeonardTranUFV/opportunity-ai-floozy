@@ -30,6 +30,14 @@ function isDue(agent: DueAgent, now: number): boolean {
   return elapsedMs >= agent.auto_scan_interval_hours * 60 * 60 * 1000;
 }
 
+/**
+ * This route loops over every due agent across every account, so its runtime
+ * grows with the customer count — the one most likely to reach the cap as
+ * testers are added. If it starts timing out, the fix is spreading agents
+ * across runs, not a bigger number.
+ */
+export const maxDuration = 60;
+
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {

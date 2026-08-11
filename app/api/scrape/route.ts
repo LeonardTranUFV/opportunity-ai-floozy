@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 
+/** Paced HTTP reads against an external host — same timeout reasoning as scan. */
+export const maxDuration = 60;
+
 export async function POST() {
   const supabase = await createClient();
   const {

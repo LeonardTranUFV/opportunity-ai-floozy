@@ -8,6 +8,16 @@ import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 const ALLOWED_RANGE_DAYS = [1, 3, 7];
 
+/**
+ * A scan collects posts and then hands a batch to Gemini, so its wall clock is
+ * set by two external services rather than by anything in this handler.
+ * Vercel's default cap is short enough to cut that off mid-flight, and what the
+ * customer sees is a function timeout — indistinguishable, from the dashboard,
+ * from a scan that simply found nothing. 60s is the Hobby-plan ceiling; raise
+ * it with the plan if scans start reaching it.
+ */
+export const maxDuration = 60;
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: agentId } = await params;
   const supabase = await createClient();
