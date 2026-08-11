@@ -9,7 +9,7 @@ import { TourProvider } from "@/components/tour/tour-provider"
 import { TourOverlay } from "@/components/tour/tour-overlay"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/admin"
-import { PLAN_ALLOWANCES } from "@/lib/credits"
+import { PLAN_ALLOWANCES, ensureTrialCredits } from "@/lib/credits"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -20,6 +20,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   let credits: { balance: number; allowance: number } | null = null
   if (user) {
+    // Seed the trial balance before reading it. Nothing granted credits on
+    // signup, so accounts started at zero and the first AI action they tried
+    // answered "Out of credits — upgrade your plan", which reads as a paywall
+    // rather than a bug. This runs on every authenticated page load but only
+    // grants once, keyed off its own transaction record.
+    await ensureTrialCredits(supabase, user.id)
+
     const { data } = await supabase
       .from("user_credits")
       .select("balance, plan")

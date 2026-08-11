@@ -1,4 +1,28 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/**
+ * Every balance change goes through the service role, never the caller's own
+ * client.
+ *
+ * `adjust_credits` is SECURITY DEFINER and takes the target user id as an
+ * argument, and Postgres grants EXECUTE to PUBLIC by default — so while the
+ * RLS policy on user_credits correctly allows read-only access, the RPC itself
+ * was callable straight from the browser with the public anon key. Anyone
+ * could hand themselves an arbitrary balance, or drain someone else's, by
+ * naming their user id. Verified against the live database: an anon-key call
+ * reached the function body and failed only on a foreign key, which is
+ * execution succeeding, not permission being refused.
+ *
+ * Routing the RPC through the service role here is what makes it safe to
+ * revoke EXECUTE from anon and authenticated (migration 0008) without breaking
+ * the app: the callers keep passing their own request-scoped client for reads,
+ * and only this module's writes get the elevated one. The user id is always
+ * one the caller already resolved from a verified session.
+ */
+function creditWriter(): SupabaseClient {
+  return createAdminClient() as unknown as SupabaseClient;
+}
 
 // 1 credit ~= $0.015 real AI cost (see FLOOZY_OPPORTUNITY_AI_BUSINESS_PLAN.md
 // for the measured per-call costs this is based on). Only AI-driven actions
@@ -16,7 +40,13 @@ export const CREDIT_COSTS = {
 } as const;
 
 export const PLAN_ALLOWANCES: Record<string, number> = {
-  trial: 20,
+  // 50, not the original 20. A trial account spends 1 on agent setup and 2 per
+  // scan, so 20 was about eight scans before the app started refusing to work
+  // — short enough that a tester could hit the wall during their first sitting
+  // and read it as the product being broken. At ~$0.015 of real AI cost per
+  // credit, the difference is under a dollar a head; running a test cohort out
+  // of credits mid-evaluation costs far more than that in feedback.
+  trial: 50,
   starter: 300,
   pro: 1000,
 };
@@ -64,7 +94,7 @@ export async function spendCredits(
   reason: string,
   metadata: Record<string, unknown> = {}
 ): Promise<number> {
-  const { data, error } = await supabase.rpc("adjust_credits", {
+  const { data, error } = await creditWriter().rpc("adjust_credits", {
     p_user_id: userId,
     p_amount: -Math.abs(amount),
     p_reason: reason,
@@ -90,7 +120,7 @@ export async function grantCredits(
   reason: string,
   metadata: Record<string, unknown> = {}
 ): Promise<number> {
-  const { data, error } = await supabase.rpc("adjust_credits", {
+  const { data, error } = await creditWriter().rpc("adjust_credits", {
     p_user_id: userId,
     p_amount: Math.abs(amount),
     p_reason: reason,
@@ -99,6 +129,57 @@ export async function grantCredits(
 
   if (error) throw new Error(error.message);
   return data as number;
+}
+
+/** Reason string for the one-time welcome grant, also used to detect it. */
+const TRIAL_GRANT_REASON = "trial_grant";
+
+/**
+ * Gives a new account its trial credits the first time it's seen.
+ *
+ * Nothing used to do this. `user_credits` defaults `balance` to 0, no trigger
+ * on auth.users seeded it, and `grantCredits` was never called from any signup
+ * path — so every account started on zero and the first AI action it attempted
+ * came back "Out of credits — upgrade your plan or wait for your next billing
+ * cycle." A brand-new customer's read of that is that the product is a paywall
+ * with nothing behind it. Confirmed against the live database rather than
+ * inferred: of four accounts, three had no credit row at all and the fourth
+ * held a balance of 1, against a scan that costs 2.
+ *
+ * Idempotent by looking for the grant's own transaction rather than by
+ * checking the balance, which would re-grant to anyone who had spent down to
+ * zero — turning a welcome bonus into an unlimited refill.
+ *
+ * Returns true when it granted, so a caller can tell a first visit from a
+ * returning one. Never throws: failing to top up a new account must not be
+ * able to block the page it was called from.
+ */
+export async function ensureTrialCredits(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  try {
+    const { data: priorGrant, error: lookupError } = await supabase
+      .from("credit_transactions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("reason", TRIAL_GRANT_REASON)
+      .limit(1)
+      .maybeSingle();
+
+    // Credit tables not migrated yet: the whole system is inactive and
+    // spendCredits already fails open, so there is nothing to grant against.
+    if (lookupError && isMigrationNotAppliedError(lookupError)) return false;
+    if (lookupError) return false;
+    if (priorGrant) return false;
+
+    await grantCredits(supabase, userId, PLAN_ALLOWANCES.trial, TRIAL_GRANT_REASON, {
+      note: "Welcome — trial credits",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function getCreditBalance(supabase: SupabaseClient, userId: string): Promise<number> {
