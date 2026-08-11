@@ -40,6 +40,9 @@ export default async function CommunitiesPage() {
     list.push(g)
     groupsByPlatform.set(g.platform, list)
   }
+  // Reddit needs no browser and no login, so it's the one source type that
+  // collects on the hosted deployment as well as it does locally.
+  const hasFetchableSource = groups.some((g) => g.platform === "reddit" && g.active)
   const platformSections = [
     ...PLATFORM_ORDER.filter((p) => groupsByPlatform.has(p)),
     ...[...groupsByPlatform.keys()].filter((p) => !PLATFORM_ORDER.includes(p)),
@@ -94,9 +97,15 @@ export default async function CommunitiesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {/* Reddit is read over plain HTTP, so checking sources works here
+              even though the signed-in-browser platforms don't. Disabling the
+              button outright told hosted customers nothing worked, when their
+              Reddit sources collect fine. */}
           <CheckSourcesButton
             disabledReason={
-              hosted ? "Checking sources needs the operator's local machine — not available on this hosted preview." : undefined
+              hosted && !hasFetchableSource
+                ? "Your sources all need a signed-in browser, which this hosted site can't run. Add a Reddit source and this will start collecting."
+                : undefined
             }
           />
           {groups.length === 0 ? (

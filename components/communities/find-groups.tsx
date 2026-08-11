@@ -234,10 +234,15 @@ export function FindGroups({
         </Button>
       </form>
 
+      {/* Telling a hosted customer to "run the app locally" is a dead end —
+          they can't, and it left this card with no next step. Reddit is the
+          one source type that collects here, so send them there instead. */}
       {hosted ? (
-        <p className="text-xs text-muted-foreground">
-          Searching Facebook needs a real logged-in browser, which only runs on the operator&apos;s
-          machine — this works when you run the app locally.
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Facebook search needs a signed-in browser, which this hosted site can&apos;t run.{" "}
+          <strong className="text-foreground">Reddit works right now</strong> — add a subreddit
+          under &ldquo;Add a Source&rdquo; below and it starts collecting posts immediately, with no
+          account to connect and nothing to join.
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-3">

@@ -2,6 +2,7 @@ import { getChromium } from "@/lib/browser";
 import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 import { attachFeedCapture } from "@/lib/feed-capture";
 import { DomainThrottle, fetchPaced } from "@/lib/fetchers";
+import { getRedditToken, toOAuthUrl, REDDIT_USER_AGENT, REDDIT_SETUP_HINT } from "@/lib/reddit-auth";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randBetween = (min: number, max: number) => min + Math.floor(Math.random() * (max - min));
@@ -544,11 +545,25 @@ function toRedditJsonUrl(rawUrl: string): string {
 }
 
 async function scrapeRedditGroup(group: GroupToScrape, throttle: DomainThrottle): Promise<ScrapedPost[]> {
-  const jsonUrl = toRedditJsonUrl(group.url);
-  // Reddit rate-limits/blocks requests without a descriptive User-Agent, so
-  // that one header overrides the generic browser set.
+  const publicUrl = toRedditJsonUrl(group.url);
+
+  // Anonymous reads are gone: www.reddit.com answers 403 and old.reddit.com
+  // answers 200 with an HTML interstitial. Only an app-only bearer token gets
+  // real listings back, so a missing credential is a setup problem to report,
+  // not a request to attempt and let fail confusingly.
+  const token = await getRedditToken();
+  if (!token) {
+    throw new Error(REDDIT_SETUP_HINT);
+  }
+
+  const jsonUrl = toOAuthUrl(publicUrl);
+  // Reddit throttles generic user agents harder, so this one header overrides
+  // the generic browser set.
   const res = await fetchPaced(jsonUrl, throttle, {
-    headers: { "User-Agent": "OpportunityAI/1.0 (lead-discovery bot; contact: app admin)" },
+    headers: {
+      "User-Agent": REDDIT_USER_AGENT,
+      Authorization: `Bearer ${token}`,
+    },
   });
 
   if (res.verdict !== "ok") {
@@ -559,7 +574,7 @@ async function scrapeRedditGroup(group: GroupToScrape, throttle: DomainThrottle)
       res.verdict === "rate_limited"
         ? `rate limited (429) — pacing slowed to ${throttle.delayFor(jsonUrl)}ms for reddit.com, it should recover on the next run`
         : res.verdict === "blocked"
-          ? `Reddit is blocking unauthenticated reads (${res.status}). This won't fix itself — it needs Reddit OAuth credentials, not a retry.`
+          ? `Reddit rejected the API credentials (${res.status}). Check REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET — a retry won't fix this.`
           : (res.error ?? `HTTP ${res.status}`);
     throw new Error(`Reddit request failed: ${detail}`);
   }

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { scrapeActiveGroups } from "@/lib/scraper";
+import { scrapeActiveGroups, sessionPlatform } from "@/lib/scraper";
 import { isHostedDeployment } from "@/lib/deployment";
 
 export interface ScrapeAndStoreResult {
@@ -32,20 +32,7 @@ export async function scrapeAndStorePosts(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string
 ): Promise<ScrapeAndStoreResult> {
-  // Scraping needs a real Chrome profile on the operator's disk, which the
-  // hosted deployment doesn't have. Say so plainly and return — Scan's caller
-  // treats this as a skipped step and still evaluates the posts already in
-  // Supabase, which is the whole point of keeping Scan ungated.
-  if (isHostedDeployment()) {
-    return {
-      scraped: 0,
-      inserted: 0,
-      log: ["Scraping runs on the operator's machine, so this scan evaluated the posts already collected."],
-      brokenPlatforms: [],
-    };
-  }
-
-  const { data: activeGroups, error: groupsError } = await supabase
+  const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, platform, name, url, last_scraped_at")
     .eq("active", true);
@@ -54,8 +41,39 @@ export async function scrapeAndStorePosts(
     throw new Error(groupsError.message);
   }
 
-  if (!activeGroups || activeGroups.length === 0) {
+  if (!allGroups || allGroups.length === 0) {
     return { scraped: 0, inserted: 0, log: ["No active groups to scrape."], brokenPlatforms: [] };
+  }
+
+  // Facebook, LinkedIn, Nextdoor and X are read by driving a real Chrome
+  // profile off local disk, which Vercel has no way to provide. Reddit is not:
+  // it's an unauthenticated fetch of a public .json endpoint, no browser and no
+  // per-user session, so it runs anywhere.
+  //
+  // This used to bail out for every platform at once, which meant a signed-up
+  // customer on the hosted site could never collect a single post — the app
+  // worked only for whoever ran it on their own machine. Splitting the gate by
+  // platform is what lets a hosted account produce real leads on day one.
+  const hosted = isHostedDeployment();
+  const activeGroups = hosted
+    ? allGroups.filter((g) => sessionPlatform(g.platform) === "reddit")
+    : allGroups;
+  const browserOnly = hosted ? allGroups.length - activeGroups.length : 0;
+
+  const preamble: string[] = [];
+  if (browserOnly > 0) {
+    preamble.push(
+      `${browserOnly} source(s) need a signed-in browser, which this hosted site can't run — Reddit sources were scraped as normal.`
+    );
+  }
+
+  if (activeGroups.length === 0) {
+    return {
+      scraped: 0,
+      inserted: 0,
+      log: preamble.length > 0 ? preamble : ["No active groups to scrape."],
+      brokenPlatforms: [],
+    };
   }
 
   const cooldownCutoff = Date.now() - SCRAPE_COOLDOWN_MS;
@@ -64,9 +82,10 @@ export async function scrapeAndStorePosts(
   );
   const skippedGroups = activeGroups.filter((g) => !dueGroups.includes(g));
 
-  const log: string[] = skippedGroups.map(
-    (g) => `"${g.name}": skipped — scraped within the last 15 minutes, already fresh.`
-  );
+  const log: string[] = [
+    ...preamble,
+    ...skippedGroups.map((g) => `"${g.name}": skipped — scraped within the last 15 minutes, already fresh.`),
+  ];
 
   if (dueGroups.length === 0) {
     return { scraped: 0, inserted: 0, log, brokenPlatforms: [] };

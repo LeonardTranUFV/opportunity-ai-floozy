@@ -43,6 +43,11 @@ export default async function SettingsPage() {
   const integrations = [
     { name: "Gemini API (AI reasoning)", key: process.env.GEMINI_API_KEY },
     { name: "GoHighLevel (CRM dispatch)", key: process.env.GHL_API_KEY },
+    // Reddit is the only source type that collects without a signed-in
+    // browser, so on the hosted deployment it decides whether a customer sees
+    // opportunities or an empty dashboard. Worth its own row rather than
+    // letting a missing key surface only as a scrape failure.
+    { name: "Reddit API (works without a browser)", key: process.env.REDDIT_CLIENT_ID },
   ]
 
   const ghlDispatchEnabled = settingsMap.ghl_dispatch_enabled === "true"
