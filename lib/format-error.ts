@@ -38,8 +38,13 @@ export function formatApiError(raw: string | undefined | null): string {
       const message: string | undefined = parsed?.error?.message
 
       if (status === "RESOURCE_EXHAUSTED") {
+        // Measured 2026-08-12, not guessed: the free tier caps at roughly five
+        // requests PER MINUTE, and the quota is per project — so every account
+        // shares one bucket and a busy minute elsewhere can exhaust yours.
+        // The old copy said "20 requests/day", which sent people away for the
+        // rest of the day over a limit that clears in about a minute.
         return (
-          "Gemini's free-tier daily quota is used up (20 requests/day). Try again later, or add billing to your Google AI Studio project for higher limits." +
+          "The AI is rate-limited right now — the free tier allows only about five requests a minute across the whole app. Wait a minute and try again. Adding billing to the Google Cloud project removes this." +
           (suffix ? ` ${suffix}` : "")
         )
       }

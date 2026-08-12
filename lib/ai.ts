@@ -1,12 +1,25 @@
-// gemini-3.5-flash's free-tier quota for this project is a separate,
-// much smaller daily bucket (20 req/day, confirmed via the API's own
-// quotaId "GenerateRequestsPerDayPerProjectPerModel-FreeTier") than
-// standard Flash models get — exhausted almost immediately under real
-// use. Each model has its own independent quota bucket, so gemini-3.6-flash
-// (confirmed working, clean JSON output) has real headroom. Still a
-// free-tier cap either way — enabling billing on the Cloud project is the
-// actual long-term fix, this just unblocks things until then.
-const GEMINI_MODEL = "gemini-3.6-flash";
+// Two models, split by what the call is actually for.
+//
+// Measured 2026-08-12 against this project's key: the free tier allows about
+// five requests before returning 429 with quotaId
+// "GenerateRequestsPerMinutePerProjectPerModel-FreeTier". Three words there
+// matter — it is **per minute**, **per project** (every customer shares one
+// bucket, it is not per-user), and **per model** (each model has its own).
+//
+// Post scoring dominates spend: it batches 100 posts per request, so a single
+// 1000-post scan is ten calls, and it is a classification job rather than a
+// writing one. It runs on a Lite model — roughly 6x cheaper than 3.6-flash per
+// token, and on its own quota bucket, so a burst of scanning can no longer
+// starve someone's outreach draft.
+//
+// Drafting, profile enhancement and reports stay on the stronger model: those
+// are written for a customer to send to a real person, and are rare enough
+// that their cost is noise.
+//
+// Both are overridable by env so a model can be swapped, or scoring quality
+// A/B'd against the old one, without a deploy.
+const SCORING_MODEL = process.env.GEMINI_SCORING_MODEL || "gemini-3.1-flash-lite";
+const WRITING_MODEL = process.env.GEMINI_WRITING_MODEL || "gemini-3.6-flash";
 
 export interface AgentProfile {
   id: string;
@@ -81,9 +94,15 @@ function isParseableJson(text: string): boolean {
   }
 }
 
-async function callGemini(systemInstruction: string, userText: string): Promise<string> {
+async function callGemini(
+  systemInstruction: string,
+  userText: string,
+  // Defaults to the writing model so an unmarked call never silently lands on
+  // the cheaper one — only post scoring opts in, explicitly.
+  model: string = WRITING_MODEL
+): Promise<string> {
   const apiKey = getApiKey();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   let lastError: Error | null = null;
 
@@ -200,7 +219,12 @@ Always include every input post, even if relevant is false.
   // Compact, not pretty-printed — the model does not need indentation and we
   // were paying for two spaces on every line of every batch.
   const userText = `Evaluate these posts:\n${JSON.stringify(wirePosts)}`;
-  const text = await callGemini(systemInstruction, userText);
+  // The only call on the cheaper model. This is 100 posts per request and by
+  // far the biggest consumer of both quota and spend; it is also scoring, not
+  // writing, so a Lite model is the right tool. If lead quality ever looks off,
+  // this is the first line to suspect — set GEMINI_SCORING_MODEL to the
+  // writing model to rule it out without a deploy.
+  const text = await callGemini(systemInstruction, userText, SCORING_MODEL);
 
   try {
     const parsed = JSON.parse(text);
