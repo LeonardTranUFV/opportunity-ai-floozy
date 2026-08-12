@@ -10,6 +10,8 @@ import { TourOverlay } from "@/components/tour/tour-overlay"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/admin"
 import { PLAN_ALLOWANCES, ensureTrialCredits } from "@/lib/credits"
+import { getConsent } from "@/lib/consent"
+import { ConsentGate } from "@/components/consent-gate"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -17,6 +19,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     data: { user },
   } = await supabase.auth.getUser()
   const userIsAdmin = user ? await isAdmin(supabase, user.id) : false
+
+  // Gate the whole signed-in app, not individual pages: the terms cover what
+  // the product does at all, so there is no screen it would be right to let
+  // someone use first. Rendered over the app rather than as a redirect so the
+  // page behind it is already warm once they accept.
+  const consent = user ? await getConsent(supabase, user.id) : null
 
   let credits: { balance: number; allowance: number } | null = null
   if (user) {
@@ -58,6 +66,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <MobileNav />
       <TourOverlay />
+      {consent && !consent.current && <ConsentGate poolAlreadyOn={consent.poolOptIn} />}
       </TourProvider>
     </SidebarProvider>
   )

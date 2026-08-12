@@ -8,7 +8,7 @@ export const metadata = {
   alternates: { canonical: "/privacy" },
 }
 
-const LAST_UPDATED = "August 2, 2026"
+const LAST_UPDATED = "August 11, 2026"
 
 export default function PrivacyPage() {
   return (
@@ -110,14 +110,49 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="mb-2 text-lg font-semibold text-foreground">6. Data Security</h2>
           <p>
-            Your data is isolated at the database level so that other customers cannot access it — every
-            table enforcing row-level security scoped to your account. Data is encrypted in transit.
-            Sensitive credentials (API keys, service tokens) are never exposed to the browser.
+            Your data is isolated at the database level — every table enforces row-level security scoped
+            to your account, so no other customer can read it through the application. Data is encrypted
+            in transit. Sensitive credentials (API keys, service tokens) are never exposed to the browser.
+          </p>
+          <p className="mt-3">
+            Two exceptions, stated plainly. First, our own staff can access account data where it is
+            necessary to operate the service — for support, billing, debugging, or to meet a legal
+            obligation. Second, if you have turned on the Shared Opportunity Pool, the opportunities your
+            agents find are readable by us and by the limited number of accounts we have authorised. See
+            section 7.
           </p>
         </section>
 
         <section className="mb-8">
-          <h2 className="mb-2 text-lg font-semibold text-foreground">7. Your Rights</h2>
+          <h2 className="mb-2 text-lg font-semibold text-foreground">
+            7. The Shared Opportunity Pool (optional)
+          </h2>
+          <p>
+            The Shared Opportunity Pool is <strong>off unless you switch it on</strong>, and you can switch
+            it off at any time in Settings. Nothing here applies to you while it is off.
+          </p>
+          <p className="mt-3">
+            While it is on, the opportunities your agents find are added to a shared pool that we, and a
+            small number of accounts we have specifically authorised, can read. Those accounts may include
+            businesses we work with directly, and they may contact the people in those opportunities. In
+            practice this means <strong>a business other than yours may act on an opportunity your agent
+            found, including a business that competes with you</strong>. That is the trade: a larger pool
+            covers more communities than your own account can reach on its own.
+          </p>
+          <p className="mt-3">
+            Turning the pool off stops your future opportunities being shared immediately. It does not
+            retract opportunities already viewed or acted on, because we cannot recall a message someone
+            has already sent. If you want previously pooled opportunities deleted, contact us and we will
+            remove them.
+          </p>
+          <p className="mt-3">
+            Every read of pooled data is logged with the account that performed it and the time. We do not
+            sell pooled data.
+          </p>
+        </section>
+
+        <section className="mb-8">
+          <h2 className="mb-2 text-lg font-semibold text-foreground">8. Your Rights</h2>
           <p>
             You may access, correct, or request deletion of your personal information at any time by
             contacting us. If you are located in a jurisdiction with additional statutory privacy rights
@@ -127,7 +162,7 @@ export default function PrivacyPage() {
         </section>
 
         <section className="mb-8">
-          <h2 className="mb-2 text-lg font-semibold text-foreground">8. Cookies</h2>
+          <h2 className="mb-2 text-lg font-semibold text-foreground">9. Cookies</h2>
           <p>
             We use essential cookies to keep you signed in. We do not use third-party advertising or
             tracking cookies.
@@ -135,12 +170,12 @@ export default function PrivacyPage() {
         </section>
 
         <section className="mb-8">
-          <h2 className="mb-2 text-lg font-semibold text-foreground">9. Children&apos;s Privacy</h2>
+          <h2 className="mb-2 text-lg font-semibold text-foreground">10. Children&apos;s Privacy</h2>
           <p>The Service is intended for business use by adults and is not directed at children under 18.</p>
         </section>
 
         <section className="mb-8">
-          <h2 className="mb-2 text-lg font-semibold text-foreground">10. Changes to This Policy</h2>
+          <h2 className="mb-2 text-lg font-semibold text-foreground">11. Changes to This Policy</h2>
           <p>
             We may update this Privacy Policy from time to time. Material changes will be communicated to
             active subscribers before they take effect.
@@ -148,7 +183,7 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2 className="mb-2 text-lg font-semibold text-foreground">11. Contact</h2>
+          <h2 className="mb-2 text-lg font-semibold text-foreground">12. Contact</h2>
           <p>
             Questions about this Privacy Policy, or requests to access or delete your data, can be sent to
             the email address you use to communicate with your Floozy contact. See also our{" "}

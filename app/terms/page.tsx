@@ -7,7 +7,9 @@ export const metadata = {
   alternates: { canonical: "/terms" },
 }
 
-const LAST_UPDATED = "August 2, 2026"
+// Bumping this is not cosmetic — TERMS_VERSION in lib/consent.ts must match,
+// and a change here means existing users are asked to accept again.
+const LAST_UPDATED = "August 11, 2026"
 
 export default function TermsPage() {
   return (
@@ -46,6 +48,15 @@ export default function TermsPage() {
             score those posts, and can draft personalized outreach messages on your behalf. You choose
             whether to send any drafted message — the Service does not send anything without your
             explicit action.
+          </p>
+          <p className="mt-3">
+            <strong>The Service reads those communities using your own connected accounts</strong>, acting
+            on your behalf as if you were reading them yourself. It only reaches communities you have
+            already joined. Those platforms are operated by third parties whose own terms of service govern
+            your account with them, and automated access may breach those terms. You are responsible for
+            your accounts on those platforms and you accept the risk that a platform may restrict, suspend
+            or terminate one. We do not control that and cannot restore access to an account we do not
+            operate.
           </p>
         </section>
 
@@ -135,6 +146,20 @@ export default function TermsPage() {
               Privacy Policy
             </Link>
             , which forms part of these Terms.
+          </p>
+          <p className="mt-3">
+            <strong>Shared Opportunity Pool.</strong> This is optional and off unless you switch it on. If
+            you switch it on, the opportunities your agents find become readable by us and by a limited
+            number of accounts we have authorised, who may act on them — including businesses that compete
+            with you. You grant us a non-exclusive licence to use those opportunities for that purpose for
+            as long as the setting is on. You can switch it off at any time in Settings, which stops future
+            opportunities being shared; it cannot retract one already viewed or acted upon. Section 7 of
+            the Privacy Policy sets this out in full.
+          </p>
+          <p className="mt-3">
+            Opportunities describe posts written by real people who are not party to these Terms. You are
+            responsible for how you contact them and for complying with the law that applies to you,
+            including anti-spam law (in Canada, CASL) and privacy law (in Canada, PIPEDA).
           </p>
         </section>
 

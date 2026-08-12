@@ -173,4 +173,12 @@ export const LIMITS = {
   standard: { limit: 60, windowMs: 60_000 },
   /** Unauthenticated or abuse-prone surfaces. */
   strict: { limit: 5, windowMs: 15 * 60_000 },
+  /**
+   * Reads of the shared opportunity pool. Its own bucket because neither
+   * neighbour fits: `strict` (5/15min) makes filtering a dashboard unusable,
+   * while `standard` (60/min) would let a granted account pull the whole pool
+   * in a couple of minutes. What is limited here is a slow leak of other
+   * people's leads, not cost.
+   */
+  pool: { limit: 30, windowMs: 15 * 60_000 },
 } as const;
