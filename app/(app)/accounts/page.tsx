@@ -2,6 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ConnectAccountsForm } from "@/components/accounts/connect-accounts-form"
 import { SessionStatus } from "@/components/accounts/session-status"
 import { EmptyState } from "@/components/ui/empty-state"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
 import { ServerOff, ShieldAlert } from "lucide-react"
 import { isHostedDeployment } from "@/lib/deployment"
 
@@ -15,13 +17,20 @@ export default function AccountsPage() {
             Authorize the live crawler to monitor target community groups on your behalf.
           </p>
         </div>
+        {/* A customer landing here was previously told the page didn't work and
+            to "reach out" — a dead end, and wrong: Reddit needs no connection
+            at all, because the API credentials are ours rather than theirs.
+            Send them somewhere they can actually finish. */}
         <Card>
-          <CardContent>
+          <CardContent className="flex flex-col items-center gap-5 py-8 text-center">
             <EmptyState
               icon={ServerOff}
-              title="Not available on this hosted preview"
-              description="Connecting Facebook/LinkedIn/Nextdoor/X requires a real, visible browser window and a persistent local session — that only works on the operator's own machine, not this hosted deployment. Reach out to have your accounts connected there."
+              title="Nothing to connect here — start with Reddit"
+              description="Reddit works on your account right now and needs no sign-in: we hold the API credentials, so all you do is add the communities you want watched. Facebook, LinkedIn, Nextdoor and X are different — reading those means driving a real, signed-in browser window, which this hosted site can't do. Ask us and we'll connect those for you."
             />
+            <Link href="/communities">
+              <Button variant="brand">Add Reddit communities</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
