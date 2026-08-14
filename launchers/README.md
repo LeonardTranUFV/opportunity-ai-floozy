@@ -23,6 +23,9 @@ Copy each file into that project's folder, next to its `package.json`:
 - `START-PEARL-RIVER.bat` → the Pearl River project folder
 - `START-VDN.bat` → the VDN Logistics project folder
 
+Pearl River also needs `SETUP-PEARL-RIVER.bat` and `setup-local-db.mjs` in the
+same folder, for the one-time database setup below.
+
 Then double-click. Each script works out its own folder, so moving or renaming
 the project won't break it. Right-click → *Send to* → *Desktop (create
 shortcut)* if you want them one click away.
@@ -44,25 +47,44 @@ Both are Next.js + Prisma, and neither is clone-and-go — the launcher runs
 run them, do this once in each project folder before double-clicking:
 
 **Pearl River** — it is **Postgres only**. `prisma/schema.prisma` is
-`provider = "postgresql"`; the SQLite era ended with the Supabase port, so
-there is no local-file fallback and `.env.example` carries no SQLite option.
-It needs a real Postgres before it will start — the Supabase project is the
-path of least resistance, since it needs nothing installed:
+`provider = "postgresql"` and `.env.example` carries only Supabase URLs, so a
+clone will not start against a local file. Copy `SETUP-PEARL-RIVER.bat` **and**
+`setup-local-db.mjs` into the project folder and double-click the `.bat` once.
+It brings up Postgres 16 in Docker on port 5433, writes `.env`, pushes the
+schema and seeds it. Docker Desktop is the only prerequisite.
+
+Then give yourself the owner account, because the seed issues no credential to
+anybody and every screen but `/book` and `/login` needs a signed-in staff
+member:
 
 ```bash
-npm install
-npm run db:setup      # prompts for the Supabase database password, writes .env
-npm run db:push       # only if that database is empty
-npm run db:seed       # same
-node scripts/set-pins.mjs
+node scripts/set-owner.mjs --password 'pick-something-real'
 ```
 
-`db:setup` is a PowerShell prompt: the password is masked as you type and is
-handed to Node through a process-scoped variable, so it never reaches your
-command history. Nothing appears while typing — that's correct, not a hang.
+Sign in with `trantrithanhfilm@gmail.com` or the code `OWNER`. Ten characters
+minimum — the script refuses shorter, since that account sees every guest
+record.
 
-That last line matters. The system requires a sign-in now, so a freshly seeded
-database with no PIN issued locks you out of everything except `/book`.
+After that first run, `START-PEARL-RIVER.bat` is all you need.
+
+### Why local Postgres and not SQLite
+
+It would be easier to add a SQLite fallback, and it would be wrong. Prisma
+cannot take `provider` from an environment variable, so a fallback means two
+schemas kept in step by hand — and SQLite rejects the `mode: "insensitive"`
+flags the Supabase port added to all 38 `contains:` filters. The result is a
+laptop that matches `nguyen` against `Nguyễn` and a production box that does
+not, or the reverse. Nothing errors; there are simply fewer rows. That is the
+exact failure the port was done carefully to avoid, and it should not be
+reintroduced for the convenience of a demo.
+
+Pointing `.env` at Supabase also works — `npm run db:setup` prompts for the
+database password — but then the demo needs Singapore to be reachable. The
+property is in Hai Phong, and Vietnam's international bandwidth rides a handful
+of submarine cables that break several times a year. That is the same reasoning
+that put VDN on a domestic VPS. Postgres 16 in a container is the same engine
+as production, so collation and case behave identically, and it works with the
+cable down.
 
 **VDN Logistics** — copy `.env.example` to `.env`. `DATABASE_URL` already
 points at a local SQLite file, so there is no database to install.
