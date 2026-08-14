@@ -37,6 +37,35 @@ shortcut)* if you want them one click away.
    seconds later.
 5. Keeps the window open if the server stops, so the error is readable.
 
+## First run on a new machine
+
+Both are Next.js + Prisma, and neither is clone-and-go — the launcher runs
+`npm install` for you, but not the database step. On a laptop that has never
+run them, do this once in each project folder before double-clicking:
+
+**Pearl River** — copy `.env.example` to `.env`, then:
+
+```bash
+npm run db:push
+npm run db:seed
+```
+
+Locally it runs on SQLite, so the Supabase variables in `DEPLOY.md` are only
+needed for the deployed copy.
+
+**VDN Logistics** — copy `.env.example` to `.env`. `DATABASE_URL` already
+points at a local SQLite file, but `SESSION_SECRET` is a placeholder and the
+app *throws on boot* if it isn't a real value — that's deliberate, a default
+signing key would be a skeleton key. Generate one:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Then `npm run db:push`, `npm run db:seed`, and `npm run staff:password -- LEO`
+to print yourself a password once. Changing `SESSION_SECRET` later signs
+everyone out.
+
 ## If a project isn't Next.js
 
 The scripts check `package.json` for `next` and pin the port with
