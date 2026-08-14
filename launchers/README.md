@@ -43,20 +43,32 @@ Both are Next.js + Prisma, and neither is clone-and-go — the launcher runs
 `npm install` for you, but not the database step. On a laptop that has never
 run them, do this once in each project folder before double-clicking:
 
-**Pearl River** — copy `.env.example` to `.env`, then:
+**Pearl River** — it is **Postgres only**. `prisma/schema.prisma` is
+`provider = "postgresql"`; the SQLite era ended with the Supabase port, so
+there is no local-file fallback and `.env.example` carries no SQLite option.
+It needs a real Postgres before it will start — the Supabase project is the
+path of least resistance, since it needs nothing installed:
 
 ```bash
-npm run db:push
-npm run db:seed
+npm install
+npm run db:setup      # prompts for the Supabase database password, writes .env
+npm run db:push       # only if that database is empty
+npm run db:seed       # same
+node scripts/set-pins.mjs
 ```
 
-Locally it runs on SQLite, so the Supabase variables in `DEPLOY.md` are only
-needed for the deployed copy.
+`db:setup` is a PowerShell prompt: the password is masked as you type and is
+handed to Node through a process-scoped variable, so it never reaches your
+command history. Nothing appears while typing — that's correct, not a hang.
+
+That last line matters. The system requires a sign-in now, so a freshly seeded
+database with no PIN issued locks you out of everything except `/book`.
 
 **VDN Logistics** — copy `.env.example` to `.env`. `DATABASE_URL` already
-points at a local SQLite file, but `SESSION_SECRET` is a placeholder and the
-app *throws on boot* if it isn't a real value — that's deliberate, a default
-signing key would be a skeleton key. Generate one:
+points at a local SQLite file, so there is no database to install.
+`SESSION_SECRET` is a placeholder and the app *throws on boot* if it isn't a
+real value — that's deliberate, a default signing key would be a skeleton key.
+Generate one:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
