@@ -44,6 +44,14 @@ param(
 
 $ErrorActionPreference = "Continue"
 
+# Resolve-DnsName, the registry policies and WindowsIdentity are all Windows-only.
+# Bail with a pointer rather than a wall of red on a Mac.
+if (-not ($env:OS -eq "Windows_NT" -or $IsWindows)) {
+    Write-Host "This script targets Windows (Resolve-DnsName and browser policy are Windows-only)." -ForegroundColor Yellow
+    Write-Host "On macOS/Linux, use the curl equivalents in docs/ghl-login-dubai-runbook.md." -ForegroundColor Yellow
+    exit 1
+}
+
 # Hostnames used to tell "this domain is filtered" apart from "the whole path
 # to GoHighLevel / Cloudflare is down".
 $ControlHosts = @(
@@ -201,7 +209,7 @@ function Invoke-PolicyFix {
         if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
         Set-ItemProperty -Path $key -Name "EncryptedClientHelloEnabled" -Value 0 -Type DWord
         Set-ItemProperty -Path $key -Name "DnsOverHttpsMode" -Value "off" -Type String
-        Write-Pass "$browser: Encrypted ClientHello disabled, secure DNS off."
+        Write-Pass "${browser}: Encrypted ClientHello disabled, secure DNS off."
     }
 
     Write-Host ""
