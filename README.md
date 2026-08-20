@@ -1,3 +1,25 @@
+## Running the three local systems
+
+Three apps share this machine, and they are all Next.js apps whose `dev`
+script names no port — so unpinned, whichever one starts first takes 3000
+and the others land wherever. Each one is pinned instead:
+
+| Port | App |
+| ---- | --- |
+| 3000 | Pearl River hotel system |
+| 3001 | Opportunity AI (this repo) |
+| 3100 | VDN Logistics |
+
+- `START.bat` — starts Opportunity AI on its own.
+- `START-ALL.bat` — starts all three, each in its own window, and opens a
+  tab for each. It skips any app that is already running, and installs
+  dependencies on first run.
+
+`START-ALL.bat` looks for the other two projects in folders next to this
+one. If yours live somewhere else, copy `paths.local.example.cmd` to
+`paths.local.cmd` and put the real paths in it — that file is gitignored,
+since it describes your machine rather than the project.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

@@ -3,3 +3,6 @@ node_modules/
 *.tsbuildinfo
 .env
 *.db
+
+# Machine-specific project paths for START-ALL.bat (see paths.local.example.cmd)
+paths.local.cmd

@@ -1,0 +1,6 @@
+# Windows shells seek by byte offset when they run a script, so a .bat
+# with bare LF endings can jump into the middle of a line on goto and
+# silently do the wrong thing. Check these out with CRLF whatever the
+# platform, and normalise to LF in the repo.
+*.bat text eol=crlf
+*.cmd text eol=crlf
