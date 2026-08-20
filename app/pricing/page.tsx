@@ -15,7 +15,7 @@ import {
 export const metadata = {
   title: "Pricing",
   description:
-    "Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking for your trade nearby, and scores which ones are worth calling first. Credit-based plans, 7-day trial.",
+    "Opportunity AI watches Reddit, Facebook, LinkedIn and Nextdoor for people asking for your trade nearby, and scores which ones are worth calling first. Reddit starts the moment you sign up; we connect the rest with you. Credit-based plans, 7-day trial.",
   alternates: { canonical: "/pricing" },
 }
 
@@ -33,8 +33,8 @@ const TIERS = [
     variant: "outline" as const,
     features: [
       "7 days, or your first 5–10 qualified leads — whichever comes first",
-      "1 agent, watching Facebook + LinkedIn",
-      "We run your onboarding scan for you",
+      "1 agent watching Reddit — live the moment you sign up",
+      "We connect Facebook, LinkedIn or Nextdoor with you, and run your onboarding scan",
       "No credit card required",
     ],
   },
@@ -48,7 +48,7 @@ const TIERS = [
     variant: "outline" as const,
     features: [
       "1 agent",
-      "Up to 2 connected platforms",
+      "Reddit, plus up to 2 platforms we connect with you",
       "Manual scans on request",
       "Email support",
     ],
@@ -64,7 +64,7 @@ const TIERS = [
     highlighted: true,
     features: [
       "Unlimited agents",
-      "All platforms — Facebook, LinkedIn, Nextdoor, X",
+      "Every platform — Reddit, Facebook, LinkedIn, Nextdoor, X",
       "Hourly auto-scan, no manual runs",
       "AI-drafted outreach messages",
       "Priority setup",
@@ -95,8 +95,8 @@ export default function PricingPage() {
           See the leads before your competitors even look.
         </h1>
         <p className="mt-4 text-pretty text-lg text-muted-foreground">
-          Floozy Opportunity AI watches Facebook, LinkedIn, and Nextdoor for people asking
-          for a plumber, electrician, contractor — whatever you do — near you, and
+          Floozy Opportunity AI watches Reddit, Facebook, LinkedIn and Nextdoor for people
+          asking for a plumber, electrician, contractor — whatever you do — near you, and
           scores which ones are worth calling first.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -177,7 +177,19 @@ export default function PricingPage() {
             </Card>
           ))}
         </div>
-        <p className="mt-8 text-center text-xs text-muted-foreground">
+        {/* The tiers used to promise Facebook, LinkedIn and Nextdoor as though a
+            customer could switch them on themselves, and never mentioned Reddit —
+            which is the one that actually does work that way. Reading those feeds
+            means driving a signed-in browser session, so somebody on our side sets
+            each one up with you. Saying so here costs a little polish and saves a
+            customer paying for something they then can't turn on. */}
+        <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
+          Reddit runs itself — add a community and it starts collecting straight away.
+          Facebook, LinkedIn, Nextdoor and X have to be signed in through a real browser
+          session, so we set those up with you during onboarding rather than leaving you
+          to connect them alone.
+        </p>
+        <p className="mt-4 text-center text-xs text-muted-foreground">
           No contracts. Cancel anytime. Prices in CAD.
         </p>
         <p className="mt-2 text-center text-xs text-muted-foreground">
