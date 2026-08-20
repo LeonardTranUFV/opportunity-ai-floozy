@@ -4,6 +4,12 @@
 // it needs a real, logged-in Chrome profile per user/platform on local disk
 // (see lib/auth-session.ts) — so it's a standalone script, not an API route.
 //
+// Pointed at the PRODUCTION database (see --env below) this is what makes
+// Facebook, LinkedIn, Nextdoor and X work for customers on the hosted site at
+// all. Vercel serves the app and scores the posts; this machine does the
+// crawling that Vercel physically cannot, and writes the results into the same
+// Supabase project the hosted app reads. Nothing else bridges that gap.
+//
 // Reuses lib/scraper.ts's scrapeActiveGroups (the exact same extraction code
 // the manual Scrape button and the agent Scan flow use) so there is only one
 // place that knows how to crawl each platform. Only the persistence step
@@ -14,16 +20,41 @@
 // admin client instead and filters by user_id explicitly itself, same
 // pattern as app/api/cron/auto-scan/route.ts.
 //
-// Usage: npx tsx scripts/auto-scrape.ts
+// Usage: npx tsx scripts/auto-scrape.ts [--env <file>]
+//   npx tsx scripts/auto-scrape.ts                    # local .env
+//   npx tsx scripts/auto-scrape.ts --env .env.worker  # production Supabase
 
 import path from "path";
 import { fileURLToPath } from "url";
 import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import { scrapeActiveGroups, type GroupToScrape } from "@/lib/scraper";
+import { scrapeActiveGroups, sessionPlatform, type GroupToScrape } from "@/lib/scraper";
+import { hasAuthSession } from "@/lib/auth-session";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-config({ path: path.join(__dirname, "..", ".env") });
+const projectRoot = path.join(__dirname, "..");
+
+// Which credentials to run against. The default stays .env so nothing about
+// running this locally changes; --env is how the same script is aimed at the
+// production project without editing .env and risking a dev session writing
+// into customer data by accident.
+const envFlag = process.argv.indexOf("--env");
+const envFile = envFlag !== -1 ? process.argv[envFlag + 1] : ".env";
+if (envFlag !== -1 && !envFile) {
+  console.error("--env needs a filename, e.g. --env .env.worker");
+  process.exit(1);
+}
+const envPath = path.resolve(projectRoot, envFile);
+const loaded = config({ path: envPath });
+// A file named explicitly and then not found is a typo worth stopping on —
+// silently falling back would run against whichever project .env happens to
+// point at, which for this script means the wrong customers' data. A missing
+// default .env just falls through to the clearer "Missing ..." check below.
+if (loaded.error && envFlag !== -1) {
+  console.error(`[auto-scrape] could not read ${envPath}: ${loaded.error.message}`);
+  process.exit(1);
+}
+console.log(`[auto-scrape] credentials from ${envFile}`);
 
 const SCRAPE_COOLDOWN_MS = 15 * 60 * 1000;
 
@@ -77,8 +108,32 @@ async function run() {
   let totalInserted = 0;
 
   for (const [userId, userGroups] of groupsByUser) {
-    console.log(`[auto-scrape] user ${userId}: scraping ${userGroups.length} group(s)...`);
-    const groupsToScrape: GroupToScrape[] = userGroups.map((g) => ({
+    // Reddit needs no login of its own. Everything else is read through that
+    // specific customer's Chrome profile, which only exists if someone
+    // connected their account on THIS machine. Aimed at production this
+    // script sees every hosted customer's sources, so most of these will not
+    // be connected here — and scraping them anyway is actively harmful, not
+    // merely useless: Playwright would create the missing profile directory,
+    // read the signed-out wall, and the run would mark the source freshly
+    // scraped. Skip them, and name them, so it stays obvious who is still
+    // waiting on a connection rather than quietly collecting nothing.
+    const runnable = userGroups.filter(
+      (g) => sessionPlatform(g.platform) === "reddit" || hasAuthSession(userId, sessionPlatform(g.platform))
+    );
+    const notConnected = userGroups.filter((g) => !runnable.includes(g));
+
+    for (const g of notConnected) {
+      console.log(
+        `  [auto-scrape] "${g.name}" skipped — no ${sessionPlatform(g.platform)} session for user ${userId} on this machine.`
+      );
+    }
+    if (runnable.length === 0) {
+      console.log(`[auto-scrape] user ${userId}: nothing runnable here, skipping.`);
+      continue;
+    }
+
+    console.log(`[auto-scrape] user ${userId}: scraping ${runnable.length} group(s)...`);
+    const groupsToScrape: GroupToScrape[] = runnable.map((g) => ({
       id: g.id,
       platform: g.platform,
       name: g.name,

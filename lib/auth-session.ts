@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 
 /**
@@ -41,4 +42,32 @@ export function formatAuthLaunchError(raw: string, platformLabel: string): strin
     return `A previous ${platformLabel} login window is still open somewhere (check your taskbar, other monitors, or Task Manager for a leftover chrome.exe) — close it, then try again. Only one ${platformLabel} session window can be open at a time.`;
   }
   return raw;
+}
+
+/**
+ * Whether this machine already holds a connected browser profile for a given
+ * user and platform. Only the Connect flow creates these folders, so their
+ * presence is the one on-disk record that someone has logged in here — there
+ * is no connections table; the session lives entirely on local disk.
+ *
+ * The local-worker scraper needs this because it runs against the production
+ * database and therefore sees every hosted customer's sources, nearly all of
+ * which have no session on this operator's machine. Launching Chrome for
+ * those would do worse than nothing: Playwright CREATES a persistent-context
+ * directory it doesn't find, so the run would sign nobody in, scrape the
+ * logged-out wall, stamp last_scraped_at as though it had succeeded, and
+ * leave behind an empty profile folder that makes the customer look connected
+ * on the next pass. Checking first is what keeps the worker honest.
+ *
+ * Presence is not proof the cookies are still valid — a session can expire in
+ * place. That case is visible in the scrape log rather than here, since only
+ * a real request to the platform can tell the difference.
+ */
+export function hasAuthSession(userId: string, platform: string): boolean {
+  const dir = getAuthSessionPath(userId, platform);
+  try {
+    return fs.statSync(dir).isDirectory() && fs.readdirSync(dir).length > 0;
+  } catch {
+    return false;
+  }
 }

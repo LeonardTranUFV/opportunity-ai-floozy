@@ -6,3 +6,7 @@ node_modules/
 
 # Machine-specific project paths for START-ALL.bat (see paths.local.example.cmd)
 paths.local.cmd
+
+# Production credentials for the crawler worker (see .env.worker.example)
+.env.worker
+logs/
