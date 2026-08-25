@@ -1,3 +1,5 @@
+import { browserbaseProvider } from "@/lib/remote-browser-browserbase";
+
 /**
  * The boundary between "we need a signed-in Chrome somewhere" and "who is
  * actually hosting that Chrome".
@@ -97,9 +99,12 @@ export interface RemoteBrowserProvider {
  * it to decide which connect flow to offer, so it must not throw.
  */
 export function getRemoteBrowserProvider(): RemoteBrowserProvider | null {
-  // Vendor adapters register here once one is chosen. Deliberately empty
-  // rather than defaulting to a guess: silently picking a provider the
-  // operator never configured would surface as mystifying billing.
+  // Configuration is what selects a provider, not a build-time constant:
+  // deployments differ (the operator's laptop has none, production has one),
+  // and an unconfigured vendor must stay inert rather than half-active.
+  // Silently defaulting to a provider nobody set up would surface as
+  // mystifying billing.
+  if (browserbaseProvider.isConfigured()) return browserbaseProvider;
   return null;
 }
 
