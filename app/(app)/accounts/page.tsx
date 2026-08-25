@@ -6,8 +6,49 @@ import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ServerOff, ShieldAlert } from "lucide-react"
 import { isHostedDeployment } from "@/lib/deployment"
+import { canConnectRemotely } from "@/lib/remote-browser"
+import { CloudConnect } from "@/components/accounts/cloud-connect"
 
 export default function AccountsPage() {
+  // A hosted deployment with a cloud browser configured can finally do the
+  // thing this page exists for: the browser runs at the provider and its
+  // screen is streamed to the customer, so they sign in themselves.
+  //
+  // A separate branch rather than a lifted gate. isHostedDeployment() is still
+  // telling the truth — this machine still cannot open a Chrome window, and
+  // the local flow further down still cannot run here. What changed is that
+  // there is now a second way to connect that does not need one.
+  if (isHostedDeployment() && canConnectRemotely()) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-3xl font-bold tracking-tight">Connect Accounts</h2>
+          <p className="text-muted-foreground">
+            Authorize the live crawler to monitor target community groups on your behalf.
+          </p>
+        </div>
+
+        <Card>
+          <CardContent>
+            <SessionStatus />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Connect a platform</CardTitle>
+            <CardDescription>
+              Your password is never seen, stored, or handled by this app.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CloudConnect />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   if (isHostedDeployment()) {
     return (
       <div className="flex flex-col gap-6">
