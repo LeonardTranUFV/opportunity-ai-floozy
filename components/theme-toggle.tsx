@@ -1,17 +1,17 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
+  // resolvedTheme is unknown on the server, so the icon can only be chosen
+  // once we are in a browser. Render the disabled placeholder until then.
+  const hydrated = useHydrated()
 
-  useEffect(() => setMounted(true), [])
-
-  if (!mounted) {
+  if (!hydrated) {
     return <Button variant="ghost" size="icon" aria-label="Toggle theme" disabled />
   }
 

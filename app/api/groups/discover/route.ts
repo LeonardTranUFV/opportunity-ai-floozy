@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getChromium } from '@/lib/browser';
 import { isHostedDeployment, BROWSER_UNAVAILABLE } from '@/lib/deployment';
 import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
+import { errorMessage } from '@/lib/errors';
 import { spendCredits, CREDIT_COSTS, InsufficientCreditsError } from '@/lib/credits';
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
@@ -161,7 +162,9 @@ export async function POST(request: Request) {
                   });
                 }
               }
-            } catch (e) {}
+            } catch {
+              /* one malformed entry shouldn't abandon the rest of the list */
+            }
           }
         });
 
@@ -170,12 +173,13 @@ export async function POST(request: Request) {
 
       console.log(`✅ Live search complete. Scraped ${discoveredResults.length} groups matching "${searchQuery}" directly from Facebook.`);
 
-    } catch (err: any) {
-      console.error(`⚠️ Facebook Live search crawler failed: ${err.message}`);
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error(`⚠️ Facebook Live search crawler failed: ${message}`);
       failure =
-        err.message === 'SESSION_EXPIRED'
+        message === 'SESSION_EXPIRED'
           ? 'Your Facebook session has expired. Reconnect it under Connect Accounts, then try again.'
-          : `Facebook search failed: ${err.message}`;
+          : `Facebook search failed: ${message}`;
     } finally {
       await browser.close();
     }
@@ -214,8 +218,8 @@ export async function POST(request: Request) {
 
     // No invented fallback groups: an empty result is an honest answer the UI can explain.
     return NextResponse.json(discoveredResults);
-  } catch (error: any) {
-    return NextResponse.json({ error: formatAuthLaunchError(error.message, 'Facebook') }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: formatAuthLaunchError(errorMessage(error), 'Facebook') }, { status: 500 });
   }
 }
 

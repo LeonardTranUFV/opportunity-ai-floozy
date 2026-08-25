@@ -61,7 +61,7 @@ function PlatformRow({
       </div>
       {error && (
         <p className="pl-12 text-xs text-amber-600 dark:text-amber-400">
-          {error} This is not the same as being logged out — retry the check once that's resolved.
+          {error} This is not the same as being logged out — retry the check once that&apos;s resolved.
         </p>
       )}
     </div>

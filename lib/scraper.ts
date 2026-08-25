@@ -310,6 +310,10 @@ export function sessionPlatform(platform: string): string {
  * "in search of" style goals — the AI scoring step is what separates a real
  * request from another supplier's ad.
  */
+// groupUrl is unused here but the parameter has to stay: every extractor is
+// shipped into the page by the same `page.evaluate(extractor, group.url)`
+// call, so they all share one signature.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function extractMarketplaceListings(groupUrl: string): RawExtractedPost[] {
   const results: RawExtractedPost[] = [];
   const seen = new Set<string>();

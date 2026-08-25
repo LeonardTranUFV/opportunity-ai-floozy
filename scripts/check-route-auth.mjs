@@ -20,7 +20,6 @@
 
 import { readFileSync } from "node:fs";
 import { globSync } from "node:fs";
-import { join } from "node:path";
 
 const files = globSync("app/api/**/route.ts");
 const HANDLER = /export\s+async\s+function\s+(GET|POST|PUT|PATCH|DELETE)\s*\(/g;

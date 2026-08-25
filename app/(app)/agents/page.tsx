@@ -40,6 +40,10 @@ export default async function AgentsPage() {
   }, null)
   const sourcesAreStale =
     (activeGroups?.length ?? 0) > 0 &&
+    // Server Component: this renders once per request on the server, never on
+    // the client, so "now" cannot drift between renders or mismatch during
+    // hydration. The purity rule cannot tell the two component kinds apart.
+    // eslint-disable-next-line react-hooks/purity
     (!lastRefreshedAt || Date.now() - new Date(lastRefreshedAt).getTime() > STALE_AFTER_MS)
 
   return (

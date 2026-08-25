@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getChromium } from '@/lib/browser';
 import { isHostedDeployment, BROWSER_UNAVAILABLE } from '@/lib/deployment';
 import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
+import { errorMessage } from '@/lib/errors';
 
 export async function POST() {
   const supabase = await createClient();
@@ -58,7 +59,7 @@ export async function POST() {
 
     const bgPage = await backgroundContext.newPage();
     
-    let syncResults = {
+    const syncResults = {
       found: 0,
       synced: 0,
       skipped: 0
@@ -92,7 +93,9 @@ export async function POST() {
                   results.push({ name: text, url: cleanUrl });
                 }
               }
-            } catch (e) {}
+            } catch {
+              /* one malformed entry shouldn't abandon the rest of the list */
+            }
           }
         });
 
@@ -124,8 +127,8 @@ export async function POST() {
 
       console.log(`✅ Group auto-sync complete. New/Updated: ${syncResults.synced}, Skipped: ${syncResults.skipped}`);
 
-    } catch (syncErr: any) {
-      console.error(`⚠️ Silent group sync failed: ${syncErr.message}`);
+    } catch (syncErr) {
+      console.error(`⚠️ Silent group sync failed: ${errorMessage(syncErr)}`);
     } finally {
       await backgroundContext.close();
     }
@@ -136,8 +139,8 @@ export async function POST() {
       sync: syncResults
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('❌ Failed to launch Facebook session creator:', error);
-    return NextResponse.json({ error: formatAuthLaunchError(error.message, 'Facebook') }, { status: 500 });
+    return NextResponse.json({ error: formatAuthLaunchError(errorMessage(error), 'Facebook') }, { status: 500 });
   }
 }

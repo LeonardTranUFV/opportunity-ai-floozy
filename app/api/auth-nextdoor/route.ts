@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getChromium } from '@/lib/browser';
 import { isHostedDeployment, BROWSER_UNAVAILABLE } from '@/lib/deployment';
 import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
+import { errorMessage } from '@/lib/errors';
 
 export async function POST() {
   const supabase = await createClient();
@@ -42,8 +43,8 @@ export async function POST() {
     });
 
     return NextResponse.json({ success: true, message: 'Nextdoor browser session completed and saved successfully.' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('❌ Failed to launch Nextdoor browser session:', error);
-    return NextResponse.json({ error: formatAuthLaunchError(error.message, 'Nextdoor') }, { status: 500 });
+    return NextResponse.json({ error: formatAuthLaunchError(errorMessage(error), 'Nextdoor') }, { status: 500 });
   }
 }

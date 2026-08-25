@@ -211,7 +211,7 @@ export default function NewAgentPage() {
                   placeholder="e.g. roof leak, need roofer"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Comma separated — most people can't brainstorm a full list themselves, so let AI suggest one.
+                  Comma separated — most people can&apos;t brainstorm a full list themselves, so let AI suggest one.
                 </p>
               </div>
               <div className="space-y-2">

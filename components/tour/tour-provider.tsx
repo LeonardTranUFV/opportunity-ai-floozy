@@ -100,6 +100,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
       const saved = raw ? JSON.parse(raw) : null
+      // Synchronous by necessity, per the note above: storage is unreadable
+      // until we are in a browser, so this first read has to happen here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasCompleted(Boolean(saved?.completed))
       // Resume mid-tour after a navigation.
       if (saved?.active && typeof saved.stepIndex === "number") {

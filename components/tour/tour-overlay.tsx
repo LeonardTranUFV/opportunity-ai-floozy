@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { X, ArrowRight, ArrowLeft } from "lucide-react"
 import { useTour, TOUR_STEPS } from "@/components/tour/tour-provider"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 interface Box {
   top: number
@@ -19,9 +20,8 @@ const GAP = 12
 export function TourOverlay() {
   const { active, step, stepIndex, next, back, stop } = useTour()
   const [box, setBox] = useState<Box | null>(null)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => setMounted(true), [])
+  // createPortal needs document, so nothing renders until we are hydrated.
+  const mounted = useHydrated()
 
   // Measure the target after paint so we get final layout, and keep it in sync
   // while the page scrolls or resizes.
@@ -29,6 +29,10 @@ export function TourOverlay() {
     if (!active || !step) return
 
     if (!step.target || step.center) {
+      // Synchronous on purpose: a centred step has nothing to measure, and
+      // deferring this to a frame would flash the previous step's cut-out
+      // over the new card. The measuring path below still waits for layout.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBox(null)
       return
     }

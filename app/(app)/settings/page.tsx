@@ -193,7 +193,7 @@ export default async function SettingsPage() {
             <Radar className="h-4 w-4 text-brand" />
             Source Activity
           </CardTitle>
-          <CardDescription>When each community was last checked and how many posts it's collected.</CardDescription>
+          <CardDescription>When each community was last checked and how many posts it&apos;s collected.</CardDescription>
         </CardHeader>
         <CardContent>
           {scrapeActivity.length === 0 ? (
