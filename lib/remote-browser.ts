@@ -72,6 +72,27 @@ export type StartSessionOptions = {
   idleTimeoutSeconds?: number;
 };
 
+/**
+ * A running session as looked up by id, including who it was started for.
+ *
+ * The ownership fields are the point. Connect spans two requests — start one
+ * browser, come back later and read its cookies — and the only thing tying
+ * them together is a session id held by the client in between. An id is not a
+ * capability: whoever finishes a session gets the cookies out of it, so the
+ * finish step has to prove the caller is the person the session was started
+ * for. Without that, passing someone else's id harvests their login.
+ *
+ * Recorded with the vendor at creation rather than in our own table so the
+ * check reads from the same source of truth that owns the browser.
+ */
+export type RemoteSessionInfo = {
+  id: string;
+  connectUrl: string;
+  status: string;
+  ownerUserId: string | null;
+  platform: string | null;
+};
+
 export interface RemoteBrowserProvider {
   /** Human-readable, for logs and the Settings integrations list. */
   readonly name: string;
@@ -81,6 +102,12 @@ export interface RemoteBrowserProvider {
 
   /** Boot a browser and return the handles needed to drive and show it. */
   startSession(options: StartSessionOptions): Promise<RemoteSession>;
+
+  /**
+   * Look a session up by id, for the second half of connect. Returns null when
+   * the vendor does not recognise the id.
+   */
+  getSession(sessionId: string): Promise<RemoteSessionInfo | null>;
 
   /**
    * Shut a session down. Called on success, on failure, and on abandonment —

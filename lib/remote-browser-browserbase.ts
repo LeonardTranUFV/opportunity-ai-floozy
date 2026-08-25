@@ -1,6 +1,7 @@
 import type {
   RemoteBrowserProvider,
   RemoteSession,
+  RemoteSessionInfo,
   StartSessionOptions,
 } from "@/lib/remote-browser";
 
@@ -45,6 +46,13 @@ type CreateSessionResponse = {
 type DebugResponse = {
   debuggerFullscreenUrl?: string;
   debuggerUrl?: string;
+};
+
+type GetSessionResponse = {
+  id: string;
+  connectUrl: string;
+  status: string;
+  userMetadata?: Record<string, unknown> | null;
 };
 
 function apiKey(): string | undefined {
@@ -110,6 +118,14 @@ export const browserbaseProvider: RemoteBrowserProvider = {
         // login still only in the browser's memory.
         keepAlive: true,
 
+        // Stamped at creation so the finish step can prove the caller owns
+        // this session before reading cookies out of it. See
+        // RemoteSessionInfo — a session id is not a capability.
+        userMetadata: {
+          userId: options.userId,
+          platform: options.platform,
+        },
+
         // Route through a proxy whenever one is configured for this customer.
         // Datacentre egress shared across every customer is the fastest way to
         // get an entire fleet flagged, since the platforms weight IP
@@ -150,6 +166,26 @@ export const browserbaseProvider: RemoteBrowserProvider = {
       connectUrl: session.connectUrl,
       liveViewUrl,
     };
+  },
+
+  async getSession(sessionId: string): Promise<RemoteSessionInfo | null> {
+    let session: GetSessionResponse;
+    try {
+      session = await callApi<GetSessionResponse>(`/sessions/${sessionId}`, {
+        method: "GET",
+      });
+    } catch {
+      // An unknown id is an ordinary outcome here — a stale tab, a session the
+      // vendor already reaped — not an exceptional one. The caller turns it
+      // into "that login expired, start again".
+      return null;
+    }
+
+    const metadata = session.userMetadata ?? {};
+    const ownerUserId = typeof metadata.userId === "string" ? metadata.userId : null;
+    const platform = typeof metadata.platform === "string" ? metadata.platform : null;
+
+    return { id: session.id, connectUrl: session.connectUrl, status: session.status, ownerUserId, platform };
   },
 
   async endSession(sessionId: string): Promise<void> {
