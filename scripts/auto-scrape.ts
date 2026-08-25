@@ -30,6 +30,7 @@ import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { scrapeActiveGroups, sessionPlatform, type GroupToScrape } from "@/lib/scraper";
 import { hasAuthSession } from "@/lib/auth-session";
+import { hasStoredSession } from "@/lib/session-store";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -109,22 +110,36 @@ async function run() {
 
   for (const [userId, userGroups] of groupsByUser) {
     // Reddit needs no login of its own. Everything else is read through that
-    // specific customer's Chrome profile, which only exists if someone
-    // connected their account on THIS machine. Aimed at production this
-    // script sees every hosted customer's sources, so most of these will not
-    // be connected here — and scraping them anyway is actively harmful, not
-    // merely useless: Playwright would create the missing profile directory,
-    // read the signed-out wall, and the run would mark the source freshly
-    // scraped. Skip them, and name them, so it stays obvious who is still
-    // waiting on a connection rather than quietly collecting nothing.
-    const runnable = userGroups.filter(
-      (g) => sessionPlatform(g.platform) === "reddit" || hasAuthSession(userId, sessionPlatform(g.platform))
-    );
-    const notConnected = userGroups.filter((g) => !runnable.includes(g));
+    // specific customer's session, which lives in one of two places: a
+    // `storageState` blob in `browser_sessions` (usable from any machine, and
+    // how self-serve connect stores it), or a Chrome profile directory on THIS
+    // PC (how everything connected before that existed). Either will do.
+    //
+    // Aimed at production this script sees every hosted customer's sources, so
+    // many will be connected on neither — and scraping those anyway is
+    // actively harmful, not merely useless: Playwright would create the
+    // missing profile directory, read the signed-out wall, and the run would
+    // mark the source freshly scraped. Skip them, and name them, so it stays
+    // obvious who is still waiting on a connection rather than quietly
+    // collecting nothing.
+    //
+    // Sequential rather than fanned out: this is one indexed lookup per group
+    // against a database the crawl is about to work hard anyway, and it is
+    // nothing next to the browser time that follows.
+    const runnable: typeof userGroups = [];
+    const notConnected: typeof userGroups = [];
+    for (const g of userGroups) {
+      const platform = sessionPlatform(g.platform);
+      const connected =
+        platform === "reddit" ||
+        (await hasStoredSession(userId, platform)) ||
+        hasAuthSession(userId, platform);
+      (connected ? runnable : notConnected).push(g);
+    }
 
     for (const g of notConnected) {
       console.log(
-        `  [auto-scrape] "${g.name}" skipped — no ${sessionPlatform(g.platform)} session for user ${userId} on this machine.`
+        `  [auto-scrape] "${g.name}" skipped — no ${sessionPlatform(g.platform)} session for user ${userId}, stored or on this machine.`
       );
     }
     if (runnable.length === 0) {

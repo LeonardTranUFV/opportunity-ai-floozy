@@ -1,5 +1,5 @@
-import { getChromium } from "@/lib/browser";
-import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
+import { formatAuthLaunchError } from "@/lib/auth-session";
+import { openPlatformContext } from "@/lib/browser-context";
 import { attachFeedCapture } from "@/lib/feed-capture";
 import { DomainThrottle, fetchPaced } from "@/lib/fetchers";
 import { getRedditToken, toOAuthUrl, REDDIT_USER_AGENT, REDDIT_SETUP_HINT } from "@/lib/reddit-auth";
@@ -679,16 +679,12 @@ async function scrapeBrowserPlatform(
     return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
   }
 
-  let context;
+  // Where this customer's login lives — a stored storageState blob usable from
+  // any machine, or a Chrome profile on this one — is openPlatformContext's
+  // problem, not this function's. See lib/browser-context.ts.
+  let opened;
   try {
-    const chromium = await getChromium();
-    context = await chromium.launchPersistentContext(getAuthSessionPath(userId, platform), {
-      headless: true,
-      channel: "chrome",
-      viewport: { width: 1280, height: 900 },
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    });
+    opened = await openPlatformContext(userId, platform);
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     for (const group of platformGroups) {
@@ -696,6 +692,19 @@ async function scrapeBrowserPlatform(
     }
     return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
   }
+
+  if (!opened) {
+    // No session anywhere. Say so plainly instead of launching a browser that
+    // would read the signed-out wall and report an empty group as scraped.
+    for (const group of platformGroups) {
+      log.push(
+        `"${group.name}" skipped — no connected ${platform} session for this account.`
+      );
+    }
+    return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
+  }
+
+  const context = opened.context;
 
   try {
     const page = await context.newPage();
@@ -865,7 +874,10 @@ async function scrapeBrowserPlatform(
       await sleep(randBetween(2000, 5000));
     }
   } finally {
-    await context.close();
+    // release(), not context.close(): for a stored session this also writes
+    // the refreshed cookies back, which is what keeps the connection alive
+    // past the platform's rotation window.
+    await opened.release();
   }
 
   // One verdict for the whole platform, after every source has been seen. A
