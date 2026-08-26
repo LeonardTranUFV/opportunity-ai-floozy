@@ -37,6 +37,46 @@ Ground truth: the admin key sees 5 `settings` rows across 2 users; a signed-in u
 3. **No input validation.** Added body-size caps, JSON shape checks, string length caps, control-character stripping.
 4. **Auth limits too loose** — sign-ups/sign-ins were 30 per 5 min per IP (360/hr). Now **5 per 5 min (60/hr)**.
 
+## Added since that audit — stored browser sessions (2026-08-26)
+
+Self-serve connect stores each customer's Facebook/LinkedIn/Nextdoor/X login in
+`browser_sessions` so any worker can crawl with it. This is the most sensitive
+data the system has ever held, and it is worth reading as such: a Playwright
+`storageState` blob is not "user data", it is a **working credential**. Whoever
+holds one *is* that customer on that platform — no password, no second factor —
+until the cookies expire.
+
+| Control | What it is | Why this shape |
+|---|---|---|
+| Encrypted at rest | AES-256-GCM; key in `SESSION_ENCRYPTION_KEY`, never in the database | A database dump alone cannot impersonate anyone. GCM not CBC, so a tampered row fails to decrypt instead of yielding attacker-shaped JSON that then gets loaded into a browser |
+| Key versioning | `key_version` column, per-version env lookup | Rotating without it bricks every stored session at once, which presents to customers as every platform spontaneously disconnecting |
+| Refuses to store unencrypted | `saveSession()` throws when no key is configured | A connect flow that appears to succeed while writing a credential in clear is worse than one that fails loudly on the operator's own misconfiguration |
+| RLS with **no policies** | Unreachable for anon and authenticated; service-role only | Stricter than "user sees their own rows" on purpose. Postgres RLS filters *rows, not columns*, so any policy letting a customer read their own row also hands their browser the ciphertext, IV and tag. The UI gets a boolean from a server route instead |
+| Ownership proof on capture | Session id checked against vendor `userMetadata` before any cookie is read | The id travels through the customer's browser between start and finish, so it is a claim, not proof — whoever finishes a session receives the login inside it. Answers 404 rather than 403, so probing cannot distinguish "not yours" from "does not exist" |
+| Provider secrets redacted | `redactProviderSecrets()` on every log and response in the connect routes | `connectUrl` carries the provider API key in its query string and Playwright echoes back the URL it could not reach — so the ordinary error handler publishes that key into Vercel's logs *and* the customer's browser |
+| Spend cap | `LIMITS.browser` (5 per 15 min) on `/api/connect/start` | Each successful call boots a cloud browser that bills until timeout. Without it, an authenticated caller holding down a key is a direct line into the invoice — no exploit required |
+| iframe sandboxed | `allow-scripts allow-forms allow-popups`, **no** `allow-same-origin` | The frame needs scripts and forms to run a real login, but must not reach back into our document and read the customer's Supabase session |
+
+**Verified, not assumed** (2026-08-26, against live production using the public
+anon key): `browser_sessions` returns **0 rows** to an anonymous client while the
+service-role client reads it normally; AES round-trips; a tampered ciphertext is
+rejected by the auth tag; `connectUrl` appears in no response body anywhere in
+the codebase; six redaction fixtures pass under `npm run check`.
+
+**Still open, deliberately:**
+
+- **No proxy is wired.** `StartSessionOptions.proxyId` exists and nothing sets
+  it, so every customer's crawl currently leaves from the provider's shared
+  datacentre IPs. Platforms weight IP reputation far above page behaviour, so
+  this is the fastest route to getting a whole fleet flagged at once. Sticky
+  per-customer residential IPs are a real recurring cost and belong in pricing
+  before seats are sold.
+- **The ToS exposure is structural, not a bug.** Reading a feed through a
+  member's own session violates these platforms' terms. In the desktop model
+  that risk sat with each customer on their own machine; hosted, it
+  concentrates on our infrastructure, where a single detection event can affect
+  every customer at once.
+
 ## Known limitations — accepted, not hidden
 
 - **Rate limiting is shared-store, once migration 0007 is applied.** Counts live in the `rate_limits` table and the increment is atomic inside `bump_rate_limit()`, so every serverless instance counts against the same total. **Until that migration is pasted it falls back to the old per-process counter** — same behaviour as before, never worse — and logs `[rate-limit] shared store unavailable` on every fallback, naming the migration. It re-probes each minute, so applying the SQL takes effect without a redeploy. Check the Vercel logs for that string to confirm which mode is live.
