@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getChromium } from "@/lib/browser";
-import { getRemoteBrowserProvider } from "@/lib/remote-browser";
+import { getRemoteBrowserProvider, redactProviderSecrets } from "@/lib/remote-browser";
 import { isSessionPlatform, saveSession } from "@/lib/session-store";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 import { errorMessage } from "@/lib/errors";
 
 /**
@@ -32,6 +33,13 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  // Cheaper than start — no browser is booted here — but every call still
+  // costs a provider lookup, and the ownership check below is the thing
+  // standing between a guessed session id and someone else's cookies. Limiting
+  // it keeps that check from being something you can retry in a loop.
+  const rl = await rateLimit(`connect-finish:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "attempts");
 
   const provider = getRemoteBrowserProvider();
   if (!provider) {
@@ -124,9 +132,15 @@ export async function POST(request: Request) {
       await browser.close().catch(() => {});
     }
   } catch (error) {
-    console.error(`[connect] could not capture the ${platform} session:`, error);
+    // Redacted on BOTH paths. Playwright puts the URL it failed to reach into
+    // its message, and connectUrl carries the provider API key in its query
+    // string — so the obvious version of this handler prints our key into
+    // Vercel's logs and hands a copy to the customer's browser. Whoever read it
+    // could run browsers on our account until the bill stopped them.
+    const safe = redactProviderSecrets(errorMessage(error));
+    console.error(`[connect] could not capture the ${platform} session: ${safe}`);
     return NextResponse.json(
-      { error: `Could not save that login: ${errorMessage(error)}` },
+      { error: `Could not save that login: ${safe}` },
       { status: 502 }
     );
   } finally {

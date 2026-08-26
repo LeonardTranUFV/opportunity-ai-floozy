@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRemoteBrowserProvider } from "@/lib/remote-browser";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 /**
  * Release a cloud browser the customer walked away from.
@@ -21,6 +22,12 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  // Generous, because this is called on pagehide and a customer closing tabs
+  // should never be told off for tidying up after themselves. It is here so
+  // the provider lookup below cannot be driven in a loop.
+  const rl = await rateLimit(`connect-cancel:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "requests");
 
   const provider = getRemoteBrowserProvider();
   if (!provider) {

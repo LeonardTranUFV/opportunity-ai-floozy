@@ -135,6 +135,33 @@ export function getRemoteBrowserProvider(): RemoteBrowserProvider | null {
   return null;
 }
 
+/**
+ * Strip provider credentials out of text before it is logged or returned.
+ *
+ * `connectUrl` carries the provider API key in its query string, and Playwright
+ * puts the URL it failed to reach into the error message. So the natural
+ * `catch (err) { log(err); return { error: err.message } }` publishes our API
+ * key — into Vercel's logs, and worse, into the customer's browser. Whoever
+ * held it could then run browsers on our account until the bill stopped us.
+ *
+ * Applied at the boundary rather than trusted to callers: the leak happens in
+ * exactly the code path nobody exercises until something is already going
+ * wrong, which is the worst place to rely on remembering.
+ */
+export function redactProviderSecrets(text: string): string {
+  return (
+    text
+      // ws(s):// and http(s):// URLs — these are what carry the key as a query
+      // parameter. Replaced whole rather than parsed: a malformed URL in an
+      // error string still needs redacting, and parsing it might throw.
+      .replace(/\b(wss?|https?):\/\/[^\s"')]+/gi, "[redacted-url]")
+      // Bare API keys, in case one is ever interpolated outside a URL.
+      .replace(/\bbb_(live|test)_[A-Za-z0-9._-]+/g, "[redacted-key]")
+      // Generic apiKey=... / token=... survivors.
+      .replace(/\b(api[_-]?key|token|signingKey)=[^\s&"')]+/gi, "$1=[redacted]")
+  );
+}
+
 /** Whether self-serve connect can be offered at all in this deployment. */
 export function canConnectRemotely(): boolean {
   const provider = getRemoteBrowserProvider();

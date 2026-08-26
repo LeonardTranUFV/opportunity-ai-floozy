@@ -17,6 +17,7 @@ import { filterPostsForAgent, describeFilter, parseNegativePhrases } from "../li
 import { diagnosePlatform, type GroupOutcome } from "../lib/scraper";
 import { extractPostsFromBodies } from "../lib/feed-capture";
 import { DomainThrottle, classifyResponse, checkTarget } from "../lib/fetchers";
+import { redactProviderSecrets } from "../lib/remote-browser";
 
 let failures = 0;
 let checks = 0;
@@ -263,6 +264,43 @@ section("lib/fetchers — checkTarget (SSRF)");
   check("refuses .local mDNS names", refused("http://printer.local/"));
   check("refuses non-http schemes", refused("file:///etc/passwd"));
   check("refuses garbage", refused("not a url"));
+}
+
+// ------------------------------------------- remote browser secret redaction
+//
+// Worth fixtures because this leak lives in the one path nobody exercises
+// until something is already broken: an error handler. connectUrl carries the
+// provider API key in its query string and Playwright echoes back the URL it
+// could not reach, so an unredacted handler publishes that key into Vercel's
+// logs and into the customer's own browser.
+section("lib/remote-browser — redactProviderSecrets");
+{
+  const key = "bb_live_abc123DEF456";
+  const connectUrl = `wss://connect.browserbase.com?apiKey=${key}&sessionId=abc`;
+  const cleaned = redactProviderSecrets(`connect ECONNREFUSED ${connectUrl}`);
+
+  check("strips the whole connect URL", !cleaned.includes("connect.browserbase.com"), cleaned);
+  check("the key does not survive inside a URL", !cleaned.includes(key));
+  check(
+    "a bare key outside a URL is stripped too",
+    !redactProviderSecrets(`auth failed for ${key}`).includes(key)
+  );
+  check(
+    "https URLs are covered, not just wss",
+    !redactProviderSecrets(`GET https://api.browserbase.com/v1/s?token=${key}`).includes(key)
+  );
+  check(
+    "the provider's own error body still survives",
+    redactProviderSecrets(
+      'Browserbase POST /sessions failed (401): {"statusCode":401,"message":"Unauthorized"}'
+    ).includes("Unauthorized"),
+    "a misconfiguration has to stay diagnosable from the UI"
+  );
+  check(
+    "ordinary text is left alone",
+    redactProviderSecrets("That browser session has expired.") ===
+      "That browser session has expired."
+  );
 }
 
 console.log(

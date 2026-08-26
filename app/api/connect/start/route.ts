@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getRemoteBrowserProvider } from "@/lib/remote-browser";
+import { getRemoteBrowserProvider, redactProviderSecrets } from "@/lib/remote-browser";
 import { isSessionPlatform, SESSION_PLATFORMS } from "@/lib/session-store";
 import { hasSessionKey, SESSION_KEY_HINT } from "@/lib/session-crypto";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 import { errorMessage } from "@/lib/errors";
 
 /**
@@ -27,6 +28,15 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  // Before anything else that costs money. Every successful call here boots a
+  // real cloud browser that bills until it times out, so an authenticated
+  // caller looping this route is a direct line into our invoice — no exploit
+  // needed, just a held-down key. LIMITS.browser (5 per 15 min) is the same
+  // bucket the other browser-driving routes use, and is far above what a human
+  // connecting an account could ever need.
+  const rl = await rateLimit(`connect-start:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "connection attempts");
 
   const provider = getRemoteBrowserProvider();
   if (!provider) {
@@ -78,9 +88,14 @@ export async function POST(request: Request) {
       platform,
     });
   } catch (error) {
-    console.error(`[connect] could not start a ${platform} session:`, error);
+    // Redacted for the same reason as the finish route: an error thrown while
+    // talking to the provider can carry a URL with our API key in it. The
+    // provider's own JSON body survives redaction, which is what makes a
+    // misconfiguration diagnosable from the UI.
+    const safe = redactProviderSecrets(errorMessage(error));
+    console.error(`[connect] could not start a ${platform} session: ${safe}`);
     return NextResponse.json(
-      { error: `Could not start a browser: ${errorMessage(error)}` },
+      { error: `Could not start a browser: ${safe}` },
       { status: 502 }
     );
   }
