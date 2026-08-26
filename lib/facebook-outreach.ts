@@ -1,6 +1,6 @@
 import type { Page } from "playwright";
-import { getChromium } from "@/lib/browser";
-import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
+import { formatAuthLaunchError } from "@/lib/auth-session";
+import { openPlatformContext } from "@/lib/browser-context";
 
 async function typeLikeHuman(page: Page, text: string) {
   await page.keyboard.type(text, { delay: 35 + Math.random() * 40 });
@@ -18,17 +18,22 @@ export interface OutreachResult {
  * comment box and this reports that back as a clear error.
  */
 export async function postFacebookComment(postUrl: string, message: string, userId: string): Promise<OutreachResult> {
-  let context;
+  // Where this customer's login lives — a stored session usable from anywhere,
+  // or a Chrome profile on this machine — is openPlatformContext's problem.
+  // This used to look only on local disk, so every customer who connected
+  // through the hosted site had a perfectly good session that outreach could
+  // not see, and got told to connect an account they had already connected.
+  let opened;
   try {
-    const chromium = await getChromium();
-    context = await chromium.launchPersistentContext(getAuthSessionPath(userId, "facebook"), {
-      headless: true,
-      channel: "chrome",
-    });
+    opened = await openPlatformContext(userId, "facebook");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return { success: false, error: formatAuthLaunchError(message, "Facebook") };
   }
+  if (!opened) {
+    return { success: false, error: "No connected Facebook session for this account." };
+  }
+  const context = opened.context;
 
   try {
     const page = await context.newPage();
@@ -56,7 +61,7 @@ export async function postFacebookComment(postUrl: string, message: string, user
     const message = error instanceof Error ? error.message : "Unknown error posting comment";
     return { success: false, error: message };
   } finally {
-    await context.close();
+    await opened.release();
   }
 }
 
@@ -82,17 +87,22 @@ export async function postFacebookComment(postUrl: string, message: string, user
  * to follow up — would legitimately use it. That flow does not exist yet.
  */
 export async function sendFacebookMessage(profileUrl: string, message: string, userId: string): Promise<OutreachResult> {
-  let context;
+  // Where this customer's login lives — a stored session usable from anywhere,
+  // or a Chrome profile on this machine — is openPlatformContext's problem.
+  // This used to look only on local disk, so every customer who connected
+  // through the hosted site had a perfectly good session that outreach could
+  // not see, and got told to connect an account they had already connected.
+  let opened;
   try {
-    const chromium = await getChromium();
-    context = await chromium.launchPersistentContext(getAuthSessionPath(userId, "facebook"), {
-      headless: true,
-      channel: "chrome",
-    });
+    opened = await openPlatformContext(userId, "facebook");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return { success: false, error: formatAuthLaunchError(message, "Facebook") };
   }
+  if (!opened) {
+    return { success: false, error: "No connected Facebook session for this account." };
+  }
+  const context = opened.context;
 
   try {
     const page = await context.newPage();
@@ -120,6 +130,6 @@ export async function sendFacebookMessage(profileUrl: string, message: string, u
     const message = error instanceof Error ? error.message : "Unknown error sending message";
     return { success: false, error: message };
   } finally {
-    await context.close();
+    await opened.release();
   }
 }

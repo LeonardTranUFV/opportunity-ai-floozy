@@ -4,6 +4,11 @@ import { getChromium } from "@/lib/browser";
 import { getRemoteBrowserProvider, redactProviderSecrets } from "@/lib/remote-browser";
 import { isSessionPlatform, saveSession } from "@/lib/session-store";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import {
+  extractJoinedGroups,
+  syncJoinedGroups,
+  type GroupSyncResult,
+} from "@/lib/facebook-groups";
 import { errorMessage } from "@/lib/errors";
 
 /**
@@ -123,10 +128,41 @@ export async function POST(request: Request) {
 
       await saveSession(user.id, platform, storageState);
 
+      // Import the groups this account is actually in, while the signed-in
+      // browser is still open — it is the only moment we have one.
+      //
+      // Without this a customer finishes connecting and lands on an empty
+      // Communities page, having to paste group URLs by hand, which is most of
+      // the value of connecting gone. The local connect flow has always done
+      // this; the cloud flow was missing it.
+      //
+      // They arrive INACTIVE. Connecting an account should not quietly point
+      // the crawler at forty groups nobody chose — beyond consent, every active
+      // source is repeated traffic through that person's own account.
+      let sync: GroupSyncResult | null = null;
+      if (platform === "facebook") {
+        try {
+          const page = context.pages()[0] ?? (await context.newPage());
+          sync = await syncJoinedGroups(
+            supabase,
+            user.id,
+            await extractJoinedGroups(page)
+          );
+        } catch (syncError) {
+          // Never fatal. The session is saved and the connection is real; a
+          // failed import costs convenience, and telling someone their login
+          // failed when it did not would be worse.
+          console.warn(
+            `[connect] group import failed after a successful ${platform} connect: ${redactProviderSecrets(errorMessage(syncError))}`
+          );
+        }
+      }
+
       return NextResponse.json({
         success: true,
         platform,
         cookieCount: storageState.cookies.length,
+        sync,
       });
     } finally {
       await browser.close().catch(() => {});
