@@ -4,7 +4,22 @@ import { getRemoteBrowserProvider, redactProviderSecrets } from "@/lib/remote-br
 import { isSessionPlatform, SESSION_PLATFORMS } from "@/lib/session-store";
 import { hasSessionKey, SESSION_KEY_HINT } from "@/lib/session-crypto";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { getChromium } from "@/lib/browser";
 import { errorMessage } from "@/lib/errors";
+
+/**
+ * Where each platform's sign-in actually lives.
+ *
+ * Facebook's /login goes to a full-page form rather than the marketing splash;
+ * LinkedIn and X likewise. Nextdoor has no /login path worth the redirect, so
+ * its front page is the right target.
+ */
+const LOGIN_URL: Record<string, string> = {
+  facebook: "https://www.facebook.com/login",
+  linkedin: "https://www.linkedin.com/login",
+  nextdoor: "https://nextdoor.com/login/",
+  twitter: "https://x.com/i/flow/login",
+};
 
 /**
  * First half of self-serve connect: boot a cloud browser and hand the customer
@@ -77,6 +92,35 @@ export async function POST(request: Request) {
 
   try {
     const session = await provider.startSession({ userId: user.id, platform });
+
+    // Point the browser at the login page before the customer sees it.
+    //
+    // A fresh cloud browser opens on about:blank, so without this the panel
+    // says "Log into Facebook below" above an empty window and a URL bar —
+    // leaving the customer to know, and type, the right address. Doing it here
+    // rather than asking them is the difference between a product and a
+    // developer tool.
+    //
+    // Deliberately not fatal. If this fails the session is still perfectly
+    // usable — the live view has a working address bar — so a navigation
+    // problem should cost polish, not the whole connect.
+    try {
+      const chromium = await getChromium();
+      const browser = await chromium.connectOverCDP(session.connectUrl);
+      const context = browser.contexts()[0] ?? (await browser.newContext());
+      const page = context.pages()[0] ?? (await context.newPage());
+      await page.goto(LOGIN_URL[platform], {
+        waitUntil: "domcontentloaded",
+        timeout: 25_000,
+      });
+      // No browser.close(): over CDP that would tear down the very session the
+      // customer is about to use. Dropping the socket when this invocation
+      // ends is enough, and keepAlive is what holds the session open.
+    } catch (navError) {
+      console.warn(
+        `[connect] could not pre-navigate the ${platform} browser: ${redactProviderSecrets(errorMessage(navError))}`
+      );
+    }
 
     // Only the id and the viewable URL cross to the client. connectUrl carries
     // the provider API key in its query string and stays on the server: it is
