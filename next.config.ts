@@ -71,6 +71,34 @@ const csp = [
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3"],
 
+  /**
+   * Ship Playwright's own files with the connect routes.
+   *
+   * Those routes never launch a browser — they attach to one already running
+   * at the provider, over CDP. But `playwright-core` reads `browsers.json` at
+   * import time regardless, and Next's file tracing does not follow a runtime
+   * require of a JSON data file, so the deployed bundle was missing it:
+   *
+   *   Cannot find module '/var/task/node_modules/playwright-core/browsers.json'
+   *
+   * That failed at *import*, before a line of our code ran — which is why it
+   * surfaced as a cloud browser stuck on about:blank rather than as a
+   * navigation error, and why it would have taken /api/connect/finish down the
+   * same way, losing a customer's completed login rather than a blank page.
+   *
+   * The whole package rather than just the one file: it is ~18 MB against a
+   * 250 MB limit, and guessing which internals a future version happens to
+   * read at import time is how this bug gets to happen twice. Browser
+   * *binaries* are not included — those live in a separate cache directory,
+   * and PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD keeps them out of the build.
+   */
+  outputFileTracingIncludes: {
+    "/api/connect/**": [
+      "./node_modules/playwright-core/**",
+      "./node_modules/playwright/**",
+    ],
+  },
+
   async headers() {
     return [
       {
