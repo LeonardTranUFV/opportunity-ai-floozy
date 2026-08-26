@@ -129,15 +129,31 @@ export function CloudConnect() {
 
         <div className="overflow-hidden rounded-lg border bg-black">
           {/*
-            sandbox without allow-same-origin: the frame needs scripts and forms
-            to run a real login, but it must not be able to reach back into this
-            document's origin and read the customer's Supabase session.
+            The sandbox Browserbase documents for embedding a live view, and
+            allow-same-origin is load-bearing rather than lax.
+
+            Without it the framed document is forced into an *opaque* origin, so
+            its WebSocket back to the provider cannot connect. That is not a
+            visible error — the frame loads and then renders a black rectangle
+            forever, which is exactly how the first live attempt failed.
+
+            It does not give the frame access to this page. The live view is
+            served from the provider's origin, not ours, so same-origin policy
+            already separates the two; allow-same-origin only lets the frame
+            keep its own true origin instead of being anonymised. The
+            combination that genuinely defeats a sandbox is allow-same-origin
+            plus allow-scripts on content served from *our own* origin, which
+            could then rewrite its own sandbox attribute and escape. This frame
+            is cross-origin, so that does not apply.
+
+            Left off deliberately: allow-top-navigation, so a framed page can
+            never move the customer off this one, and allow-modals.
           */}
           <iframe
             src={live.liveViewUrl}
             title={`${label(live.platform)} login`}
             className="h-[600px] w-full"
-            sandbox="allow-scripts allow-forms allow-popups"
+            sandbox="allow-same-origin allow-scripts"
             allow="clipboard-read; clipboard-write"
           />
         </div>
