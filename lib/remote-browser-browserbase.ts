@@ -27,8 +27,16 @@ const API_ROOT = "https://api.browserbase.com/v1";
  * type a code, and short enough that an abandoned tab does not bill for an
  * hour. Connect is the slowest thing this provider is used for; crawls attach
  * to their own short-lived sessions.
+ *
+ * 300 rather than 600 because Browserbase's free tier caps a session at five
+ * minutes ("Upgrade for longer timeouts" in project settings) and rejects a
+ * larger `timeout` at creation — so asking for ten breaks connect before a
+ * browser ever appears, which would read as "the button does nothing". Paid
+ * plans allow far more; raise this, or pass idleTimeoutSeconds, once the
+ * account is on one, because five minutes is tight for someone hunting
+ * through their phone for a 2FA code.
  */
-const DEFAULT_IDLE_TIMEOUT_SECONDS = 600;
+const DEFAULT_IDLE_TIMEOUT_SECONDS = 300;
 
 /**
  * How long the generated live-view URL stays valid. Matched to the session
