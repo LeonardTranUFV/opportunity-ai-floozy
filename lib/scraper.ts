@@ -417,6 +417,16 @@ export interface ScrapeSummary {
   log: string[];
   scrapedGroupIds: string[];
   /**
+   * Sources that served a join prompt where the feed should have been.
+   *
+   * Reported separately from an empty scrape because the two look identical
+   * from the outside and need opposite responses: an empty group is fine and
+   * will fill up on its own, while this one can never collect anything until
+   * the connected account joins it. Callers persist it so the UI can say so
+   * instead of showing a healthy-looking source with zero posts forever.
+   */
+  joinWalledGroupIds: string[];
+  /**
    * Platforms where every source came back empty in a way that points at our
    * code rather than at the feed — see `diagnosePlatform`. Callers should treat
    * these as an alert, not as a quiet week.
@@ -428,6 +438,16 @@ interface PlatformScrapeResult {
   posts: ScrapedPost[];
   log: string[];
   scrapedGroupIds: string[];
+  /**
+   * Sources that served a join prompt where the feed should have been.
+   *
+   * Reported separately from an empty scrape because the two look identical
+   * from the outside and need opposite responses: an empty group is fine and
+   * will fill up on its own, while this one can never collect anything until
+   * the connected account joins it. Callers persist it so the UI can say so
+   * instead of showing a healthy-looking source with zero posts forever.
+   */
+  joinWalledGroupIds: string[];
   brokenPlatforms: string[];
 }
 
@@ -627,6 +647,7 @@ async function scrapeRedditPlatform(platformGroups: GroupToScrape[]): Promise<Pl
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
   const scrapedGroupIds: string[] = [];
+  const joinWalledGroupIds: string[] = [];
   // One throttle for the whole Reddit pass, so each source's response informs
   // the pacing of the next instead of every source guessing independently.
   const throttle = new DomainThrottle();
@@ -644,7 +665,7 @@ async function scrapeRedditPlatform(platformGroups: GroupToScrape[]): Promise<Pl
     // how reddit.com actually responded, which is both faster when it's happy
     // and properly cautious when it isn't.
   }
-  return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
+  return { posts, log, scrapedGroupIds, joinWalledGroupIds, brokenPlatforms: [] };
 }
 
 async function scrapeBrowserPlatform(
@@ -655,6 +676,7 @@ async function scrapeBrowserPlatform(
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
   const scrapedGroupIds: string[] = [];
+  const joinWalledGroupIds: string[] = [];
   const outcomes: GroupOutcome[] = [];
 
   // Chosen per group, not per bucket: Marketplace rides inside the Facebook
@@ -676,7 +698,7 @@ async function scrapeBrowserPlatform(
     for (const group of platformGroups) {
       log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
     }
-    return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
+    return { posts, log, scrapedGroupIds, joinWalledGroupIds, brokenPlatforms: [] };
   }
 
   // Where this customer's login lives — a stored storageState blob usable from
@@ -690,7 +712,7 @@ async function scrapeBrowserPlatform(
     for (const group of platformGroups) {
       log.push(`"${group.name}" failed: ${formatAuthLaunchError(message, platform)}`);
     }
-    return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
+    return { posts, log, scrapedGroupIds, joinWalledGroupIds, brokenPlatforms: [] };
   }
 
   if (!opened) {
@@ -701,7 +723,7 @@ async function scrapeBrowserPlatform(
         `"${group.name}" skipped — no connected ${platform} session for this account.`
       );
     }
-    return { posts, log, scrapedGroupIds, brokenPlatforms: [] };
+    return { posts, log, scrapedGroupIds, joinWalledGroupIds, brokenPlatforms: [] };
   }
 
   const context = opened.context;
@@ -837,6 +859,11 @@ async function scrapeBrowserPlatform(
             .catch(() => 0);
           if (behindJoinWall > 0) {
             outcome.behindJoinWall = true;
+            // Reported upward so the caller can persist it. The run log says
+            // this too, but nobody reads a run log — the Communities page is
+            // where someone goes to ask why a source is quiet, and it needs to
+            // be able to answer.
+            joinWalledGroupIds.push(group.id);
             log.push(
               `"${group.name}": you're not a member yet — join it on ${platform}, then it will start collecting.`
             );
@@ -890,7 +917,7 @@ async function scrapeBrowserPlatform(
     brokenPlatforms.push(platform);
   }
 
-  return { posts, log, scrapedGroupIds, brokenPlatforms };
+  return { posts, log, scrapedGroupIds, joinWalledGroupIds, brokenPlatforms };
 }
 
 /**
@@ -932,13 +959,15 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
   const posts: ScrapedPost[] = [];
   const log: string[] = [];
   const scrapedGroupIds: string[] = [];
+  const joinWalledGroupIds: string[] = [];
   const brokenPlatforms: string[] = [];
   for (const result of platformResults) {
     posts.push(...result.posts);
     log.push(...result.log);
     scrapedGroupIds.push(...result.scrapedGroupIds);
+    joinWalledGroupIds.push(...result.joinWalledGroupIds);
     brokenPlatforms.push(...result.brokenPlatforms);
   }
 
-  return { posts, log, scrapedGroupIds, brokenPlatforms };
+  return { posts, log, scrapedGroupIds, joinWalledGroupIds, brokenPlatforms };
 }

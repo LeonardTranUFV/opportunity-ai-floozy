@@ -96,11 +96,29 @@ export async function scrapeAndStorePosts(
   const brokenPlatforms = scrapeResult.brokenPlatforms;
   log.push(...scrapeResult.log);
 
+  const checkedAt = new Date().toISOString();
+
   if (scrapeResult.scrapedGroupIds.length > 0) {
+    // Reading the feed proves membership is not the problem, so clear any
+    // stale flag: someone who joins a group should see the warning disappear
+    // on the next crawl rather than wonder why it sticks.
     await supabase
       .from("groups")
-      .update({ last_scraped_at: new Date().toISOString() })
+      .update({
+        last_scraped_at: checkedAt,
+        needs_membership: false,
+        membership_checked_at: checkedAt,
+      })
       .in("id", scrapeResult.scrapedGroupIds);
+  }
+
+  if (scrapeResult.joinWalledGroupIds.length > 0) {
+    // Note this does NOT set last_scraped_at — nothing was read, and that
+    // column is the heartbeat the UI shows as "working".
+    await supabase
+      .from("groups")
+      .update({ needs_membership: true, membership_checked_at: checkedAt })
+      .in("id", scrapeResult.joinWalledGroupIds);
   }
 
   if (posts.length === 0) {

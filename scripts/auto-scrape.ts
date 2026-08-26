@@ -159,11 +159,29 @@ async function run() {
       const result = await scrapeActiveGroups(groupsToScrape, userId);
       for (const line of result.log) console.log(`  ${line}`);
 
+      const checkedAt = new Date().toISOString();
+
       if (result.scrapedGroupIds.length > 0) {
+        // Reading the feed proves membership is not the problem, so clear any
+        // stale flag — joining a group should make the warning go away by
+        // itself on the next run.
         await supabase
           .from("groups")
-          .update({ last_scraped_at: new Date().toISOString() })
+          .update({
+            last_scraped_at: checkedAt,
+            needs_membership: false,
+            membership_checked_at: checkedAt,
+          })
           .in("id", result.scrapedGroupIds);
+      }
+
+      if (result.joinWalledGroupIds.length > 0) {
+        // No last_scraped_at here: nothing was read, and that column is the
+        // heartbeat the UI shows as "working".
+        await supabase
+          .from("groups")
+          .update({ needs_membership: true, membership_checked_at: checkedAt })
+          .in("id", result.joinWalledGroupIds);
       }
 
       if (result.posts.length > 0) {

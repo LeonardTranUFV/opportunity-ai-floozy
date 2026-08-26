@@ -20,7 +20,7 @@ export default async function CommunitiesPage() {
 
   const { data: allGroups } = await supabase
     .from("groups")
-    .select("id, platform, name, url, active")
+    .select("id, platform, name, url, active, needs_membership")
     .order("created_at", { ascending: false })
 
   const groupIds = (allGroups ?? []).map((g) => g.id)
@@ -139,10 +139,24 @@ export default async function CommunitiesPage() {
                       >
                         <div className="flex min-w-0 flex-col gap-1">
                           <GroupName id={g.id} name={g.name} url={g.url} />
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <Badge variant={g.active ? "success" : "secondary"}>
                               {g.active ? "Active" : "Paused"}
                             </Badge>
+                            {/* Only when the crawler actually saw a join wall.
+                                needs_membership is null until a source has been
+                                visited, and "not checked yet" is honestly
+                                different from "you're a member" — guessing
+                                either way would put a warning on a source that
+                                is simply new. */}
+                            {g.needs_membership === true && (
+                              <Badge
+                                variant="warning"
+                                title="This group only shows its posts to members, so nothing can be collected until the connected account joins it."
+                              >
+                                Join this group to find opportunities
+                              </Badge>
+                            )}
                             <span className="text-xs text-muted-foreground">{g.post_count} posts collected</span>
                           </div>
                         </div>
