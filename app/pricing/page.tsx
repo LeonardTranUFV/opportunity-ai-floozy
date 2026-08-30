@@ -195,17 +195,22 @@ export default function PricingPage() {
             </Card>
           ))}
         </div>
-        {/* The tiers used to promise Facebook, LinkedIn and Nextdoor as though a
-            customer could switch them on themselves, and never mentioned Reddit —
-            which is the one that actually does work that way. Reading those feeds
-            means driving a signed-in browser session, so somebody on our side sets
-            each one up with you. Saying so here costs a little polish and saves a
-            customer paying for something they then can't turn on. */}
+        {/* This paragraph has now been wrong in both directions, which is worth a
+            note so it doesn't flip a third time.
+
+            It first promised Facebook, LinkedIn and Nextdoor as self-serve when
+            they weren't. It was then rewritten to say Reddit "runs itself" —
+            true at the time, and false since Reddit closed new Data API
+            registrations to anything that isn't a moderation tool.
+
+            What is true as of 2026-08-30: the cloud-browser connect works, so
+            the signed-in platforms are the ones a customer can switch on alone.
+            Reddit is the one that can't currently collect. Whatever this says,
+            it has to match what a customer gets on the day they pay. */}
         <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
-          Reddit runs itself — add a community and it starts collecting straight away.
-          Facebook, LinkedIn, Nextdoor and X have to be signed in through a real browser
-          session, so we set those up with you during onboarding rather than leaving you
-          to connect them alone.
+          Facebook, LinkedIn, Nextdoor and X each take one sign-in with your own
+          account — about two minutes in a secure browser session you drive
+          yourself. Prefer a hand? We'll do it with you on a call.
         </p>
         <p className="mt-4 text-center text-xs text-muted-foreground">
           No contracts. Cancel anytime. Prices in CAD.
