@@ -9,6 +9,12 @@ const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"];
 
 const PUBLIC_PATHS = [
   "/login",
+  // Creating an account and asking for a reset are, by definition, things you
+  // do while signed out. Leaving either off this list sends a stranger to
+  // /login to prove who they are before they are allowed to become anyone —
+  // and /signup is the page paid traffic lands on.
+  "/signup",
+  "/reset-password",
   "/auth/callback",
   "/auth/confirm",
   "/auth/update-password",

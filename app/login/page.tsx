@@ -1,203 +1,147 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { AuthShell } from "@/components/auth/auth-shell"
+import { GoogleButton } from "@/components/auth/google-button"
 
-type Mode = "magic-link" | "password"
-
+/**
+ * Sign in.
+ *
+ * Creating an account and resetting a password now live on their own routes
+ * rather than behind toggles here. The old single screen changed its own title,
+ * its description and the meaning of its button depending on two pieces of
+ * state, so "sign up" and "sign in" looked identical and people submitted the
+ * wrong one — which is what "the login page is confusing" meant.
+ *
+ * Separate routes also give the ads somewhere to point: /signup is a page you
+ * can buy traffic to, a toggle is not.
+ */
 export default function LoginPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [mode, setMode] = useState<Mode>("magic-link")
+  const [usePassword, setUsePassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const handleMagicLink = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
     setMessage(null)
+
+    if (usePassword) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      setLoading(false)
+      if (error) {
+        setError(error.message)
+        return
+      }
+      router.push("/")
+      router.refresh()
+      return
+    }
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${window.location.origin}/` },
     })
     setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
-      setMessage("Check your email for a login link.")
-    }
-  }
-
-  const handlePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setMessage(null)
-
-    if (isSignUp) {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: `${window.location.origin}/` },
-      })
-      setLoading(false)
-      if (error) {
-        setError(error.message)
-      } else {
-        setMessage("Check your email to confirm your account.")
-      }
-      return
-    }
-
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
-      router.push("/")
-      router.refresh()
-    }
-  }
-
-  const handleForgotPassword = async () => {
-    if (!email) {
-      setError("Enter your email above first, then click \"Forgot password\".")
-      return
-    }
-    setLoading(true)
-    setError(null)
-    setMessage(null)
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/update-password`,
-    })
-    setLoading(false)
-    if (error) {
-      setError(error.message)
-    } else {
-      setMessage("Check your email for a password reset link.")
-    }
+    if (error) setError(error.message)
+    else setMessage(`Link sent to ${email}. It signs you straight in — no password needed.`)
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
-      <div className="pointer-events-none absolute left-1/2 top-1/3 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-sky-400/20 to-blue-600/20 blur-3xl" />
-      <Card className="relative w-full max-w-sm shadow-lg">
-        <CardHeader>
-          <div className="mb-2 flex items-center gap-2">
-            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 shadow-sm shadow-blue-600/30">
-              <span className="font-bold text-white">O</span>
-            </div>
-            <span className="font-semibold">Floozy Opportunity AI</span>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to see what your agents have found."
+      footer={
+        <p>
+          New here?{" "}
+          <Link href="/signup" className="font-medium text-foreground underline underline-offset-4">
+            Create an account
+          </Link>
+        </p>
+      }
+    >
+      <div className="flex flex-col gap-6">
+        <GoogleButton label="Sign in with Google" />
+
+        <form onSubmit={submit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@yourcompany.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
-          <CardTitle>{mode === "magic-link" ? "Sign in" : isSignUp ? "Create account" : "Sign in"}</CardTitle>
-          <CardDescription>
-            {mode === "magic-link"
-              ? "We'll email you a link — no password needed."
-              : "Use your email and password."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {mode === "magic-link" ? (
-            <form onSubmit={handleMagicLink} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
-              <Button type="submit" variant="brand" disabled={loading}>
-                {loading ? "Sending…" : "Send magic link"}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handlePassword} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email-pw">Email</Label>
-                <Input
-                  id="email-pw"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
+
+          {usePassword ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  minLength={6}
-                  required
-                />
-              </div>
-              <Button type="submit" variant="brand" disabled={loading}>
-                {loading ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
-              </Button>
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setIsSignUp((v) => !v)}
-                  className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-brand"
+                <Link
+                  href="/reset-password"
+                  className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
                 >
-                  {isSignUp ? "Already have an account? Sign in" : "New here? Create an account"}
-                </button>
-                {!isSignUp && (
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-brand"
-                  >
-                    Forgot password?
-                  </button>
-                )}
+                  Forgot it?
+                </Link>
               </div>
-            </form>
-          )}
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+          ) : null}
 
-          {message && (
-            <p className="mt-3 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
-              {message}
-            </p>
-          )}
-          {error && (
-            <p className="mt-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          )}
+          <Button type="submit" variant="brand" className="w-full" disabled={loading}>
+            {loading ? "One moment…" : usePassword ? "Sign in" : "Email me a sign-in link"}
+          </Button>
 
+          {/* Says what changes, not what it is called. "Use password instead"
+              is a decision; "Password mode" is a label. */}
           <button
             type="button"
             onClick={() => {
-              setMode((m) => (m === "magic-link" ? "password" : "magic-link"))
-              setMessage(null)
+              setUsePassword((v) => !v)
               setError(null)
+              setMessage(null)
             }}
-            className="mt-4 text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-brand"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
-            {mode === "magic-link" ? "Use email + password instead" : "Use a magic link instead"}
+            {usePassword ? "Email me a link instead" : "Use a password instead"}
           </button>
-        </CardContent>
-      </Card>
-    </div>
+        </form>
+
+        {message ? (
+          <p className="rounded-lg bg-brand/10 px-3 py-2 text-sm text-brand" role="status">
+            {message}
+          </p>
+        ) : null}
+        {error ? (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </AuthShell>
   )
 }
