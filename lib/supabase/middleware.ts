@@ -15,6 +15,10 @@ const PUBLIC_PATHS = [
   // and /signup is the page paid traffic lands on.
   "/signup",
   "/reset-password",
+  // The free scan is the page ads point at. It has to answer a stranger who
+  // has never signed in — sending them to /login first is the funnel leak the
+  // whole page exists to remove.
+  "/scan",
   "/auth/callback",
   "/auth/confirm",
   "/auth/update-password",

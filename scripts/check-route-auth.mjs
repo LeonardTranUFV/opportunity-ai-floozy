@@ -25,8 +25,25 @@ const files = globSync("app/api/**/route.ts");
 const HANDLER = /export\s+async\s+function\s+(GET|POST|PUT|PATCH|DELETE)\s*\(/g;
 const GUARDS = ["auth.getUser()", "CRON_SECRET", "requireUser", "isAdmin("];
 
+/**
+ * A handler may be deliberately public — the free scan has to answer someone
+ * who has never signed in. Such a handler declares `@public-route` inside its
+ * own body.
+ *
+ * Two things keep this an exemption rather than a hole. It is matched per
+ * handler, not per file, so it cannot silently cover a sibling DELETE. And
+ * exempt handlers are printed on every run: a public route should stay visible
+ * and get re-justified each time someone reads this output, not vanish from
+ * the report.
+ *
+ * A public handler still owes the reader the other two locks — a rate limit,
+ * and returning only columns that are safe to hand a stranger.
+ */
+const PUBLIC_MARKER = "@public-route";
+
 let guarded = 0;
 const unguarded = [];
+const publicRoutes = [];
 
 for (const file of files.sort()) {
   const src = readFileSync(file, "utf8");
@@ -35,18 +52,26 @@ for (const file of files.sort()) {
   for (let i = 0; i < marks.length; i++) {
     const end = i + 1 < marks.length ? marks[i + 1].at : src.length;
     const block = src.slice(marks[i].at, end);
+    const where = `${marks[i].verb.padEnd(6)} ${file}`;
+
     if (GUARDS.some((g) => block.includes(g))) guarded++;
-    else unguarded.push(`${marks[i].verb.padEnd(6)} ${file}`);
+    else if (block.includes(PUBLIC_MARKER)) publicRoutes.push(where);
+    else unguarded.push(where);
   }
 }
 
-console.log(`handlers checked : ${guarded + unguarded.length}`);
+console.log(`handlers checked : ${guarded + unguarded.length + publicRoutes.length}`);
 console.log(`guarded          : ${guarded}`);
+console.log(`public on purpose: ${publicRoutes.length}`);
+for (const p of publicRoutes) console.log("   ", p);
 console.log(`UNGUARDED        : ${unguarded.length}`);
 for (const u of unguarded) console.log("   ", u);
 
 if (unguarded.length > 0) {
-  console.log("\nEvery handler needs its own session check. RLS is the second lock, not the first.");
+  console.log(
+    "\nEvery handler needs its own session check. RLS is the second lock, not the first." +
+      `\nA handler that must answer anonymous callers declares ${PUBLIC_MARKER} in its body.`
+  );
   process.exit(1);
 }
-console.log("\nAll handlers fail closed.");
+console.log("\nAll handlers fail closed, or say why they don't.");
