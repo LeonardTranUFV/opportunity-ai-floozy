@@ -1,209 +1,196 @@
 /**
- * Is there actually enough on Reddit to make the free scan impressive?
+ * How much live trade demand actually flows through Reddit, and how fast it
+ * scrolls past?
  *
  *   node scripts/check-reddit-density.mjs
- *   node scripts/check-reddit-density.mjs --env .env.local --days 90
- *   node scripts/check-reddit-density.mjs --trade roofer
+ *   node scripts/check-reddit-density.mjs --region ca
+ *   node scripts/check-reddit-density.mjs --subs vancouver,toronto,seattle
  *
- * The free scan is the whole acquisition funnel: a stranger types their trade
- * and city and, within a minute, has to see real people asking for that trade
- * nearby. If that list comes back with two thin results, no landing page and
- * no ad creative can save it — and we would only find that out after spending
- * the ad budget.
+ * No credentials. This deliberately uses the public per-subreddit Atom feed
+ * (`/r/<sub>/new.rss`), which still answers an anonymous request — verified
+ * 2026-08-30, 200 and a full feed — rather than the Data API, which Reddit now
+ * grants only on request and effectively only for moderation use cases. See
+ * memory: opportunity-ai-reddit-api-gated.
  *
- * So this answers the question up front, for free. It runs the same app-only
- * OAuth path the product uses (lib/reddit-auth.ts), issues the searches the
- * scan would issue, and reports how many genuine requests land inside the
- * lookback window — plus the five most recent, verbatim, because those are
- * literally what a prospect would see.
+ * Two numbers come out of this, and they answer different questions:
  *
- * Reads REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET. Never prints them.
+ *   HITS  — trade requests visible right now. Whether there is demand at all.
+ *   DEPTH — how many hours of posting the newest 25 entries span. This is the
+ *           one people forget. The feed is a window, not an archive: on a busy
+ *           subreddit it can be under an hour, which means anything we don't
+ *           collect within that hour is gone for good, and it means a brand
+ *           new customer has no history to be impressed by.
+ *
+ * DEPTH sets the polling interval we would have to run, and it is the reason
+ * the "last 90 days" version of the free scan cannot be built on feeds alone.
  */
-import { config } from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.join(__dirname, "..");
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-config({ path: path.resolve(projectRoot, arg("env", ".env.local")) });
-
-const DAYS = Number(arg("days", "90"));
-const ONLY_TRADE = arg("trade", null);
-
 /**
- * Metro Vancouver, because that is where the business operates — the same
- * scope as CITY_CLUSTERS in lib/nearby-cities.ts.
+ * City subreddits carry the actual requests; the trade subreddits carry
+ * national volume and act as a control — if the trade subs are busy and the
+ * city subs are empty, the problem is our geography, not the idea.
  *
- * One trap worth naming: r/vancouver is British Columbia, r/vancouverwa is
- * Vancouver, Washington. Including the wrong one quietly fills a BC
- * contractor's results with leads 500km away in another country, and the
- * posts read perfectly plausibly. Only verified BC subs belong in this list.
+ * r/vancouver is British Columbia. r/vancouverwa is Washington State. Mixing
+ * them puts leads 500km away into a contractor's results, and the posts read
+ * perfectly plausibly, so the mistake survives review.
  */
-const SUBS = [
-  "vancouver",
-  "AskVan",
-  "britishcolumbia",
-  "burnaby",
-  "SurreyBC",
-  "NewWestminster",
-  "Coquitlam",
-  "RichmondBC",
-  "Delta_BC",
-  "MapleRidge",
-  "HomeImprovement",
-  "Renovations",
-];
-
-/**
- * Trades to probe, with the words people actually use when they want one.
- *
- * Nobody posts "seeking roofing services." They post "roof is leaking" and
- * "anyone know a good roofer." Searching the trade noun alone finds mostly
- * contractors advertising and homeowners complaining about a past job, which
- * is why each trade carries its own intent vocabulary.
- */
-const TRADES = {
-  roofer: ["roofer", "roofing", "roof leak", "reroof"],
-  contractor: ["contractor", "renovation", "reno quote", "general contractor"],
-  plumber: ["plumber", "plumbing", "burst pipe", "leaking pipe"],
-  electrician: ["electrician", "electrical panel", "rewire"],
-  landscaper: ["landscaper", "landscaping", "yard cleanup"],
-  painter: ["painter", "painting quote", "repaint"],
+const REGIONS = {
+  ca: [
+    "vancouver", "AskVan", "britishcolumbia", "toronto", "askTO", "ontario",
+    "calgary", "Edmonton", "ottawa", "winnipeg", "Hamilton", "kitchener",
+  ],
+  us: [
+    "seattle", "Portland", "SanFrancisco", "LosAngeles", "Denver", "austin",
+    "houston", "chicago", "Atlanta", "nyc", "boston", "phoenix",
+  ],
+  trades: [
+    "HomeImprovement", "Renovations", "Construction", "Plumbing",
+    "electricians", "HVAC", "Roofing", "landscaping",
+  ],
 };
 
-/**
- * Phrases that separate "I need one" from "here is my opinion about one".
- * Deliberately loose — this script is measuring whether a signal exists at
- * all, not scoring leads. The product's own scorer does the real judging.
- */
-const INTENT = [
-  "recommend",
-  "recommendation",
-  "looking for",
-  "anyone know",
-  "need a",
-  "need an",
-  "suggestions",
-  "who do you use",
-  "hire",
-  "quote",
-  "help with",
+const REGION = arg("region", "all");
+const SUBS = arg("subs", null)
+  ? arg("subs", "").split(",").map((s) => s.trim()).filter(Boolean)
+  : REGION === "all"
+    ? [...REGIONS.ca, ...REGIONS.us, ...REGIONS.trades]
+    : (REGIONS[REGION] ?? []);
+
+if (!SUBS.length) {
+  console.log(`Unknown region "${REGION}". Known: ${Object.keys(REGIONS).join(", ")}, all\n`);
+  process.exit(1);
+}
+
+/** The words people actually use. Nobody writes "seeking roofing services". */
+const TRADE = [
+  "roofer", "roofing", "roof leak", "plumber", "plumbing", "burst pipe",
+  "electrician", "rewire", "electrical panel", "contractor", "renovation",
+  "reno", "handyman", "landscaper", "landscaping", "painter", "drywall",
+  "hvac", "furnace", "heat pump", "flooring", "tiler", "fence", "deck build",
 ];
 
-const USER_AGENT = "web:OpportunityAI:1.0 (by /u/opportunity-ai)";
+/** What separates "I need one" from "here is my opinion about one". */
+const INTENT = [
+  "recommend", "recommendation", "looking for", "anyone know", "need a",
+  "need an", "suggestions", "who do you use", "hire", "quote", "estimate",
+  "help with", "any good", "worth it",
+];
 
-const id = process.env.REDDIT_CLIENT_ID;
-const secret = process.env.REDDIT_CLIENT_SECRET;
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-if (!id || !secret) {
-  console.log(
-    "\nREDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET are not set.\n" +
-      "Create a 'script' app at https://www.reddit.com/prefs/apps, put both in\n" +
-      ".env.local (and in Vercel Production), then run this again.\n"
-  );
-  process.exit(1);
-}
+/** Reddit 429s an anonymous client quickly. One request every 1.5s stays under it. */
+const PACE_MS = 1500;
 
-async function token() {
-  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": USER_AGENT,
-    },
-    body: "grant_type=client_credentials",
+function entries(xml) {
+  return [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((m) => {
+    const block = m[1];
+    const pick = (tag) => (block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) ?? [, ""])[1];
+    return {
+      title: pick("title").replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"'),
+      body: pick("content").replace(/<[^>]+>/g, " "),
+      at: Date.parse(pick("updated")),
+      url: (block.match(/<link[^>]*href="([^"]+)"/) ?? [, ""])[1],
+    };
   });
-  if (!res.ok) {
-    console.log(
-      `\nReddit refused the credentials (${res.status}). A retry will not fix this —\n` +
-        "check that the app is type 'script' and that the secret is the secret,\n" +
-        "not the app id shown under the app name.\n"
-    );
-    process.exit(1);
-  }
-  return (await res.json()).access_token;
 }
 
-async function search(bearer, query) {
-  const subs = SUBS.map((s) => `subreddit:${s}`).join(" OR ");
-  const q = `(${subs}) (${query})`;
-  const url =
-    `https://oauth.reddit.com/search?q=${encodeURIComponent(q)}` +
-    `&sort=new&limit=100&t=year&type=link&raw_json=1`;
+const isRequest = (e) => {
+  const text = `${e.title} ${e.body}`.toLowerCase();
+  return TRADE.some((t) => text.includes(t)) && INTENT.some((i) => text.includes(i));
+};
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${bearer}`, "User-Agent": USER_AGENT },
-  });
-  if (!res.ok) return [];
-  const json = await res.json();
-  return (json?.data?.children ?? []).map((c) => c.data);
-}
+const hours = (ms) => ms / 3_600_000;
 
-function ageDays(post) {
-  return (Date.now() / 1000 - post.created_utc) / 86400;
-}
+console.log(`\nReddit live flow · ${SUBS.length} subreddits · public feeds, no API key\n${"-".repeat(72)}`);
+console.log(`${"subreddit".padEnd(20)} ${"posts".padStart(5)} ${"window".padStart(9)}  ${"hits".padStart(4)}`);
+console.log("-".repeat(72));
 
-function looksLikeARequest(post) {
-  const text = `${post.title} ${post.selftext ?? ""}`.toLowerCase();
-  return INTENT.some((phrase) => text.includes(phrase));
-}
+const found = [];
+let blocked = 0;
+let totalDepth = 0;
+let measured = 0;
 
-const bearer = await token();
-console.log(
-  `\nReddit density · last ${DAYS} days · ${SUBS.length} BC subreddits\n` +
-    `${"-".repeat(58)}\n`
-);
-
-const trades = ONLY_TRADE ? { [ONLY_TRADE]: TRADES[ONLY_TRADE] } : TRADES;
-if (ONLY_TRADE && !TRADES[ONLY_TRADE]) {
-  console.log(`Unknown trade "${ONLY_TRADE}". Known: ${Object.keys(TRADES).join(", ")}\n`);
-  process.exit(1);
-}
-
-const summary = [];
-
-for (const [trade, terms] of Object.entries(trades)) {
-  const seen = new Map();
-
-  for (const term of terms) {
-    for (const post of await search(bearer, `"${term}"`)) {
-      if (ageDays(post) > DAYS) continue;
-      if (!looksLikeARequest(post)) continue;
-      seen.set(post.id, post);
+for (const sub of SUBS) {
+  let xml = "";
+  try {
+    const res = await fetch(`https://www.reddit.com/r/${sub}/new.rss?limit=25`, {
+      headers: { "User-Agent": UA, Accept: "application/atom+xml,text/xml,*/*" },
+    });
+    if (res.status === 429) {
+      blocked++;
+      console.log(`${sub.padEnd(20)} ${"—".padStart(5)} ${"rate limited".padStart(9)}`);
+      await new Promise((r) => setTimeout(r, PACE_MS * 3));
+      continue;
     }
-    // Comfortably inside Reddit's 100 requests/minute free-tier allowance.
-    await new Promise((r) => setTimeout(r, 300));
+    if (!res.ok) {
+      console.log(`${sub.padEnd(20)} ${"—".padStart(5)} ${`HTTP ${res.status}`.padStart(9)}`);
+      await new Promise((r) => setTimeout(r, PACE_MS));
+      continue;
+    }
+    xml = await res.text();
+  } catch (err) {
+    console.log(`${sub.padEnd(20)} ${"—".padStart(5)} ${"unreachable".padStart(9)}  ${err.message}`);
+    await new Promise((r) => setTimeout(r, PACE_MS));
+    continue;
   }
 
-  const posts = [...seen.values()].sort((a, b) => b.created_utc - a.created_utc);
-  summary.push({ trade, count: posts.length });
+  const list = entries(xml).filter((e) => Number.isFinite(e.at));
+  const hits = list.filter(isRequest);
+  hits.forEach((h) => found.push({ ...h, sub }));
 
-  const verdict =
-    posts.length >= 10 ? "GOOD" : posts.length >= 5 ? "THIN" : "DEAD";
-  console.log(`${trade.padEnd(14)} ${String(posts.length).padStart(3)} posts   ${verdict}`);
-
-  for (const post of posts.slice(0, 5)) {
-    const age = Math.round(ageDays(post));
-    const title = post.title.length > 78 ? `${post.title.slice(0, 75)}…` : post.title;
-    console.log(`   ${String(age).padStart(3)}d  r/${post.subreddit.padEnd(16)} ${title}`);
+  // The window the feed covers: oldest entry to newest. This is how long we
+  // have to notice a post before it falls out of reach entirely.
+  const depth = list.length > 1 ? hours(Math.max(...list.map((e) => e.at)) - Math.min(...list.map((e) => e.at))) : 0;
+  if (depth > 0) {
+    totalDepth += depth;
+    measured++;
   }
-  console.log("");
+
+  const window = depth >= 24 ? `${(depth / 24).toFixed(1)}d` : `${depth.toFixed(1)}h`;
+  console.log(
+    `${sub.padEnd(20)} ${String(list.length).padStart(5)} ${window.padStart(9)}  ${String(hits.length).padStart(4)}`
+  );
+
+  await new Promise((r) => setTimeout(r, PACE_MS));
 }
 
-const best = summary.sort((a, b) => b.count - a.count)[0];
-console.log(`${"-".repeat(58)}`);
+console.log("-".repeat(72));
+
+const avgDepth = measured ? totalDepth / measured : 0;
+
+if (found.length) {
+  console.log(`\n${found.length} live trade request${found.length === 1 ? "" : "s"} in view right now:\n`);
+  for (const f of found.sort((a, b) => b.at - a.at).slice(0, 12)) {
+    const age = hours(Date.now() - f.at);
+    const when = age < 1 ? `${Math.round(age * 60)}m` : age < 48 ? `${Math.round(age)}h` : `${Math.round(age / 24)}d`;
+    const title = f.title.length > 74 ? `${f.title.slice(0, 71)}…` : f.title;
+    console.log(`  ${when.padStart(4)}  r/${f.sub.padEnd(18)} ${title}`);
+  }
+}
+
+console.log(`\n${"=".repeat(72)}`);
+console.log(`Feed window averages ${avgDepth.toFixed(1)}h across ${measured} subreddits.`);
+if (blocked) console.log(`${blocked} subreddit${blocked === 1 ? " was" : "s were"} rate limited — rerun to cover ${blocked === 1 ? "it" : "them"}.`);
 console.log(
-  best.count >= 10
-    ? `Lead with "${best.trade}" — ${best.count} real requests in ${DAYS} days is enough\n` +
-        `to fill a free scan. Build the landing page around that trade.\n`
-    : `Nothing here clears 10 posts in ${DAYS} days. Do not buy traffic yet.\n` +
-        `Widen first: add subreddits, lengthen the window, or take the scan to a\n` +
-        `denser metro. A free scan that returns three results will not sell.\n`
+  avgDepth > 0 && avgDepth < 6
+    ? `\nThat is a narrow window. We would have to poll every few hours or lose posts\n` +
+        `permanently, and a new signup arrives to an empty list — there is no history\n` +
+        `in a feed. Live watching works; an instant backfill does not.`
+    : `\nA window that wide means less frequent polling is safe, but it still holds no\n` +
+        `history: everything older than the oldest entry above is unreachable from feeds.`
 );
+console.log(
+  found.length >= 10
+    ? `\n${found.length} requests visible in a single pass is real demand. The question is\n` +
+        `only how a brand new customer sees any of it in their first minute.`
+    : `\nOnly ${found.length} visible in one pass. Rerun a few times across a day before\n` +
+        `concluding anything — one pass is one snapshot, not a rate.`
+);
+console.log("");
