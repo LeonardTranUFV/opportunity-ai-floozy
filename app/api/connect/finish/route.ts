@@ -90,6 +90,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That session is not for a supported platform." }, { status: 400 });
   }
 
+  /**
+   * Does the customer still need this browser?
+   *
+   * Every 409 below tells them to carry on in the window that is still on
+   * their screen, and the client deliberately keeps the iframe mounted for
+   * exactly that reason. The release in `finally` used to run on those paths
+   * too, so the answer to "finish logging in, then try again" was a browser
+   * that had already been destroyed — the live view froze mid-login and no
+   * amount of retrying could recover it.
+   *
+   * Two-factor made this certain rather than occasional: anyone with 2FA on
+   * their account reaches the code screen, presses the button to check
+   * progress, and loses the session at the one moment they are most likely to
+   * press it.
+   *
+   * So the release is now conditional. Success and hard failures still end the
+   * session — an idle cloud browser bills until its own timeout — but a
+   * recoverable "not yet" leaves it running, and the provider's idle timeout
+   * remains the backstop if they walk away.
+   */
+  let sessionStillNeeded = false;
+
   try {
     const chromium = await getChromium();
     const browser = await chromium.connectOverCDP(info.connectUrl);
@@ -117,10 +139,11 @@ export async function POST(request: Request) {
         (cookie) => cookie.name === marker && cookie.value.length > 0
       );
       if (!signedIn) {
+        sessionStillNeeded = true;
         return NextResponse.json(
           {
             error:
-              "That browser isn't signed in yet. Finish logging in on the screen above, then try again.",
+              "Not signed in yet — if you're on a security or two-factor screen, finish that first. The window above is still live; press this again once you're through.",
           },
           { status: 409 }
         );
@@ -180,11 +203,16 @@ export async function POST(request: Request) {
       { status: 502 }
     );
   } finally {
-    // Always release, on every path. An idle cloud browser nobody closed bills
+    // Release on every path except the recoverable ones — see
+    // `sessionStillNeeded` above. An idle cloud browser nobody closed bills
     // until its timeout, and at one session per customer connect that adds up
-    // quietly. The stored blob is what matters now; the browser is disposable.
-    await provider.endSession(sessionId).catch((err) => {
-      console.error(`[connect] failed to release session ${sessionId}:`, err);
-    });
+    // quietly; but ending it under someone mid-login costs the login itself,
+    // which is worse. On the paths that skip this, the provider's own idle
+    // timeout is what eventually reclaims the browser.
+    if (!sessionStillNeeded) {
+      await provider.endSession(sessionId).catch((err) => {
+        console.error(`[connect] failed to release session ${sessionId}:`, err);
+      });
+    }
   }
 }
