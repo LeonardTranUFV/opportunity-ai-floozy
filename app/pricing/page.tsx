@@ -15,59 +15,77 @@ import {
 export const metadata = {
   title: "Pricing",
   description:
-    "Opportunity AI watches Reddit, Facebook, LinkedIn and Nextdoor for people asking for your trade nearby, and scores which ones are worth calling first. Reddit starts the moment you sign up; we connect the rest with you. Credit-based plans, 7-day trial.",
+    "See who near you has been asking for your trade in the last 90 days — free, no card, no account to connect. Then $49 a week or $149 a month, after a 3-day trial. Less than one shared lead from Angi or HomeStars.",
   alternates: { canonical: "/pricing" },
 }
 
-const STARTER_LINK = "https://buy.stripe.com/fZu9ALdvneGd0Ym17I5wI0g"
-const PRO_LINK = "https://buy.stripe.com/14A8wH2QJ2XvbD05nY5wI0h"
+/**
+ * Stripe Payment Links, both carrying a 3-day free trial and redirecting to
+ * /welcome so the pixel can report the trial start.
+ *
+ * Prices are CAD because the Stripe account is Canadian; a US visitor sees the
+ * CAD amount converted at checkout. Worth revisiting if US ends up the larger
+ * half of spend — currency friction is small but it is not zero.
+ *
+ * The older $97 Starter and $197 Pro links still exist in Stripe and still
+ * work; they are simply no longer offered here. Nothing is archived, so any
+ * customer already on them keeps billing normally.
+ */
+const WEEKLY_LINK = "https://buy.stripe.com/6oUbITfDv1Tr5eC2bM5wI0i"
+const MONTHLY_LINK = "https://buy.stripe.com/fZudR1gHzfKh0Ym4jU5wI0j"
 
+/**
+ * Three columns, and the first one is the whole pitch.
+ *
+ * The free scan is not a teaser tier — it is the product doing its job once,
+ * for free, before anyone is asked for anything. Everything about the ordering
+ * here follows from that: value first, card second.
+ */
 const TIERS = [
   {
-    name: "Free Trial",
+    name: "Free scan",
     price: "$0",
-    period: "7 days",
-    tagline: "See real leads in your own market before you decide anything.",
-    cta: "Start free trial",
+    period: "no card",
+    tagline: "See what you have been missing before you decide anything.",
+    cta: "Run my free scan",
     href: "/login",
     variant: "outline" as const,
     features: [
-      "7 days, or your first 5–10 qualified leads — whichever comes first",
-      "1 agent watching Reddit — live the moment you sign up",
-      "We connect Facebook, LinkedIn or Nextdoor with you, and run your onboarding scan",
-      "No credit card required",
+      "Every request for your trade near you from the last 90 days",
+      "Scored, so the ones worth calling first are at the top",
+      "Nothing to connect — no Reddit, Facebook or Google account needed",
+      "Results in about a minute",
     ],
   },
   {
-    name: "Starter",
-    price: "$97",
-    period: "/month",
-    tagline: "For one trade, one city, steady inbound.",
-    cta: "Get Starter",
-    href: STARTER_LINK,
+    name: "Weekly",
+    price: "$49",
+    period: "/week",
+    tagline: "Less than one shared lead from Angi or HomeStars.",
+    cta: "Start 3-day trial",
+    href: WEEKLY_LINK,
     variant: "outline" as const,
     features: [
-      "1 agent",
-      "Reddit, plus up to 2 platforms we connect with you",
-      "Manual scans on request",
-      "Email support",
+      "New matches every day, emailed each morning",
+      "3 days free, then $49 a week — cancel any time",
+      "Connect Facebook, LinkedIn, Nextdoor or X for several times the volume",
+      "AI-drafted first messages",
     ],
   },
   {
-    name: "Pro",
-    price: "$197",
+    name: "Monthly",
+    price: "$149",
     period: "/month",
-    tagline: "For teams covering more ground, faster.",
-    cta: "Get Pro",
-    href: PRO_LINK,
+    tagline: "About two shared leads — except these are yours alone.",
+    cta: "Start 3-day trial",
+    href: MONTHLY_LINK,
     variant: "brand" as const,
     highlighted: true,
     features: [
-      "Unlimited agents",
-      "Every platform — Reddit, Facebook, LinkedIn, Nextdoor, X",
-      "Hourly auto-scan, no manual runs",
-      "AI-drafted outreach messages",
-      "Priority setup",
+      "Everything in Weekly, and $47 a month cheaper",
+      "Unlimited agents — more trades, more cities",
+      "Hourly scanning, no manual runs",
+      "Priority setup help",
     ],
   },
 ]
@@ -95,9 +113,9 @@ export default function PricingPage() {
           See the leads before your competitors even look.
         </h1>
         <p className="mt-4 text-pretty text-lg text-muted-foreground">
-          Floozy Opportunity AI watches Reddit, Facebook, LinkedIn and Nextdoor for people
-          asking for a plumber, electrician, contractor — whatever you do — near you, and
-          scores which ones are worth calling first.
+          Angi and HomeStars sell the same lead to three or four of your competitors,
+          for $15 to $85 a time. We find the people near you asking for a plumber,
+          electrician, contractor — whatever you do — and hand them to you alone.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Button
@@ -106,7 +124,7 @@ export default function PricingPage() {
             nativeButton={false}
             render={<Link href="/login" />}
           >
-            Start your free trial
+            Run my free scan
           </Button>
           <Button
             variant="outline"
@@ -118,8 +136,8 @@ export default function PricingPage() {
           </Button>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          7 days, or your first 5–10 qualified leads — whichever comes first. No
-          credit card required.
+          Your trade and your city, and that is it. No credit card, no accounts to
+          connect, results in about a minute.
         </p>
       </section>
 

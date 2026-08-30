@@ -27,7 +27,7 @@ const TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
  * Reddit asks for a descriptive User-Agent and throttles generic ones harder.
  * Shared with the read path so both halves identify the same client.
  */
-export const REDDIT_USER_AGENT = "web:OpportunityAI:1.0 (by /u/opportunity-ai)";
+export const REDDIT_USER_AGENT = "web:OpportunityAI:1.0 (by /u/FixSpecial1007)";
 
 interface CachedToken {
   token: string;

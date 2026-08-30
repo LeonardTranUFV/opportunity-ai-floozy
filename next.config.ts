@@ -25,8 +25,10 @@ import type { NextConfig } from "next";
  *     `node_modules` and bundled, so it and its assets are same-origin; there
  *     is no `unpkg`/`jsdelivr`/`cdnjs` reference anywhere, and no dynamic
  *     script injection.
- *   - No third-party client SDK in the dependency list — nothing from
- *     analytics, Sentry, Stripe.js or similar that would phone home.
+ *   - The only third-party client script is the Meta Pixel, added when paid
+ *     ads became the acquisition channel and given its own named origins
+ *     below. Nothing else phones home — no Sentry, no Stripe.js, no analytics
+ *     SDK. Checkout is an outbound link to Stripe, not an embedded script.
  *
  * `connect-src` is the directive that actually breaks a working app when
  * enforced, which is why that first point is the one that mattered.
@@ -48,17 +50,39 @@ const supabaseOrigin = (() => {
   }
 })();
 
+/**
+ * The Meta Pixel is the one third-party script this app loads, and it is here
+ * because paid ads are the acquisition channel: without it Meta optimises
+ * against nothing and the funnel has no numbers to read.
+ *
+ * Its failure mode is why these origins are named rather than assumed. Miss
+ * one and nothing breaks visibly — `fbq()` keeps accepting calls into a queue
+ * that never flushes, the site looks fine, and the ad account simply reports
+ * zero conversions. Two origins are involved:
+ *
+ *   - connect.facebook.net — serves `fbevents.js`.
+ *   - www.facebook.com     — receives events, as a `/tr` beacon *image* and as
+ *                            a fetch, so it belongs in img-src and connect-src
+ *                            both.
+ *
+ * Meta's inline bootstrap snippet relies on 'unsafe-inline', which script-src
+ * already allows. The pixel itself is inert unless NEXT_PUBLIC_META_PIXEL_ID
+ * is set, so these entries cost nothing when it isn't.
+ */
+const META_PIXEL_SCRIPT = "https://connect.facebook.net";
+const META_PIXEL_ENDPOINT = "https://www.facebook.com";
+
 const csp = [
   "default-src 'self'",
   // 'unsafe-eval' is React Fast Refresh in development only.
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${META_PIXEL_SCRIPT}${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   // Map tiles are images from OpenStreetMap's tile servers; blob:/data: are
-  // canvas and inline SVG.
-  "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.supabase.co",
+  // canvas and inline SVG. facebook.com is the pixel's tracking beacon.
+  `img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.supabase.co ${META_PIXEL_ENDPOINT}`,
   // next/font self-hosts Geist and Archivo at build time.
   "font-src 'self' data:",
-  `connect-src 'self' ${supabaseOrigin} https://nominatim.openstreetmap.org${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self' ${supabaseOrigin} https://nominatim.openstreetmap.org ${META_PIXEL_ENDPOINT} ${META_PIXEL_SCRIPT}${isDev ? " ws: wss:" : ""}`,
   // The walkthrough iframe takes its src as a prop, so the video host is not
   // known here. Narrow this to the actual provider once one is chosen.
   "frame-src 'self' https:",
