@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ProofPanel } from "@/components/auth/proof-panel"
+import { ProofPanel, ProofStrip } from "@/components/auth/proof-panel"
 
 /**
  * The frame every auth screen sits in: proof on the left, the form on the right.
@@ -36,8 +36,14 @@ export function AuthShell({
           <span className="font-semibold">Floozy Opportunity AI</span>
         </Link>
 
-        <div className="flex flex-1 items-center">
-          <div className="w-full max-w-sm py-12">
+        {/* Centred only from `lg`. On a phone the column is taller than its
+            content, so centring buried the heading under a screen of empty
+            space and pushed the form toward the fold. */}
+        <div className="flex flex-1 lg:items-center">
+          <div className="w-full max-w-sm py-8 lg:py-12">
+            <div className="mb-8">
+              <ProofStrip />
+            </div>
             <h1 className="font-[family-name:var(--font-archivo)] text-3xl font-bold tracking-tight">
               {title}
             </h1>

@@ -130,6 +130,38 @@ const SCENES: Scene[] = [
   },
 ]
 
+/**
+ * The mobile half of the same job.
+ *
+ * The panel is `hidden lg:flex`, which meant a phone got a bare form and a
+ * screen of dead space — and roughly three-quarters of paid traffic arrives on
+ * a phone. The audience that matters most was seeing the least convincing
+ * screen we had.
+ *
+ * One card rather than three, and deliberately not rotating: a phone screen is
+ * scrolled in seconds, motion competes with the form directly below it, and a
+ * second timer to animate something a thumb is already past is not worth the
+ * battery. The desktop panel earns rotation because it sits in view while
+ * someone types.
+ */
+export function ProofStrip() {
+  const lead = SCENES[0].leads[0]
+
+  return (
+    <div className="lg:hidden">
+      <p className="font-[family-name:var(--font-archivo)] text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        Found near Burnaby · 2 hours ago
+      </p>
+      <div className="mt-3">
+        <LeadCard lead={lead} />
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        About five a day in your area. Four score 80 or higher — the ones worth calling.
+      </p>
+    </div>
+  )
+}
+
 function LeadCard({ lead }: { lead: Lead }) {
   return (
     <article className="rounded-xl border border-border bg-card p-4 shadow-sm">
