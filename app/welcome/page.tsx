@@ -87,12 +87,21 @@ export default function WelcomePage() {
           community group. Forty people see it before you do. Opportunity AI reads those posts and
           tells you which ones are a real job.
         </p>
+        {/* This used to read "Start a 7-day free trial" / "No card required",
+            which stopped being true the moment billing moved to a 3-day trial
+            with a card. A visitor read the generous version here and met the
+            real one two clicks later, which is a worse first impression than
+            the smaller number ever was.
+
+            The offer now appears in exactly one shape across the site — here,
+            on /pricing, and on the Stripe checkout. If it changes again, it has
+            to change in all three. */}
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Link
             href="/login"
             className="rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background hover:opacity-90"
           >
-            Start a 7-day free trial
+            See what's near you — free
           </Link>
           <Link
             href="/pricing"
@@ -101,7 +110,9 @@ export default function WelcomePage() {
             See pricing
           </Link>
         </div>
-        <p className="mt-4 text-sm text-muted-foreground">No card required.</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Free to look, no card. Paid plans start at $49 a week after a 3-day trial.
+        </p>
       </section>
 
       {/* The measured number */}
@@ -167,16 +178,16 @@ export default function WelcomePage() {
       <section className="border-t border-border bg-accent/40">
         <div className="mx-auto max-w-6xl px-6 py-20 text-center">
           <h2 className="font-[family-name:var(--font-archivo)] text-4xl font-black tracking-tight md:text-5xl">
-            Seven days free.
+            Point it at your trade.
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Point it at your trade and count what it finds.
+            Tell it what you do and where. Counting what it finds costs nothing.
           </p>
           <Link
             href="/login"
             className="mt-10 inline-block rounded-full bg-foreground px-10 py-4 text-base font-semibold text-background hover:opacity-90"
           >
-            Start free
+            See what's near you
           </Link>
         </div>
       </section>
