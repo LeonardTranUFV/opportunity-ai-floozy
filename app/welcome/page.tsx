@@ -101,7 +101,7 @@ export default function WelcomePage() {
             href="/scan"
             className="rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background hover:opacity-90"
           >
-            See what's near you — free
+            See what&apos;s near you — free
           </Link>
           <Link
             href="/pricing"
@@ -187,7 +187,7 @@ export default function WelcomePage() {
             href="/scan"
             className="mt-10 inline-block rounded-full bg-foreground px-10 py-4 text-base font-semibold text-background hover:opacity-90"
           >
-            See what's near you
+            See what&apos;s near you
           </Link>
         </div>
       </section>
