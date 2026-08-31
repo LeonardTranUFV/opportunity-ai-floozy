@@ -15,8 +15,12 @@ import Link from "next/link"
  * "5-10 a day" — the first person who takes the trial counts what they get.
  *
  * Two standing rules this page follows: it never uses the word "scraper", and
- * it never names the platforms it reads. It also shows no price, because there
- * is no billing system yet and everything is a trial.
+ * it never names the platforms it reads.
+ *
+ * It used to show no price either, on the grounds that there was no billing
+ * system. There is one now — $49/week and $149/month behind a 3-day trial —
+ * and the hero says so, because the alternative is a visitor discovering the
+ * number two clicks later and wondering what else was left out.
  */
 export const metadata = {
   title: "Find the people already asking for what you sell",
