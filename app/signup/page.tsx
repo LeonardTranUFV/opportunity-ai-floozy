@@ -29,6 +29,28 @@ export default function SignUpPage() {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /**
+   * Where to land after the confirmation link is clicked.
+   *
+   * /api/checkout sends signed-out visitors here with `?next=/api/checkout…`
+   * so the click that started checkout still ends at checkout. Without this
+   * they confirm their email, land on the dashboard, and the intent to pay is
+   * simply lost.
+   *
+   * Read from `window.location` inside the handler rather than with
+   * `useSearchParams`, which would require a Suspense boundary and opt the
+   * whole route out of static rendering for a value only needed on submit.
+   *
+   * Only same-site paths are honoured. `next` arrives in a URL anyone can
+   * craft, and echoing it into a redirect unchecked turns the signup page into
+   * an open redirect — a link that looks like ours and lands on theirs.
+   */
+  const destination = () => {
+    if (typeof window === "undefined") return "/"
+    const next = new URLSearchParams(window.location.search).get("next")
+    return next && next.startsWith("/") && !next.startsWith("//") ? next : "/"
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -37,7 +59,7 @@ export default function SignUpPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/` },
+      options: { emailRedirectTo: `${window.location.origin}${destination()}` },
     })
     setLoading(false)
     if (error) setError(error.message)

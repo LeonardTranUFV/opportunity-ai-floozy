@@ -20,19 +20,26 @@ export const metadata = {
 }
 
 /**
- * Stripe Payment Links, both carrying a 3-day free trial and redirecting to
- * /welcome so the pixel can report the trial start.
+ * Checkout goes through /api/checkout, never straight to the Stripe link.
+ *
+ * That route attaches the signed-in user's id as `client_reference_id` before
+ * forwarding, which is the only thing that later lets a webhook say *which
+ * account* just paid. Linking directly takes the money and leaves the payment
+ * anonymous — the customer gets charged and their account never changes.
+ *
+ * It also sends anyone signed out to create an account first and returns them
+ * to checkout afterwards: an account with no payment is recoverable, a payment
+ * with no account is a support ticket and a refund.
  *
  * Prices are CAD because the Stripe account is Canadian; a US visitor sees the
- * CAD amount converted at checkout. Worth revisiting if US ends up the larger
- * half of spend — currency friction is small but it is not zero.
+ * CAD amount converted at checkout. Worth revisiting if the US ends up the
+ * larger half of spend.
  *
  * The older $97 Starter and $197 Pro links still exist in Stripe and still
- * work; they are simply no longer offered here. Nothing is archived, so any
- * customer already on them keeps billing normally.
+ * bill anyone already on them. They are simply no longer offered here.
  */
-const WEEKLY_LINK = "https://buy.stripe.com/6oUbITfDv1Tr5eC2bM5wI0i"
-const MONTHLY_LINK = "https://buy.stripe.com/fZudR1gHzfKh0Ym4jU5wI0j"
+const WEEKLY_LINK = "/api/checkout?plan=weekly"
+const MONTHLY_LINK = "/api/checkout?plan=monthly"
 
 /**
  * Three columns, and the first one is the whole pitch.
@@ -216,7 +223,7 @@ export default function PricingPage() {
         <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
           Facebook, LinkedIn, Nextdoor and X each take one sign-in with your own
           account — about two minutes in a secure browser session you drive
-          yourself. Prefer a hand? We'll do it with you on a call.
+          yourself. Prefer a hand? We&apos;ll do it with you on a call.
         </p>
         <p className="mt-4 text-center text-xs text-muted-foreground">
           No contracts. Cancel anytime. Prices in CAD.
