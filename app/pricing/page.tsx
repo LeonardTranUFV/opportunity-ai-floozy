@@ -48,7 +48,9 @@ const TIERS = [
     period: "no card",
     tagline: "See what you have been missing before you decide anything.",
     cta: "Run my free scan",
-    href: "/login",
+    // /scan, not /login. This tier's entire promise is "no account", and
+    // pointing it at a sign-in wall breaks that in one click.
+    href: "/scan",
     variant: "outline" as const,
     features: [
       "Every request for your trade near you from the last 90 days",
@@ -105,11 +107,15 @@ export default function PricingPage() {
         </Button>
       </header>
 
-      <section className="mx-auto max-w-3xl px-6 pt-10 pb-16 text-center">
+      {/* Tighter on a phone. Three-quarters of paid traffic lands on one, and
+          at the desktop spacing the hero filled the entire first screen — the
+          prices, which are the reason anyone opened this page, sat below the
+          fold behind a scroll. */}
+      <section className="mx-auto max-w-3xl px-6 pt-6 pb-10 text-center sm:pt-10 sm:pb-16">
         <Badge variant="brand" className="mb-4">
           For trades &amp; local service businesses
         </Badge>
-        <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
+        <h1 className="text-balance text-[2rem] font-semibold leading-[1.12] tracking-tight sm:text-5xl sm:leading-tight">
           See the leads before your competitors even look.
         </h1>
         <p className="mt-4 text-pretty text-lg text-muted-foreground">
@@ -122,7 +128,7 @@ export default function PricingPage() {
             variant="brand"
             size="lg"
             nativeButton={false}
-            render={<Link href="/login" />}
+            render={<Link href="/scan" />}
           >
             Run my free scan
           </Button>

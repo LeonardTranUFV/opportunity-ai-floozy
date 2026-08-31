@@ -98,7 +98,7 @@ export default function WelcomePage() {
             to change in all three. */}
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Link
-            href="/login"
+            href="/scan"
             className="rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background hover:opacity-90"
           >
             See what's near you — free
@@ -184,7 +184,7 @@ export default function WelcomePage() {
             Tell it what you do and where. Counting what it finds costs nothing.
           </p>
           <Link
-            href="/login"
+            href="/scan"
             className="mt-10 inline-block rounded-full bg-foreground px-10 py-4 text-base font-semibold text-background hover:opacity-90"
           >
             See what's near you
