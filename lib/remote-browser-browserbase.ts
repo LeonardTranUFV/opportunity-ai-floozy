@@ -176,6 +176,21 @@ export const browserbaseProvider: RemoteBrowserProvider = {
     };
   },
 
+  async refreshLiveView(sessionId: string): Promise<string | null> {
+    try {
+      const debug = await callApi<DebugResponse>(
+        `/sessions/${sessionId}/debug?expiresIn=${LIVE_VIEW_TTL_SECONDS}`,
+        { method: "GET" }
+      );
+      return debug.debuggerFullscreenUrl ?? debug.debuggerUrl ?? null;
+    } catch {
+      // A session already reclaimed by the vendor answers with an error here.
+      // Null lets the caller say "that login expired, start again" instead of
+      // surfacing a provider failure to somebody mid-login.
+      return null;
+    }
+  },
+
   async getSession(sessionId: string): Promise<RemoteSessionInfo | null> {
     let session: GetSessionResponse;
     try {

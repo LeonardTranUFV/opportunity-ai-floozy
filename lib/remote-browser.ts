@@ -110,6 +110,21 @@ export interface RemoteBrowserProvider {
   getSession(sessionId: string): Promise<RemoteSessionInfo | null>;
 
   /**
+   * Mint a fresh live-view URL for a session that is still running.
+   *
+   * The screen and the browser are separate things, and here only the screen
+   * breaks. Session records show the browser alive for its full five minutes
+   * while the customer watched a frozen picture: the viewer stops following
+   * when the page navigates — which on a login flow is exactly the moment
+   * credentials are submitted and the site moves to a 2FA screen.
+   *
+   * Without this the only recovery is starting over, throwing away a login
+   * that had in fact succeeded. With it, the picture re-attaches to a browser
+   * that never went anywhere.
+   */
+  refreshLiveView(sessionId: string): Promise<string | null>;
+
+  /**
    * Shut a session down. Called on success, on failure, and on abandonment —
    * an idle browser nobody closed is a line on the invoice, so this runs in a
    * finally, never only on the happy path.

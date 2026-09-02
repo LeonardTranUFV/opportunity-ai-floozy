@@ -56,6 +56,7 @@ export function CloudConnect() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [remaining, setRemaining] = useState(SESSION_SECONDS)
+  const [reattaching, setReattaching] = useState(false)
 
   const label = (id: Platform) => PLATFORMS.find((p) => p.id === id)?.label ?? id
 
@@ -110,6 +111,39 @@ export function CloudConnect() {
       setError(err instanceof Error ? err.message : "Could not reach the server.")
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * Re-point the viewer at a browser that is still running.
+   *
+   * Deliberately not automatic on a timer: the iframe reloads when its src
+   * changes, and silently reloading the screen underneath somebody halfway
+   * through typing a password would be its own bug. They press this when the
+   * picture has stopped moving, which is the moment they actually know.
+   */
+  const reattach = async () => {
+    if (!live) return
+    setReattaching(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/connect/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: live.sessionId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? "Could not reconnect to that browser.")
+        // 410 means the browser really is gone, so stop showing a dead screen.
+        if (res.status === 410) setLive(null)
+        return
+      }
+      setLive({ ...live, liveViewUrl: data.liveViewUrl })
+    } catch {
+      setError("Could not reach the server.")
+    } finally {
+      setReattaching(false)
     }
   }
 
@@ -247,6 +281,29 @@ export function CloudConnect() {
 
             The session keeps running either way, so "I've finished logging in"
             below still works once they come back.
+          */}
+          {/*
+            The recovery that was missing.
+
+            The provider's own records show browsers alive for their full five
+            minutes while the customer watched a frozen picture: the viewer
+            stops following when the page navigates, which on a login flow is
+            the exact moment credentials are submitted and the site moves to
+            2FA. Before this, the only way out was starting over — throwing
+            away a login that had already worked.
+          */}
+          <Button variant="outline" disabled={saving || reattaching} onClick={reattach}>
+            {reattaching ? "Reconnecting…" : "Screen frozen? Reconnect"}
+          </Button>
+          {/*
+            Same cloud browser, bigger window.
+
+            Not an alternative to the cloud browser — logging into Facebook in
+            the customer's *own* browser would leave the session in their
+            browser, where we cannot reach it, and holding that session is the
+            entire point. This opens the same remote session at a usable size,
+            which matters most on the screen a 2FA code is hardest to type
+            into.
           */}
           <Button
             variant="outline"
