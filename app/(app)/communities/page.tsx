@@ -9,6 +9,7 @@ import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
 import { GroupName } from "@/components/communities/group-name"
 import { DeleteGroupButton } from "@/components/communities/delete-group-button"
 import { CheckSourcesButton } from "@/components/communities/check-sources-button"
+import { ResyncGroupsButton } from "@/components/communities/resync-groups-button"
 import { isHostedDeployment } from "@/lib/deployment"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 
@@ -83,8 +84,23 @@ export default async function CommunitiesPage() {
           </CardTitle>
           <CardDescription>Pick a platform, then add what you want to monitor there.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-5">
           <AddSourceForm />
+
+          {/* Hosted only. There, a connected account means a stored session a
+              cloud browser can reuse. Locally the crawler already reads a
+              Chrome profile on disk, so there is nothing to re-import. */}
+          {hosted ? (
+            <div className="flex flex-col gap-2 border-t border-border pt-5">
+              <p className="text-sm font-medium">Already in groups on Facebook?</p>
+              <p className="text-sm text-muted-foreground">
+                We read your groups once when you connected, and Facebook only loads part of
+                that list at a time. Run this to pick up the rest, or anything you&apos;ve joined
+                since — no need to log in again.
+              </p>
+              <ResyncGroupsButton />
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
