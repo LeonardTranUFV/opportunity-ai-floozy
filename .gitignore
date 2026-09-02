@@ -1,8 +1,23 @@
 node_modules/
 .next/
 *.tsbuildinfo
-.env
 *.db
+
+# Every local env file, not just the two that happened to exist.
+#
+# This list named `.env` and `.env.worker` individually, which left
+# `.env.local` tracked — the file Next.js itself tells you to put keys in, and
+# the one the collector and scripts/generate-panel-photos.mjs both read. A
+# pasted API key would have been committed to a public repository on the next
+# `git add -A`, and a key that reaches git history stays there long after the
+# file is deleted.
+#
+# A glob rather than a list, so the next env file somebody invents is already
+# covered. Example files are kept, since they hold names and no values.
+.env
+.env.*
+!.env.example
+!.env.*.example
 
 # Machine-specific project paths for START-ALL.bat (see paths.local.example.cmd)
 paths.local.cmd
