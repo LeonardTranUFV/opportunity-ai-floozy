@@ -253,7 +253,34 @@ export function CloudConnect() {
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-lg border bg-black">
+        {/*
+          On a phone the embedded frame is not worth having.
+
+          The remote browser is a 1280px desktop Chrome. Squeezed into a phone
+          the result is a viewport the customer has to pan around to find a
+          password field, and typing a 2FA code into it is miserable — on the
+          device most contractors will actually be using.
+
+          So below `sm` the frame is not rendered at all and the login opens as
+          its own full-screen tab instead. That is the same cloud browser, just
+          given the whole screen. The session keeps running while they are away,
+          so "I've finished logging in" still works when they come back.
+        */}
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:hidden">
+          <p className="text-sm font-medium">Open the login window</p>
+          <p className="text-sm text-muted-foreground">
+            It opens in a new tab so you get the full screen. Sign in there, then come back
+            here and press <strong>I&apos;ve finished logging in</strong>.
+          </p>
+          <Button
+            variant="brand"
+            onClick={() => window.open(live.liveViewUrl, "_blank", "noopener,noreferrer")}
+          >
+            Open {label(live.platform)} login
+          </Button>
+        </div>
+
+        <div className="hidden overflow-hidden rounded-lg border bg-black sm:block">
           {/*
             The sandbox Browserbase documents for embedding a live view, and
             allow-same-origin is load-bearing rather than lax.
@@ -298,19 +325,6 @@ export function CloudConnect() {
             {saving ? "Connecting your account…" : "I've finished logging in"}
           </Button>
           {/*
-            Same cloud browser, bigger window.
-
-            Not an alternative to the cloud browser — logging into Facebook in
-            the customer's *own* browser would leave the session in their
-            browser, where we cannot reach it, and the whole point is that we
-            end up holding it. This opens the same remote session at a usable
-            size, which matters most on the screen it is hardest to type a 2FA
-            code into.
-
-            The session keeps running either way, so "I've finished logging in"
-            below still works once they come back.
-          */}
-          {/*
             The recovery that was missing.
 
             The provider's own records show browsers alive for their full five
@@ -333,8 +347,11 @@ export function CloudConnect() {
             which matters most on the screen a 2FA code is hardest to type
             into.
           */}
+          {/* Hidden below `sm`, where the mobile card above already offers
+              this as the primary action rather than a fallback. */}
           <Button
             variant="outline"
+            className="hidden sm:inline-flex"
             disabled={saving}
             onClick={() =>
               window.open(
@@ -374,6 +391,49 @@ export function CloudConnect() {
           {error}
         </p>
       )}
+
+      {/*
+        Why this is being asked for, before it is asked for.
+
+        A stranger is about to type a Facebook password into a window on
+        somebody else's website. Every question they have at that moment —
+        what is this for, what do you keep, is this safe, can I use a
+        different account — is answered here rather than left for them to
+        guess at. Unanswered, the honest reading of this screen is "phishing".
+      */}
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
+        <p className="text-sm font-medium">Why we ask for this</p>
+        <p className="text-sm text-muted-foreground">
+          The jobs worth having get posted inside local groups — someone asking for a roofer
+          in a neighbourhood page nobody outside it can read. Connecting your account lets us
+          watch the groups <em>you are already in</em>, score every post for real buying
+          intent, and draft you a reply in your own words. Without it we can only see what is
+          public, which is a fraction of the work.
+        </p>
+
+        <p className="mt-1 text-sm font-medium">What we never touch</p>
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
+          <li>
+            Your password is typed into the platform&apos;s own login page, not ours. We never
+            see it, store it, or send it anywhere.
+          </li>
+          <li>We only read. Nothing is posted, messaged, liked or changed on your account.</li>
+          <li>You can disconnect at any time, and every message to a lead is sent by you.</li>
+        </ul>
+
+        <p className="mt-1 text-sm font-medium">Two things to expect</p>
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
+          <li>
+            The platform will email you about a login from a new device, possibly in another
+            city. That is this browser, and it is expected — ignore it, and do not press
+            &ldquo;This wasn&apos;t me&rdquo;, which would disconnect the account again.
+          </li>
+          <li>
+            Happier using a second account than your main one? That works fine — it only needs
+            to be a member of the groups you want watched.
+          </li>
+        </ul>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {PLATFORMS.map(({ id, label: name, Icon }) => (
