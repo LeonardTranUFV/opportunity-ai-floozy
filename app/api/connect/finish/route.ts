@@ -22,12 +22,29 @@ import { errorMessage } from "@/lib/errors";
  * one place.
  */
 
-/** Signed-in landing pages differ per platform; a login wall does not. */
-const LOGGED_IN_COOKIE: Record<string, string> = {
-  facebook: "c_user",
-  linkedin: "li_at",
-  nextdoor: "nd_session",
-  twitter: "auth_token",
+/**
+ * Cookies that only exist once a login has succeeded.
+ *
+ * A list per platform rather than a single name, because a single name is
+ * exactly what broke. Nextdoor was checked against "nd_session", which does
+ * not exist — its real markers are `ndbr_at` and `ndbr_idt`. A customer
+ * finished logging in, landed on their own Burnaby feed, pressed the button,
+ * and was told "not signed in yet". The login was fine; the check was wrong,
+ * and the failure was indistinguishable from a broken login.
+ *
+ * Read from a live signed-in session rather than guessed this time. Any one of
+ * these being present and non-empty is enough — platforms rotate the
+ * supporting cookies around a login far more often than they rename all of
+ * them at once.
+ */
+const LOGGED_IN_COOKIES: Record<string, string[]> = {
+  // c_user is the account id, xs the session secret; both appear together.
+  facebook: ["c_user", "xs"],
+  linkedin: ["li_at"],
+  // ndbr_at is the access token, ndbr_idt the identity token.
+  nextdoor: ["ndbr_at", "ndbr_idt"],
+  // ct0 is the CSRF token, present on any authenticated X session.
+  twitter: ["auth_token", "ct0"],
 };
 
 export async function POST(request: Request) {
@@ -134,10 +151,24 @@ export async function POST(request: Request) {
       // Verify a login actually happened before claiming success. Someone who
       // clicks "I'm done" on the login screen would otherwise get a cheerful
       // "connected", and discover weeks later that nothing was ever collected.
-      const marker = LOGGED_IN_COOKIE[platform];
+      const markers = LOGGED_IN_COOKIES[platform] ?? [];
       const signedIn = storageState.cookies.some(
-        (cookie) => cookie.name === marker && cookie.value.length > 0
+        (cookie) => markers.includes(cookie.name) && cookie.value.length > 0
       );
+
+      if (!signedIn) {
+        // Names only, never values. Without this the next platform to rename a
+        // cookie costs another round of guessing against a live login, which is
+        // how the Nextdoor check stayed wrong.
+        console.warn(
+          `[connect] ${platform} looked signed out. Expected one of ${markers.join(", ")}; saw ` +
+            storageState.cookies
+              .filter((c) => c.value.length > 0)
+              .map((c) => c.name)
+              .slice(0, 40)
+              .join(", ")
+        );
+      }
       if (!signedIn) {
         sessionStillNeeded = true;
         return NextResponse.json(
