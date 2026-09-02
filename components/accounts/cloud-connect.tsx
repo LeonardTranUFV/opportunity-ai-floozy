@@ -46,7 +46,7 @@ type Live = { sessionId: string; liveViewUrl: string; platform: Platform }
  * The real fix is a plan that allows a longer session; this makes the
  * constraint honest until then.
  */
-const SESSION_SECONDS = 300
+const SESSION_SECONDS = 600
 
 export function CloudConnect() {
   const router = useRouter()
@@ -104,7 +104,14 @@ export function CloudConnect() {
         if (res.status !== 409) setLive(null)
         return
       }
-      setDone(`${label(live.platform)} connected. The crawler can now read on your behalf.`)
+      // Says it is finished, says what happens next, and repeats the security
+      // email warning — that email often arrives after this screen, and by then
+      // the customer has forgotten it was mentioned.
+      setDone(
+        `${label(live.platform)} is connected. We can now read the groups you're already in — ` +
+          `add another account any time. If ${label(live.platform)} emails you about a new-device ` +
+          `login, that was us: ignore it, and don't press "This wasn't me".`
+      )
       setLive(null)
       router.refresh()
     } catch (err) {
@@ -223,8 +230,26 @@ export function CloudConnect() {
             underneath.
           </p>
           <p className="text-sm font-medium">
-            Have your phone within reach before you start. The browser is only held for five
-            minutes, and if it runs out mid-login the window freezes and you begin again.
+            Have your phone within reach before you start — you&apos;ll need it for the code.
+          </p>
+
+          {/*
+            Said before they log in, not after.
+
+            A real connect produced a Facebook email headed "Security alert:
+            login near Atlanta on a new device". It is expected — the login
+            genuinely is on a different machine — but it arrives looking
+            alarming, and the button on it says "This wasn't me". Pressing that
+            invalidates the session we just stored and can lock the account.
+
+            So the warning belongs here, where it is reassurance, rather than
+            after, where it would be damage control.
+          */}
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+            {label(live.platform)} will email you a security alert about a login from a new
+            device, possibly in another city. That&apos;s this browser, and it&apos;s expected —
+            you can ignore it. <strong>Do not press &ldquo;This wasn&apos;t me&rdquo;</strong>, or
+            it will disconnect the account you just linked.
           </p>
         </div>
 
@@ -267,7 +292,10 @@ export function CloudConnect() {
 
         <div className="flex flex-wrap gap-3">
           <Button variant="brand" onClick={finish} disabled={saving}>
-            {saving ? "Saving your login…" : "I've finished logging in"}
+            {/* Not "saving your login" — that reads as though we are keeping
+                the password, which is the one thing this flow never does. What
+                is stored is the session the login left behind. */}
+            {saving ? "Connecting your account…" : "I've finished logging in"}
           </Button>
           {/*
             Same cloud browser, bigger window.

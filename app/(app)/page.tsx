@@ -65,15 +65,36 @@ export default async function Home() {
 
   // Setup progress, derived from real evidence rather than a stored flag —
   // head-only count queries so this costs almost nothing on every load.
-  const [{ count: agentCount }, { count: postCount }, { count: anySourceCount }] = await Promise.all([
+  const [
+    { count: agentCount },
+    { count: postCount },
+    { count: anySourceCount },
+    { count: connectedCount },
+  ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
     supabase.from("posts").select("*", { count: "exact", head: true }),
     supabase.from("groups").select("*", { count: "exact", head: true }),
+    supabase.from("browser_sessions").select("*", { count: "exact", head: true }),
   ])
   const setupState = {
-    // A scraped post is the only proof a login actually worked — the session
-    // itself lives on disk and isn't visible from the hosted deployment.
-    hasScrapedPosts: (postCount ?? 0) > 0,
+    /**
+     * A connected account, read from the thing that actually records one.
+     *
+     * This used to be inferred from post count, because when it was written a
+     * session lived in a Chrome profile on the operator's own disk and was
+     * invisible to a hosted deployment. Cloud connect changed that: a session
+     * is now a row in `browser_sessions`.
+     *
+     * The stale inference had a real cost. Someone who completed the entire
+     * cloud login — password, 2FA, the lot — still saw "0 of 4 done" with
+     * "Connect an account" waiting for them, because nothing had been
+     * collected yet. The hardest step in the product was the one it refused to
+     * acknowledge.
+     *
+     * Posts still count, so a local-only deployment — which has no
+     * browser_sessions row — behaves exactly as before.
+     */
+    hasScrapedPosts: (connectedCount ?? 0) > 0 || (postCount ?? 0) > 0,
     hasSources: (anySourceCount ?? 0) > 0,
     hasAgents: (agentCount ?? 0) > 0,
     hasOpportunities: (pendingReview ?? 0) + (highIntentCount ?? 0) + (activeConversations ?? 0) > 0,

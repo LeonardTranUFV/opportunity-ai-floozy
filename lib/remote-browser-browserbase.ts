@@ -28,15 +28,20 @@ const API_ROOT = "https://api.browserbase.com/v1";
  * hour. Connect is the slowest thing this provider is used for; crawls attach
  * to their own short-lived sessions.
  *
- * 300 rather than 600 because Browserbase's free tier caps a session at five
- * minutes ("Upgrade for longer timeouts" in project settings) and rejects a
- * larger `timeout` at creation — so asking for ten breaks connect before a
- * browser ever appears, which would read as "the button does nothing". Paid
- * plans allow far more; raise this, or pass idleTimeoutSeconds, once the
- * account is on one, because five minutes is tight for someone hunting
- * through their phone for a 2FA code.
+ * 600 since the account moved off the free tier, which capped sessions at five
+ * minutes and rejected a larger `timeout` outright. Verified against the live
+ * account before changing it: creating a session with timeout 600 returns 201.
+ *
+ * Five minutes was genuinely tight. A real connect spent most of it waiting on
+ * an SMS code, and the clock starts when the browser boots — 15-25 seconds go
+ * on launching Chrome and loading the login page before a password box even
+ * appears. Ten leaves room for a slow code, a mistyped password, and the extra
+ * verification Meta adds for a login it has not seen before.
+ *
+ * Kept in step with SESSION_SECONDS in components/accounts/cloud-connect.tsx,
+ * which shows this number to the customer as a countdown.
  */
-const DEFAULT_IDLE_TIMEOUT_SECONDS = 300;
+const DEFAULT_IDLE_TIMEOUT_SECONDS = 600;
 
 /**
  * How long the generated live-view URL stays valid. Matched to the session
@@ -134,12 +139,31 @@ export const browserbaseProvider: RemoteBrowserProvider = {
           platform: options.platform,
         },
 
-        // Route through a proxy whenever one is configured for this customer.
-        // Datacentre egress shared across every customer is the fastest way to
-        // get an entire fleet flagged, since the platforms weight IP
-        // reputation far above page behaviour.
+        /**
+         * Route through a proxy whenever one is configured for this customer.
+         * Datacentre egress shared across every customer is the fastest way to
+         * get an entire fleet flagged, since platforms weight IP reputation far
+         * above page behaviour.
+         *
+         * The country is configurable and defaults to CA rather than being
+         * pinned to US. A real connect produced a Facebook security alert
+         * reading "login near Atlanta, GA" for a customer in Vancouver — the
+         * proxy was doing its job of looking residential, and then undermined
+         * it by placing them 3,000km away. A login from the wrong country is
+         * its own alarm, and the customer is the one who gets the frightening
+         * email about it.
+         *
+         * This should eventually follow the customer's own service area rather
+         * than one account-wide setting; CONNECT_PROXY_COUNTRY is the stopgap
+         * while every customer is in one market.
+         */
         proxies: options.proxyId
-          ? [{ type: "browserbase", geolocation: { country: "US" } }]
+          ? [
+              {
+                type: "browserbase",
+                geolocation: { country: process.env.CONNECT_PROXY_COUNTRY || "CA" },
+              },
+            ]
           : undefined,
 
         browserSettings: {
