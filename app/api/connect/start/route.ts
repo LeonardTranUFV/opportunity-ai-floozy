@@ -91,7 +91,33 @@ export async function POST(request: Request) {
   }
 
   try {
-    const session = await provider.startSession({ userId: user.id, platform });
+    /**
+     * Route the login through a residential IP when configured.
+     *
+     * Proxy support has existed in the provider seam and the Browserbase
+     * adapter since they were written, and nothing ever set it — so every
+     * connect so far originated from a bare AWS address in us-west-2.
+     *
+     * That is the strongest bot signal there is. A real attempt reached
+     * Facebook's verification step and was served an Arkose Labs MatchKey
+     * challenge, which then rendered blank: a security check aimed squarely at
+     * automation, triggered by where the request came from rather than by
+     * anything the customer did. A home connection almost never sees it; a
+     * datacenter one sees it nearly every time.
+     *
+     * Behind a flag because proxy traffic is billed by the gigabyte, so it is
+     * a cost decision rather than a default. Off, connect behaves as before.
+     *
+     * Worth stating plainly: this reduces how often the challenge appears. It
+     * is not a way around one, and nothing here tries to solve one that does.
+     */
+    const useProxy = process.env.CONNECT_USE_PROXY === "1";
+
+    const session = await provider.startSession({
+      userId: user.id,
+      platform,
+      ...(useProxy ? { proxyId: "residential" } : {}),
+    });
 
     // Point the browser at the login page before the customer sees it.
     //
