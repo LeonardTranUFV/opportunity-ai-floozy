@@ -104,6 +104,43 @@ const SELLER_PHRASES = [
   "trusted by",
   "5-star",
   "fully insured",
+  // A tradesperson advertising in a community group. The four-metro sweep
+  // surfaced "NEED ELECTRICIAN ? 💡🤙 #PhoenixElectrician" — it contains the
+  // request words because it is written to be found by people searching them.
+  "dm me",
+  "message me",
+  "text me",
+  "hmu",
+  "#",
+];
+
+/**
+ * Asking *about* the trade rather than *for* it.
+ *
+ * All three of these came out of the sweep and all three read like requests to
+ * a phrase matcher: "anyone know how to get into being an electrician"
+ * (career), "Exposed OSB on Canadian Roof" (DIY), "Plumbing vs. HVAC?"
+ * (career). None is a person with a job to give out, and a contractor who
+ * opens one has been wasted.
+ */
+const NOT_A_JOB = [
+  "get into",
+  "getting into",
+  "become a",
+  "apprentice",
+  "apprenticeship",
+  "red seal",
+  "journeyman",
+  "career",
+  "salary",
+  "how much do",
+  "worth it as a",
+  "school for",
+  "diy",
+  "do it myself",
+  "myself or hire",
+  "is this normal",
+  "am i being ripped",
 ];
 
 export interface LeadHit {
@@ -115,6 +152,33 @@ export interface LeadHit {
   score: number;
   /** Stable id for upserting: the URL is the natural key. */
   externalId: string;
+  /**
+   * When it was posted, if the search result carried a date. Often absent —
+   * treat null as "unknown", never as "today". A contractor deciding whether
+   * to answer needs to know if this is two hours or two years old, and
+   * inventing a date to fill the gap is the fastest way to lose their trust.
+   */
+  postedAt: string | null;
+}
+
+/**
+ * Does the result actually concern the city that was searched?
+ *
+ * The sweep filed "Great Plumber Recommendation - LaLonde : r/Rochester"
+ * under Calgary. Google matched the words; the post is 3,000km away. A lead in
+ * the wrong city is worse than no lead — it is the specific failure that makes
+ * someone cancel, because it proves the product does not understand the one
+ * thing they asked for.
+ *
+ * The city name (or its first word, so "Toronto ON" matches "Toronto") has to
+ * appear somewhere in the text. Imperfect — a genuine post that names only a
+ * neighbourhood is dropped — but the cost of a false positive here is much
+ * higher than a false negative, since we are choosing which handful to show.
+ */
+function mentionsCity(text: string, city: string): boolean {
+  const core = city.toLowerCase().split(/[ ,]/)[0];
+  if (core.length < 3) return true;
+  return text.includes(core);
 }
 
 function hostOf(url: string): string {
@@ -142,7 +206,12 @@ const containsAny = (text: string, phrases: string[]) => phrases.some((p) => tex
  */
 export function queriesFor(trade: string, city: string): string[] {
   return [
+    // The words people actually type when they need someone. The four-metro
+    // sweep returned 4-8 genuine requests per pair on this shape.
     `looking for a ${trade} in ${city}`,
+    // "recommendations" is what community posts are titled, and "reddit"
+    // steers toward the venue where those posts live — the closest thing to a
+    // site: restriction the free tier permits.
     `${trade} recommendations ${city} reddit`,
   ];
 }
@@ -154,7 +223,10 @@ export function queriesFor(trade: string, city: string): string[] {
  * cheap; being loose means a contractor's first impression of the product is a
  * list of their competitors' websites.
  */
-export function judge(result: { title?: string; link?: string; snippet?: string }): LeadHit | null {
+export function judge(
+  result: { title?: string; link?: string; snippet?: string; date?: string },
+  city?: string
+): LeadHit | null {
   const url = result.link ?? "";
   const host = hostOf(url);
   if (!host || BLOCKED_HOSTS.some((b) => host === b || host.endsWith(`.${b}`))) return null;
@@ -166,6 +238,8 @@ export function judge(result: { title?: string; link?: string; snippet?: string 
 
   if (!containsAny(text, REQUEST_PHRASES)) return null;
   if (containsAny(text, SELLER_PHRASES)) return null;
+  if (containsAny(text, NOT_A_JOB)) return null;
+  if (city && !mentionsCity(text, city)) return null;
 
   const community = COMMUNITY_HOSTS.some((c) => host === c || host.endsWith(`.${c}`));
 
@@ -185,7 +259,34 @@ export function judge(result: { title?: string; link?: string; snippet?: string 
     host,
     score: Math.max(1, Math.min(99, score)),
     externalId: url,
+    postedAt: parseResultDate(result.date),
   };
+}
+
+/**
+ * Search results carry dates like "3 days ago", "Feb 14, 2026", or nothing at
+ * all. Null when it cannot be read — an unknown date is shown as unknown, and
+ * never quietly defaulted to now. Age is most of what decides whether a lead
+ * is worth answering, so a wrong one is worse than none.
+ */
+function parseResultDate(raw?: string): string | null {
+  if (!raw) return null;
+
+  const relative = raw.match(/(\d+)\s+(hour|day|week|month|year)s?\s+ago/i);
+  if (relative) {
+    const n = Number(relative[1]);
+    const ms: Record<string, number> = {
+      hour: 3_600_000,
+      day: 86_400_000,
+      week: 604_800_000,
+      month: 2_592_000_000,
+      year: 31_536_000_000,
+    };
+    return new Date(Date.now() - n * ms[relative[2].toLowerCase()]).toISOString();
+  }
+
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
 /**
@@ -225,7 +326,7 @@ export async function findLeads(
 
     const json = (await res.json()) as { organic?: Array<Record<string, string>> };
     for (const row of json.organic ?? []) {
-      const hit = judge(row);
+      const hit = judge(row, city);
       // First sighting wins; the earlier query is the more specific one.
       if (hit && !seen.has(hit.externalId)) seen.set(hit.externalId, hit);
     }

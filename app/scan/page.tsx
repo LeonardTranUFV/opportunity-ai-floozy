@@ -10,20 +10,23 @@ import { trackPixel } from "@/lib/pixel"
 /**
  * The free scan.
  *
- * Two fields, no account, real posts in under a minute. It is the whole
+ * Two fields, no account, real posts in about a minute. It is the whole
  * acquisition funnel: an ad promises a stranger they can see who near them is
- * asking for their trade, and this is where that promise is either kept or
- * broken. Everything about it is arranged around getting to a result before
- * anyone is asked for anything.
+ * asking for their trade, and this is where that promise is kept or broken.
  *
  * The paywall sits after the value, never before — three real posts in full,
- * then a count of what is behind the trial. That count is the entire argument
- * for paying, which is why the API returns it separately rather than just
- * truncating the list.
+ * then a count of what is behind the ask. That count is the entire argument
+ * for going further, which is why the API returns it separately rather than
+ * just truncating the list.
+ *
+ * Two doors out, deliberately. An account is the bigger commitment and gets
+ * the better outcome; leaving an email is the smaller one for someone who has
+ * known us for ninety seconds. Offering only the account loses everyone not
+ * ready for it, and those are the people worth following up with.
  *
  * Every step reports to the pixel, because on day four the only question that
- * matters is which step people stop at: an ad that lied looks completely
- * different from a product that underdelivered, and they are fixed in
+ * matters is which step people stop at — an ad that lied and a product that
+ * underdelivered look identical in a click report and are fixed in completely
  * different places.
  */
 
@@ -34,7 +37,7 @@ interface ScanRow {
   city: string
   region: string | null
   source: string
-  posted_at: string
+  posted_at: string | null
   intent_score: number | null
 }
 
@@ -47,12 +50,23 @@ interface ScanResult {
   capped: boolean
 }
 
-function howLongAgo(iso: string): string {
+/**
+ * Age, or an honest admission that we do not know it.
+ *
+ * Search results often carry no date, and the temptation is to show "today"
+ * rather than an awkward blank. Age is most of what decides whether a lead is
+ * worth answering, so a confident wrong date costs more than an honest gap.
+ */
+function postedWhen(iso: string | null): string {
+  if (!iso) return "date unknown"
   const hours = (Date.now() - Date.parse(iso)) / 3_600_000
-  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} minutes ago`
+  if (!Number.isFinite(hours)) return "date unknown"
+  if (hours < 1) return "under an hour ago"
   if (hours < 24) return `${Math.round(hours)} hours ago`
   const days = Math.round(hours / 24)
-  return days === 1 ? "yesterday" : `${days} days ago`
+  if (days === 1) return "yesterday"
+  if (days < 31) return `${days} days ago`
+  return `${Math.round(days / 30)} months ago`
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -70,11 +84,19 @@ export default function ScanPage() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [consent, setConsent] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [captured, setCaptured] = useState(false)
+  const [captureError, setCaptureError] = useState<string | null>(null)
+
   const run = async (e: React.FormEvent) => {
     e.preventDefault()
     setScanning(true)
     setError(null)
     setResult(null)
+    setCaptured(false)
     trackPixel("scanStarted", { trade, city })
 
     try {
@@ -100,6 +122,38 @@ export default function ScanPage() {
     }
   }
 
+  const capture = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!result) return
+    setSending(true)
+    setCaptureError(null)
+    try {
+      const res = await fetch("/api/scan/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          phone,
+          consent,
+          trade: result.trade,
+          city: result.city,
+          results: result.total,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setCaptureError(data.error ?? "Could not save that.")
+        return
+      }
+      setCaptured(true)
+      trackPixel("scanStarted", { trade: result.trade, city: result.city, captured: true })
+    } catch {
+      setCaptureError("Could not reach the server. Try again in a moment.")
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="mx-auto flex max-w-3xl items-center justify-between px-6 py-6">
@@ -115,14 +169,14 @@ export default function ScanPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 pb-24">
-        <h1 className="text-balance font-[family-name:var(--font-archivo)] text-4xl font-bold tracking-tight sm:text-5xl">
+        <h1 className="text-balance font-[family-name:var(--font-archivo)] text-[2rem] font-bold leading-[1.12] tracking-tight sm:text-5xl sm:leading-tight">
           Who near you is asking for your trade?
         </h1>
         <p className="mt-4 max-w-xl text-lg text-muted-foreground">
           Two questions and we&apos;ll look. No account, no card, and you keep whatever we find.
         </p>
 
-        <form onSubmit={run} className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-end">
+        <form onSubmit={run} className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-end">
           <div className="flex flex-1 flex-col gap-1.5">
             <Label htmlFor="trade">Your trade</Label>
             <Input
@@ -137,7 +191,7 @@ export default function ScanPage() {
             <Label htmlFor="city">Your city</Label>
             <Input
               id="city"
-              placeholder="Burnaby"
+              placeholder="Toronto ON"
               value={city}
               onChange={(e) => setCity(e.target.value)}
               required
@@ -148,90 +202,160 @@ export default function ScanPage() {
           </Button>
         </form>
 
+        {scanning ? (
+          <p className="mt-6 text-sm text-muted-foreground">
+            Searching public posts across your area. This takes a few seconds.
+          </p>
+        ) : null}
+
         {error ? (
           <p className="mt-6 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
             {error}
           </p>
         ) : null}
 
-        {result ? (
-          result.total === 0 ? (
-            /* An empty result is a real answer, not a failure — and saying so
-               plainly is worth more than a spinner that never resolves. It
-               also names the two things that actually cause it. */
-            <section className="mt-12 rounded-xl border border-border bg-card p-6">
-              <h2 className="font-[family-name:var(--font-archivo)] text-xl font-bold">
-                Nothing public for {result.trade} in {result.city} yet.
-              </h2>
-              <p className="mt-3 text-sm text-muted-foreground">
-                This free scan only reads sources that are public — the ones anyone can see
-                without logging in. Most trade work gets asked for inside local Facebook and
-                Nextdoor groups, which are members-only.
-              </p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Those are the ones worth having. Connect your own account once and we read the
-                groups you&apos;re already in.
-              </p>
-              <Button
-                variant="brand"
-                className="mt-5"
-                nativeButton={false}
-                render={<Link href="/signup" />}
-              >
-                Create a free account
-              </Button>
-            </section>
-          ) : (
-            <section className="mt-12">
-              <h2 className="font-[family-name:var(--font-archivo)] text-2xl font-bold">
-                {result.capped ? `${result.total}+` : result.total}{" "}
-                {result.total === 1 ? "person" : "people"} asked for a {result.trade} near{" "}
-                {result.city}
-              </h2>
-              <p className="mt-2 text-sm text-muted-foreground">In the last 90 days.</p>
+        {result && result.total === 0 ? (
+          <section className="mt-12 rounded-xl border border-border bg-card p-6">
+            <h2 className="font-[family-name:var(--font-archivo)] text-xl font-bold">
+              Nothing public for {result.trade} in {result.city} right now.
+            </h2>
+            <p className="mt-3 text-sm text-muted-foreground">
+              This free scan reads sources anyone can see without logging in. Plenty of work
+              gets asked for inside local Facebook and Nextdoor groups instead, which are
+              members-only — and those are the ones worth having.
+            </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Connect your own account once and we read the groups you&apos;re already in.
+            </p>
+            <Button variant="brand" className="mt-5" nativeButton={false} render={<Link href="/signup" />}>
+              Create a free account
+            </Button>
+          </section>
+        ) : null}
 
-              <div className="mt-6 flex flex-col gap-3">
-                {result.shown.map((row) => (
-                  <article key={row.id} className="rounded-xl border border-border bg-card p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {SOURCE_LABEL[row.source] ?? row.source}
-                        {row.region ? ` · ${row.region}` : ""} · {howLongAgo(row.posted_at)}
+        {result && result.total > 0 ? (
+          <section className="mt-12">
+            <h2 className="font-[family-name:var(--font-archivo)] text-2xl font-bold">
+              {result.capped ? `${result.total}+` : result.total}{" "}
+              {result.total === 1 ? "person" : "people"} asked for a {result.trade} near{" "}
+              {result.city}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">From the last 90 days.</p>
+
+            <div className="mt-6 flex flex-col gap-3">
+              {result.shown.map((row) => (
+                <article key={row.id} className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {SOURCE_LABEL[row.source] ?? row.source} · {postedWhen(row.posted_at)}
+                    </span>
+                    {row.intent_score != null ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand">
+                        <span className="size-1.5 rounded-full bg-brand" aria-hidden />
+                        {row.intent_score}
                       </span>
-                      {row.intent_score != null ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand">
-                          <span className="size-1.5 rounded-full bg-brand" aria-hidden />
-                          {row.intent_score}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-3 leading-relaxed">&ldquo;{row.content}&rdquo;</p>
-                  </article>
-                ))}
-              </div>
-
-              {result.locked > 0 ? (
-                <div className="mt-6 rounded-xl border border-brand/40 bg-brand/5 p-6">
-                  <h3 className="font-[family-name:var(--font-archivo)] text-lg font-bold">
-                    {result.locked} more, and a way to reach every one of them.
-                  </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    A trial opens the rest, the link to each post, and a daily email when new
-                    ones appear. Connect Facebook or Nextdoor and it reads the groups you&apos;re
-                    already in too — that&apos;s where most of this work actually gets asked for.
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <Button variant="brand" nativeButton={false} render={<Link href="/signup" />}>
-                      See the rest — free account
-                    </Button>
-                    <Button variant="outline" nativeButton={false} render={<Link href="/pricing" />}>
-                      See pricing
-                    </Button>
+                    ) : null}
                   </div>
+                  <p className="mt-3 leading-relaxed">{row.content}</p>
+                </article>
+              ))}
+            </div>
+
+            {/* The ask. Two doors, and the smaller one is not hidden — someone
+                ninety seconds into knowing us is often not ready for an
+                account, and they are exactly who is worth following up. */}
+            <div className="mt-8 rounded-xl border border-brand/40 bg-brand/5 p-6">
+              <h3 className="font-[family-name:var(--font-archivo)] text-lg font-bold">
+                {result.locked > 0
+                  ? `${result.locked} more, and the link to every one of them.`
+                  : "Want the links to these?"}
+              </h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                We hold the links back on the free scan. Open an account and you get all of
+                them, a new batch each morning, and a reply drafted in your words — or leave
+                your email and we&apos;ll send this list over.
+              </p>
+
+              <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm font-semibold">Create a free account</p>
+                  <p className="text-sm text-muted-foreground">
+                    Everything above, plus daily matches and the groups you&apos;re already in.
+                  </p>
+                  <Button variant="brand" nativeButton={false} render={<Link href="/signup" />}>
+                    Sign up free
+                  </Button>
                 </div>
-              ) : null}
-            </section>
-          )
+
+                <div className="flex flex-col gap-3 border-t border-border pt-6 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+                  {captured ? (
+                    <div>
+                      <p className="text-sm font-semibold">On its way.</p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        We&apos;ll send this list to {email}. If it doesn&apos;t arrive, check spam —
+                        mail from a new domain often lands there.
+                      </p>
+                    </div>
+                  ) : (
+                    <form onSubmit={capture} className="flex flex-col gap-3">
+                      <p className="text-sm font-semibold">Or email them to me</p>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="cap-email" className="text-xs">
+                          Email
+                        </Label>
+                        <Input
+                          id="cap-email"
+                          type="email"
+                          placeholder="you@yourcompany.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="cap-phone" className="text-xs">
+                          Phone <span className="text-muted-foreground">(optional)</span>
+                        </Label>
+                        <Input
+                          id="cap-phone"
+                          type="tel"
+                          placeholder="604 555 0134"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                        />
+                      </div>
+
+                      {/* Unticked by default and stored separately from the
+                          address. Having someone's email is not permission to
+                          market to them, and CASL does not treat it as one. */}
+                      <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={consent}
+                          onChange={(e) => setConsent(e.target.checked)}
+                        />
+                        <span>
+                          You can also send me new matches and occasional product email.
+                          Unsubscribe any time.
+                        </span>
+                      </label>
+
+                      <Button type="submit" variant="outline" disabled={sending}>
+                        {sending ? "Sending…" : "Email me these leads"}
+                      </Button>
+
+                      {captureError ? (
+                        <p className="text-sm text-destructive" role="alert">
+                          {captureError}
+                        </p>
+                      ) : null}
+                    </form>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
         ) : null}
       </main>
     </div>
