@@ -29,6 +29,25 @@ const PLATFORMS: { id: Platform; label: string; Icon: typeof FacebookIcon }[] = 
 
 type Live = { sessionId: string; liveViewUrl: string; platform: Platform }
 
+/**
+ * How long the cloud browser lives before the provider reclaims it.
+ *
+ * Must match DEFAULT_IDLE_TIMEOUT_SECONDS in lib/remote-browser-browserbase.ts,
+ * which is 300 because the free tier rejects anything larger at creation.
+ *
+ * Shown to the customer rather than left implicit, because the failure it
+ * causes is silent and looks like a bug in us. The provider's own session log
+ * is unambiguous: every long connect attempt ended at 303, 307, 309 or 310
+ * seconds — the cap, every time. Someone part-way through a 2FA code watched
+ * the window freeze with no way to know a clock had run out. A visible
+ * countdown turns "this is broken" into "I need to hurry", which is a
+ * completely different experience of the same limit.
+ *
+ * The real fix is a plan that allows a longer session; this makes the
+ * constraint honest until then.
+ */
+const SESSION_SECONDS = 300
+
 export function CloudConnect() {
   const router = useRouter()
   const [starting, setStarting] = useState<Platform | null>(null)
@@ -36,6 +55,7 @@ export function CloudConnect() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const [remaining, setRemaining] = useState(SESSION_SECONDS)
 
   const label = (id: Platform) => PLATFORMS.find((p) => p.id === id)?.label ?? id
 
@@ -54,6 +74,7 @@ export function CloudConnect() {
         setError(data.error ?? "Could not start a browser.")
         return
       }
+      setRemaining(SESSION_SECONDS)
       setLive({ sessionId: data.sessionId, liveViewUrl: data.liveViewUrl, platform })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not reach the server.")
@@ -115,15 +136,61 @@ export function CloudConnect() {
     return () => window.removeEventListener("pagehide", onUnload)
   }, [live, cancel])
 
+  // Counts down the provider's session cap.
+  //
+  // The clock starts here rather than in the click handler because reading
+  // Date.now() during render is impure — the same component re-rendering would
+  // silently restart the timer. An effect is where a side effect belongs, and
+  // it runs immediately after the session is set, so the two are the same
+  // moment for practical purposes.
+  //
+  // Each tick recomputes from that captured start rather than decrementing, so
+  // a backgrounded tab — where browsers throttle timers — still shows the true
+  // remaining time when the customer comes back to it.
+  useEffect(() => {
+    if (!live) return
+    const startedAt = Date.now()
+    const tick = () =>
+      setRemaining(Math.max(0, SESSION_SECONDS - Math.floor((Date.now() - startedAt) / 1000)))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [live])
+
   if (live) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-lg font-semibold">Log into {label(live.platform)} below</h3>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-lg font-semibold">Log into {label(live.platform)} below</h3>
+
+            {/* The constraint, said out loud. Under 90 seconds it turns amber:
+                that is roughly the point past which starting to hunt for a 2FA
+                code will not finish in time, and knowing that beats watching
+                the window freeze for no visible reason. */}
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums ${
+                remaining === 0
+                  ? "bg-destructive/10 text-destructive"
+                  : remaining < 90
+                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                    : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {remaining === 0
+                ? "Session expired — start again"
+                : `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")} left`}
+            </span>
+          </div>
+
           <p className="text-sm text-muted-foreground">
             This is a real browser running in the cloud. Sign in as you normally would, including any
             2FA code. Nobody here can see what you type — when you&apos;re done, use the button
             underneath.
+          </p>
+          <p className="text-sm font-medium">
+            Have your phone within reach before you start. The browser is only held for five
+            minutes, and if it runs out mid-login the window freezes and you begin again.
           </p>
         </div>
 
@@ -167,6 +234,32 @@ export function CloudConnect() {
         <div className="flex flex-wrap gap-3">
           <Button variant="brand" onClick={finish} disabled={saving}>
             {saving ? "Saving your login…" : "I've finished logging in"}
+          </Button>
+          {/*
+            Same cloud browser, bigger window.
+
+            Not an alternative to the cloud browser — logging into Facebook in
+            the customer's *own* browser would leave the session in their
+            browser, where we cannot reach it, and the whole point is that we
+            end up holding it. This opens the same remote session at a usable
+            size, which matters most on the screen it is hardest to type a 2FA
+            code into.
+
+            The session keeps running either way, so "I've finished logging in"
+            below still works once they come back.
+          */}
+          <Button
+            variant="outline"
+            disabled={saving}
+            onClick={() =>
+              window.open(
+                live.liveViewUrl,
+                "opportunity-ai-connect",
+                "width=1100,height=850,noopener,noreferrer"
+              )
+            }
+          >
+            Open in a bigger window
           </Button>
           <Button
             variant="outline"
