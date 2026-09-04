@@ -29,6 +29,23 @@ const PUBLIC_PATHS = [
   ...CRAWLER_PATHS,
 ];
 
+/**
+ * Whether this path is on the public list.
+ *
+ * Exact match, or the path plus a "/" — never a bare prefix. `startsWith`
+ * alone made every route sharing a public route's opening characters public
+ * too: a future "/scan-history", "/pricing-admin" or "/terms-internal" would
+ * have been served to signed-out strangers, silently, because a page's name
+ * happened to begin with the right letters.
+ *
+ * Nothing in the app collides today. This is about the failure mode when it
+ * does — a page that quietly stops requiring a login is not something anyone
+ * would think to test for.
+ */
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -55,7 +72,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublicPath = PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+  const isPublicPath = isPublic(request.nextUrl.pathname);
 
   // A signed-out visitor at "/" is a stranger, not a locked-out user. Send them
   // the marketing page instead of a sign-in form — this is the only page that
