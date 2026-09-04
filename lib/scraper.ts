@@ -760,6 +760,22 @@ async function scrapeBrowserPlatform(
   let processed = 0;
   let stoppedEarly = false;
 
+  /**
+   * How much time a group needs, so the check below can stop *before* starting
+   * one it cannot finish.
+   *
+   * Checking "am I past the deadline?" was not enough, and the failure was the
+   * one the budget existed to prevent. A group takes 15-30 seconds; starting
+   * one with 3 seconds left runs 27 seconds past the deadline and straight
+   * into the platform's hard kill, so `release()` never ran and the customer
+   * got a 504 that reads as "the app is broken" rather than a partial result.
+   *
+   * The floor is a starting guess; after the first group the real measured
+   * time replaces it, so a slow account reserves more and a fast one less.
+   */
+  const PER_GROUP_FLOOR_MS = 20_000;
+  let slowestGroupMs = 0;
+
   try {
     const page = await context.newPage();
 
@@ -779,10 +795,11 @@ async function scrapeBrowserPlatform(
     });
 
     for (const group of platformGroups) {
-      if (deadline !== null && Date.now() > deadline) {
+      if (deadline !== null && Date.now() + Math.max(PER_GROUP_FLOOR_MS, slowestGroupMs) > deadline) {
         stoppedEarly = true;
         break;
       }
+      const groupStartedAt = Date.now();
       processed++;
       const extractor = extractorFor(group.platform);
       if (!extractor) {
@@ -936,6 +953,10 @@ async function scrapeBrowserPlatform(
 
       // Polite randomized pause between groups — keeps the crawl human-paced.
       await sleep(randBetween(2000, 5000));
+
+      // Measured including the pause, because that is time the next group also
+      // has to fit inside.
+      slowestGroupMs = Math.max(slowestGroupMs, Date.now() - groupStartedAt);
     }
   } finally {
     // release(), not context.close(): for a stored session this also writes

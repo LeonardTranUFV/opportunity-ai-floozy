@@ -27,7 +27,31 @@ export function CheckSourcesButton({ disabledReason }: { disabledReason?: string
     startTransition(async () => {
       try {
         const res = await fetch("/api/scrape", { method: "POST" })
-        const data = await res.json()
+
+        // Read as text first. A run the platform cut off comes back as a 504
+        // whose body is an HTML error page, and calling res.json() on that
+        // throws — which landed in the catch below and told the customer to
+        // "check the server log", the one thing they cannot do and the one
+        // message that makes a partial run look like a broken product.
+        const raw = await res.text()
+        let data: { success?: boolean; error?: string; log?: string[]; scraped?: number; message?: string } | null =
+          null
+        try {
+          data = JSON.parse(raw)
+        } catch {
+          data = null
+        }
+
+        if (!data) {
+          setIsError(true)
+          setResult(
+            res.status === 504 || res.status === 502
+              ? "That took longer than the server allows and was stopped partway. Sources are read oldest-first, so run it again and it carries on where it left off."
+              : `Couldn't check your sources — the server returned ${res.status}.`
+          )
+          return
+        }
+
         if (!res.ok || !data.success) {
           setIsError(true)
           setResult(formatApiError(data.error) || "Couldn't check your sources — try again.")

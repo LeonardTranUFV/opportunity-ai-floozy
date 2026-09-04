@@ -66,7 +66,11 @@ export async function POST() {
     };
 
     try {
-      await bgPage.goto('https://www.facebook.com/groups/', { waitUntil: 'networkidle', timeout: 20000 });
+      // domcontentloaded, not networkidle — Facebook's long-poll connections
+      // mean the network never goes idle and this always timed out. See
+      // lib/facebook-groups.ts.
+      await bgPage.goto('https://www.facebook.com/groups/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await bgPage.waitForSelector('a[href*="/groups/"]', { timeout: 15000 }).catch(() => {});
       await bgPage.waitForTimeout(3000); // Wait for sidebar to populate
 
       // Class-agnostic semantic URL parsing to find joined groups

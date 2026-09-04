@@ -24,11 +24,28 @@ export interface DiscoveredGroup {
  * survives a redesign; a class selector does not.
  */
 export async function extractJoinedGroups(page: Page): Promise<DiscoveredGroup[]> {
+  // NOT "networkidle". Facebook holds long-poll and websocket connections
+  // open for as long as the page is alive, so the network never goes idle and
+  // this goto always threw:
+  //
+  //   page.goto: Timeout 25000ms exceeded ... waiting until "networkidle"
+  //
+  // Which the caller reported as "Could not refresh your groups" — a failure
+  // that looked like a broken session or a Facebook block, and was neither.
+  // The same mistake was fixed in the group-search route; this copy was
+  // missed because it only runs on a path that used to be operator-only.
+  //
+  // Wait for the group links themselves. That is the actual signal, it
+  // arrives long before the network would have settled, and if it never
+  // arrives the extraction below returns an empty list rather than throwing.
   await page.goto("https://www.facebook.com/groups/", {
-    waitUntil: "networkidle",
+    waitUntil: "domcontentloaded",
     timeout: 25_000,
   });
-  // The sidebar populates after the initial paint.
+  await page
+    .waitForSelector('a[href*="/groups/"]', { timeout: 15_000 })
+    .catch(() => {});
+  // The sidebar keeps populating after the first links paint.
   await page.waitForTimeout(3_000);
 
   return page.evaluate(() => {
