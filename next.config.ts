@@ -121,6 +121,23 @@ const nextConfig: NextConfig = {
       "./node_modules/playwright-core/**",
       "./node_modules/playwright/**",
     ],
+    /**
+     * Same treatment for the group re-sync, which attaches to a cloud browser
+     * exactly as connect does.
+     *
+     * Adding a route rather than widening the pattern is deliberate — these
+     * files are ~18 MB against a 250 MB limit, and every route matched pays
+     * that. But the omission is invisible until runtime: the route deployed,
+     * built cleanly, and failed on first use with "Cannot find module
+     * '/var/task/node_modules/playwright-core/browsers.json'".
+     *
+     * The rule this encodes: any route that reaches playwright — even only to
+     * connect over CDP, never to launch — needs an entry here.
+     */
+    "/api/groups/**": [
+      "./node_modules/playwright-core/**",
+      "./node_modules/playwright/**",
+    ],
   },
 
   async headers() {

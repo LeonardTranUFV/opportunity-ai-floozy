@@ -7,18 +7,23 @@ import { RefreshCw, User } from "lucide-react"
 import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon } from "@/components/icons"
 
 interface Status {
+  source?: string
   facebook: boolean
   facebookName: string | null
   facebookError: string | null
+  facebookSince?: string | null
   linkedin: boolean
   linkedinName: string | null
   linkedinError: string | null
+  linkedinSince?: string | null
   nextdoor: boolean
   nextdoorName: string | null
   nextdoorError: string | null
+  nextdoorSince?: string | null
   twitter: boolean
   twitterName: string | null
   twitterError: string | null
+  twitterSince?: string | null
 }
 
 function PlatformRow({
@@ -27,6 +32,7 @@ function PlatformRow({
   loggedIn,
   name,
   error,
+  since,
   iconColor,
 }: {
   icon: React.ReactNode
@@ -34,6 +40,8 @@ function PlatformRow({
   loggedIn: boolean
   name: string | null
   error: string | null
+  /** When the login was captured. Present on hosted, where no live check runs. */
+  since?: string | null
   iconColor: string
 }) {
   return (
@@ -50,7 +58,13 @@ function PlatformRow({
               </span>
             ) : (
               <span className="text-xs text-muted-foreground">
-                {loggedIn ? "Logged in" : error ? "Couldn't check" : "Not connected"}
+                {loggedIn
+                  ? since
+                    ? `Connected ${new Date(since).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
+                    : "Logged in"
+                  : error
+                    ? "Couldn't check"
+                    : "Not connected"}
               </span>
             )}
           </div>
@@ -79,18 +93,23 @@ export function SessionStatus() {
       const data = await res.json()
       if (res.ok && data.success) {
         setStatus({
+          source: data.source,
           facebook: data.facebook,
           facebookName: data.facebookName,
           facebookError: data.facebookError,
+          facebookSince: data.facebookSince,
           linkedin: data.linkedin,
           linkedinName: data.linkedinName,
           linkedinError: data.linkedinError,
+          linkedinSince: data.linkedinSince,
           nextdoor: data.nextdoor,
           nextdoorName: data.nextdoorName,
           nextdoorError: data.nextdoorError,
+          nextdoorSince: data.nextdoorSince,
           twitter: data.twitter,
           twitterName: data.twitterName,
           twitterError: data.twitterError,
+          twitterSince: data.twitterSince,
         })
       }
     } finally {
@@ -116,6 +135,7 @@ export function SessionStatus() {
             loggedIn={status.facebook}
             name={status.facebookName}
             error={status.facebookError}
+            since={status.facebookSince}
             iconColor="bg-[#1877F2]/10 text-[#1877F2]"
           />
           <PlatformRow
@@ -124,6 +144,7 @@ export function SessionStatus() {
             loggedIn={status.linkedin}
             name={status.linkedinName}
             error={status.linkedinError}
+            since={status.linkedinSince}
             iconColor="bg-[#0A66C2]/10 text-[#0A66C2]"
           />
           <PlatformRow
@@ -132,6 +153,7 @@ export function SessionStatus() {
             loggedIn={status.nextdoor}
             name={status.nextdoorName}
             error={status.nextdoorError}
+            since={status.nextdoorSince}
             iconColor="bg-[#8fca43]/10 text-[#8fca43]"
           />
           <PlatformRow
@@ -140,6 +162,7 @@ export function SessionStatus() {
             loggedIn={status.twitter}
             name={status.twitterName}
             error={status.twitterError}
+            since={status.twitterSince}
             iconColor="bg-foreground/10 text-foreground"
           />
           {(!status.facebook || !status.linkedin || !status.nextdoor || !status.twitter) && (
@@ -154,8 +177,21 @@ export function SessionStatus() {
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Click &quot;Check Status&quot; to verify whether your saved sessions are actually logged in,
-          and see which account is connected (takes ~15-25s, opens a background browser).
+          Click &quot;Check Status&quot; to see which accounts are connected.
+        </p>
+      )}
+
+      {/* Says how the answer was arrived at.
+          On the hosted site there is no browser to run a live check with, so
+          this reads the saved connection instead. That is genuine evidence a
+          login succeeded, but it cannot know whether the platform has since
+          invalidated it — and a green badge above an empty feed is exactly the
+          confusion worth heading off. */}
+      {status?.source === "stored" && (
+        <p className="text-xs text-muted-foreground">
+          Read from your saved connections rather than by signing in again, so it is instant. If a
+          platform has since logged you out, this will still show connected until the next
+          collection runs — reconnect that account if leads stop arriving.
         </p>
       )}
     </div>

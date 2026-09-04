@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getChromium } from "@/lib/browser";
-import { isHostedDeployment, BROWSER_UNAVAILABLE } from "@/lib/deployment";
+import { isHostedDeployment } from "@/lib/deployment";
+import { listSessions } from "@/lib/session-store";
 import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
 
 interface CheckResult {
@@ -141,8 +142,52 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
+  /**
+   * On the hosted deployment, answer from the stored sessions rather than 501.
+   *
+   * The checks below drive a real Chrome to see whether a login still works.
+   * Vercel has no Chrome, so this route refused outright — and the Session
+   * Status panel rendered nothing on the one site where customers actually
+   * connect their accounts. Someone who had just linked Facebook was shown an
+   * empty box, which reads as "it didn't take".
+   *
+   * A stored session is real evidence: it exists only because a login
+   * succeeded and its cookies were captured. What it cannot say is whether the
+   * platform has invalidated it since — so this reports the connection and its
+   * date, and does not claim to have verified anything just now. Overstating
+   * that would be worse than the blank box, because a customer would trust a
+   * green badge over an empty feed.
+   *
+   * Names are null for the same reason: reading a profile name means loading
+   * the profile, which means a browser.
+   */
   if (isHostedDeployment()) {
-    return NextResponse.json({ success: false, error: BROWSER_UNAVAILABLE }, { status: 501 });
+    const sessions = await listSessions(user.id);
+    const byPlatform = new Map(sessions.map((s) => [s.platform, s]));
+    const connected = (platform: string) => byPlatform.get(platform)?.status === "active";
+    const since = (platform: string) => byPlatform.get(platform)?.connectedAt ?? null;
+
+    return NextResponse.json({
+      success: true,
+      // Lets the panel say how this was determined instead of implying a check.
+      source: "stored",
+      facebook: connected("facebook"),
+      facebookName: null,
+      facebookError: null,
+      facebookSince: since("facebook"),
+      linkedin: connected("linkedin"),
+      linkedinName: null,
+      linkedinError: null,
+      linkedinSince: since("linkedin"),
+      nextdoor: connected("nextdoor"),
+      nextdoorName: null,
+      nextdoorError: null,
+      nextdoorSince: since("nextdoor"),
+      twitter: connected("twitter"),
+      twitterName: null,
+      twitterError: null,
+      twitterSince: since("twitter"),
+    });
   }
 
   // Each platform now gets its own persistent-context profile directory
