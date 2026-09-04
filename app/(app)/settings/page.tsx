@@ -1,4 +1,4 @@
-﻿import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { CheckCircle2, XCircle, Gem, Radar } from "lucide-react"
@@ -11,13 +11,21 @@ import { CreditsPanel, type CreditTx } from "@/components/settings/credits-panel
 import { PLAN_ALLOWANCES } from "@/lib/credits"
 import { platformMeta } from "@/lib/platform-meta"
 import { formatDate } from "@/lib/format-date"
+import { isAdmin } from "@/lib/admin"
 
 export const dynamic = "force-dynamic"
 
-function maskKey(key: string | undefined): string {
-  if (!key) return "Not configured"
-  if (key.length <= 8) return "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-  return `${key.slice(0, 4)}â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢${key.slice(-4)}`
+/**
+ * Configured or not — never any part of the key itself.
+ *
+ * This used to print the first and last four characters, masked in the
+ * middle, to every signed-in account. That is eight characters of the
+ * operator's live Gemini key on a customer's screen, for a panel the customer
+ * cannot act on: the keys live in the deployment's environment, not in any
+ * setting they control. The panel is now admin-only and shows only presence.
+ */
+function keyState(key: string | undefined): string {
+  return key ? "Configured" : "Not configured"
 }
 
 function formatWhen(iso: string | null): string {
@@ -56,6 +64,7 @@ export default async function SettingsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  const userIsAdmin = user ? await isAdmin(supabase, user.id) : false
 
   let creditSummary: { balance: number; allowance: number; plan: string } | null = null
   let transactions: CreditTx[] = []
@@ -107,7 +116,7 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>Business Profile</CardTitle>
           <CardDescription>
-            Optional, but recommended â€” used to personalize AI-generated replies so they sound like you.
+            Optional, but recommended — used to personalize AI-generated replies so they sound like you.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -138,32 +147,47 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Integrations</CardTitle>
-          <CardDescription>API keys are read from your .env file â€” never edited here.</CardDescription>
+          <CardTitle>Preferences</CardTitle>
+          <CardDescription>How leads are handed off and how much of your data the AI sees.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {integrations.map((integration) => (
-            <div
-              key={integration.name}
-              className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm"
-            >
-              <span className="font-medium">{integration.name}</span>
-              <span className="flex items-center gap-2 text-muted-foreground">
-                {integration.key ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-destructive" />
-                )}
-                <code className="rounded bg-background px-1.5 py-0.5 text-xs ring-1 ring-border">
-                  {maskKey(integration.key)}
-                </code>
-              </span>
-            </div>
-          ))}
           <GhlToggle initialEnabled={ghlDispatchEnabled} />
           <PrivacyModeToggle initialEnabled={privacyModeEnabled} />
         </CardContent>
       </Card>
+
+      {/* Operator-only. These are the deployment's own credentials, which a
+          customer can neither see the value of nor change — showing them a
+          row of "not configured" for the CRM they don't use just raises a
+          question nobody can answer from inside the product. */}
+      {userIsAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Integrations</CardTitle>
+            <CardDescription>
+              Read from the deployment environment. Presence only — values are never shown here.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {integrations.map((integration) => (
+              <div
+                key={integration.name}
+                className="flex items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2 text-sm"
+              >
+                <span className="font-medium">{integration.name}</span>
+                <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                  {integration.key ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-destructive" />
+                  )}
+                  <span className="text-xs">{keyState(integration.key)}</span>
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -215,7 +239,7 @@ export default async function SettingsPage() {
                       <div className="flex flex-col min-w-0">
                         <span className="truncate font-medium">{g.name}</span>
                         <span className="text-xs text-muted-foreground">
-                          {label} Â· {g.post_count} posts collected
+                          {label} · {g.post_count} posts collected
                         </span>
                       </div>
                     </div>
@@ -235,7 +259,7 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle>AI Agents</CardTitle>
           <CardDescription>
-            Each agent has its own goal, location, and keywords â€” manage them from the{" "}
+            Each agent has its own goal, location, and keywords — manage them from the{" "}
             <a href="/agents" className="text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80">
               AI Agents
             </a>{" "}
