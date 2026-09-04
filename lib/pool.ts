@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hasPoolAccess } from "@/lib/privileges";
 
 /**
  * The Shared Opportunity Pool — the only place in this app that reads across
@@ -49,22 +50,15 @@ export type PoolRow = {
 };
 
 /**
- * Whether this account may read the pool. `pool_access` is granted by an admin
- * and is separate from `is_admin` on purpose, so an agency client can be given
- * read access without also being able to grant it to anyone else.
+ * Whether this account may read the pool.
+ *
+ * This read `pool_access` and `is_admin` out of `settings` — a table whose
+ * RLS deliberately lets a customer write their own rows. Reading a permission
+ * from a place its subject can write meant any signed-up account could grant
+ * itself sight of other customers' leads with one request. It comes from the
+ * deployment environment now; see lib/privileges.ts.
  */
-export async function hasPoolAccess(
-  supabase: SupabaseClient,
-  userId: string
-): Promise<boolean> {
-  const { data } = await supabase
-    .from("settings")
-    .select("key, value")
-    .eq("user_id", userId)
-    .in("key", ["pool_access", "is_admin"]);
-
-  return (data ?? []).some((r) => r.value === "true");
-}
+export { hasPoolAccess };
 
 /**
  * Writes the audit record. Returns false if it could not be written — the
