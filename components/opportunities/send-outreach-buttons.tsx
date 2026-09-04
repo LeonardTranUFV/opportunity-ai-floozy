@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, Send, Check } from "lucide-react"
-import { formatApiError } from "@/lib/format-error"
+import { formatApiError, readApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 /**
  * Two different actions that only look alike.
@@ -53,14 +53,18 @@ export function SendOutreachButtons({ id, platform, hasComment, hasDm, hasPostUr
     ;(async () => {
       try {
         const res = await fetch(`/api/opportunities/${id}/comment`, { method: "POST" })
+        if (!res.ok) {
+          setError(await readApiError(res, "Couldn't post that comment"))
+          return
+        }
         const data = await res.json()
-        if (!res.ok || !data.success) {
-          setError(formatApiError(data.error) || "Failed to post comment")
+        if (!data.success) {
+          setError(data.error || "Couldn't post that comment.")
           return
         }
         router.refresh()
       } catch {
-        setError("Failed to post comment")
+        setError(CONNECTION_ERROR)
       } finally {
         setPending(null)
       }
@@ -123,7 +127,11 @@ export function SendOutreachButtons({ id, platform, hasComment, hasDm, hasPostUr
           variant="outline"
           size="sm"
           className="flex-1"
-          disabled={!hasComment || !hasPostUrl || pending !== null}
+          // Already posted is a state, not an invitation. Leaving it live let
+          // a customer post the same drafted reply onto a stranger's post
+          // twice, from their own account, which reads as exactly the spam
+          // this feature is trying not to be.
+          disabled={!hasComment || !hasPostUrl || !!commentSentAt || pending !== null}
           onClick={sendComment}
         >
           {commentSentAt ? <Check className="h-3.5 w-3.5" /> : <MessageSquare className="h-3.5 w-3.5" />}
@@ -134,7 +142,7 @@ export function SendOutreachButtons({ id, platform, hasComment, hasDm, hasPostUr
           variant="outline"
           size="sm"
           className="flex-1"
-          disabled={!hasDm || !hasProfileUrl || pending !== null}
+          disabled={!hasDm || !hasProfileUrl || (!!dmSentAt && !dmPrepared) || pending !== null}
           onClick={dmPrepared ? markDmSent : prepareDm}
         >
           {dmSentAt ? <Check className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
@@ -148,6 +156,13 @@ export function SendOutreachButtons({ id, platform, hasComment, hasDm, hasPostUr
         </Button>
       </div>
 
+      {hasComment && !hasPostUrl && !commentSentAt && (
+        <p className="text-xs text-muted-foreground">
+          Commenting is off for this lead: the platform gave us a link to the group, not to the
+          post, so we can&apos;t be certain a comment would land on the right one. Open the group
+          and reply there yourself.
+        </p>
+      )}
       {dmPrepared && !dmSentAt && (
         <p className="text-xs text-muted-foreground">
           Copied and opened in Messenger. Read it, change anything that does not fit, and send it

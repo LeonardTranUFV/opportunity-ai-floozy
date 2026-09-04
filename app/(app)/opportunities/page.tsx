@@ -428,7 +428,7 @@ export default async function OpportunitiesPage({
                     platform={opp.platform}
                     hasComment={!!opp.suggested_comment}
                     hasDm={!!opp.suggested_dm}
-                    hasPostUrl={!!opp.post_url}
+                    hasPostUrl={isExactPostUrl(opp.post_url)}
                     hasProfileUrl={!!opp.author_profile_url}
                     commentSentAt={opp.comment_sent_at}
                     dmSentAt={opp.dm_sent_at}

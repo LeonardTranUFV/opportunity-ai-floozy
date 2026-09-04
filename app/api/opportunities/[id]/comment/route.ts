@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { postFacebookComment } from "@/lib/facebook-outreach";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
+import { isExactPostUrl } from "@/lib/post-url";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -51,6 +52,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (opportunity.platform !== "facebook") {
     return NextResponse.json(
       { success: false, error: "Automated comments are only supported for Facebook right now." },
+      { status: 400 }
+    );
+  }
+
+  /**
+   * A link to the group is not a link to the post.
+   *
+   * When Facebook doesn't expose a permalink the extractors fall back to the
+   * group's feed URL, and this check only asked whether *some* URL existed. So
+   * the automation would open the group's front page and comment there —
+   * publishing the customer's drafted reply, in their name, on whatever post
+   * happened to be at the top, or on nothing at all.
+   *
+   * That is the worst class of bug in this product: a public action, taken on
+   * a real person's behalf, in the wrong place. Refused outright rather than
+   * attempted, and the UI disables the button for the same reason.
+   */
+  if (!isExactPostUrl(opportunity.post_url)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "This platform didn't give us a direct link to that post, only to the group — so we can't be sure a comment would land on the right one. Open the group and reply there yourself.",
+      },
       { status: 400 }
     );
   }
