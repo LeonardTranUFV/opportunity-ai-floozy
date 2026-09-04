@@ -81,7 +81,7 @@ export const CITY_CLUSTERS: { region: string; cities: string[] }[] = [
     region: "Phoenix",
     cities: ["Phoenix", "Mesa", "Scottsdale", "Chandler", "Gilbert", "Glendale AZ", "Tempe", "Peoria"],
   },
-  { region: "Denver", cities: ["Denver", "Aurora", "Lakewood", "Arvada", "Westminster", "Littleton", "Boulder"] },
+  { region: "Denver", cities: ["Denver", "Aurora CO", "Lakewood", "Arvada", "Westminster", "Littleton", "Boulder"] },
   { region: "Salt Lake City", cities: ["Salt Lake City", "West Valley City", "Sandy", "Provo", "Ogden"] },
   {
     region: "Dallas–Fort Worth",
