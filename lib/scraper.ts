@@ -1019,50 +1019,32 @@ export async function scrapeActiveGroups(
   }
 
   /**
-   * On the hosted deployment every browser is rented, and that changes both
-   * limits this schedule has to respect.
+   * Every platform runs concurrently, rented browsers included.
    *
-   * Concurrency: locally, running Facebook and LinkedIn at once costs nothing
-   * — they are separate Chrome processes on an idle machine. A provider sells
-   * concurrent browsers by the seat, and exceeding the plan's allowance is
-   * refused outright, which would show up as one platform collecting and
-   * another mysteriously failing every run. Sequential is slower and always
-   * works.
+   * This was briefly made sequential out of a worry that concurrent rented
+   * browsers would exceed the plan's allowance and fail one platform per run.
+   * Checked rather than assumed: the plan allows 25 at once, and a customer
+   * has at most a handful of connected platforms. The caution bought nothing
+   * and cost the thing actually in short supply — wall-clock inside a
+   * 60-second invocation, where two platforms sharing one budget sequentially
+   * means each reads half as many sources.
    *
-   * Time: the whole run shares one 45-second budget, because what it is
-   * really sharing is one 60-second serverless invocation. Whatever the budget
-   * doesn't reach is read on the next run, stalest first.
+   * What they do share is the deadline. The constraint is one invocation's
+   * lifetime, so a per-platform budget would blow it between them. Whatever
+   * isn't reached is read next run, stalest first.
    *
-   * Reddit is exempt from both — no browser, just HTTP — so it stays parallel
-   * with the browser pass and never eats into its time.
+   * Concurrency across *customers* is the limit worth watching as this grows,
+   * and it isn't decided here.
    */
-  const rented = isHostedDeployment();
-  const runDeadline = rented ? Date.now() + budgetMs : null;
+  const runDeadline = isHostedDeployment() ? Date.now() + budgetMs : null;
 
-  const buckets = [...groupsByPlatform.entries()];
-  const redditBuckets = buckets.filter(([platform]) => platform === "reddit");
-  const browserBuckets = buckets.filter(([platform]) => platform !== "reddit");
-
-  const runBrowserBuckets = async (): Promise<PlatformScrapeResult[]> => {
-    if (!rented) {
-      return Promise.all(
-        browserBuckets.map(([platform, platformGroups]) =>
-          scrapeBrowserPlatform(platform, platformGroups, userId, runDeadline)
-        )
-      );
-    }
-    const results: PlatformScrapeResult[] = [];
-    for (const [platform, platformGroups] of browserBuckets) {
-      results.push(await scrapeBrowserPlatform(platform, platformGroups, userId, runDeadline));
-    }
-    return results;
-  };
-
-  const [redditResults, browserResults] = await Promise.all([
-    Promise.all(redditBuckets.map(([, platformGroups]) => scrapeRedditPlatform(platformGroups))),
-    runBrowserBuckets(),
-  ]);
-  const platformResults = [...redditResults, ...browserResults];
+  const platformResults = await Promise.all(
+    [...groupsByPlatform.entries()].map(([platform, platformGroups]) =>
+      platform === "reddit"
+        ? scrapeRedditPlatform(platformGroups)
+        : scrapeBrowserPlatform(platform, platformGroups, userId, runDeadline)
+    )
+  );
 
   const posts: ScrapedPost[] = [];
   const log: string[] = [];
