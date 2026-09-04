@@ -48,6 +48,46 @@ interface ScanResult {
   shown: ScanRow[]
   locked: number
   capped: boolean
+  /** The city as the visitor typed it, for the sentence they read back. */
+  displayCity: string
+}
+
+/**
+ * The person a trade category refers to, for the headline.
+ *
+ * The API answers with a category — "plumbing", "electrical" — because that
+ * is what the corpus is keyed on, and it used to be dropped straight into
+ * "N people asked for a {trade}". The first sentence a prospect read after
+ * their scan was "2 people asked for a plumbing near calgary ab". This is the
+ * grammar the category was standing in for.
+ */
+const PERSON_FOR: Record<string, string> = {
+  roofing: "a roofer",
+  painting: "a painter",
+  plumbing: "a plumber",
+  electrical: "an electrician",
+  flooring: "a flooring installer",
+  landscaping: "a landscaper",
+  hvac: "an HVAC tech",
+  renovation: "a contractor",
+  handyman: "a handyman",
+  drywall: "a drywaller",
+  fencing: "a fence installer",
+  concrete: "a concrete contractor",
+  tiling: "a tiler",
+}
+
+function personFor(trade: string): string {
+  return PERSON_FOR[trade] ?? `a ${trade}`
+}
+
+/** "calgary ab" → "Calgary AB"; "north vancouver, bc" → "North Vancouver, BC". */
+function prettyCity(raw: string): string {
+  return raw
+    .trim()
+    .split(/s+/)
+    .map((word) => (word.length <= 2 ? word.toUpperCase() : word[0].toUpperCase() + word.slice(1)))
+    .join(" ")
 }
 
 /**
@@ -110,7 +150,9 @@ export default function ScanPage() {
         setError(data.error ?? "Something went wrong looking.")
         return
       }
-      setResult(data as ScanResult)
+      // Snapshot the typed city with the result, so the headline keeps
+      // matching the list even if the visitor edits the box afterwards.
+      setResult({ ...(data as Omit<ScanResult, "displayCity">), displayCity: prettyCity(city) })
       if (data.total > 0) {
         trackPixel("resultsShown", { trade, city, results: data.total })
         if (data.locked > 0) trackPixel("paywallSeen", { trade, city })
@@ -217,7 +259,7 @@ export default function ScanPage() {
         {result && result.total === 0 ? (
           <section className="mt-12 rounded-xl border border-border bg-card p-6">
             <h2 className="font-[family-name:var(--font-archivo)] text-xl font-bold">
-              Nothing public for {result.trade} in {result.city} right now.
+              Nothing public for {result.trade} in {result.displayCity} right now.
             </h2>
             <p className="mt-3 text-sm text-muted-foreground">
               This free scan reads sources anyone can see without logging in. Plenty of work
@@ -237,8 +279,8 @@ export default function ScanPage() {
           <section className="mt-12">
             <h2 className="font-[family-name:var(--font-archivo)] text-2xl font-bold">
               {result.capped ? `${result.total}+` : result.total}{" "}
-              {result.total === 1 ? "person" : "people"} asked for a {result.trade} near{" "}
-              {result.city}
+              {result.total === 1 ? "person" : "people"} asked for {personFor(result.trade)} near{" "}
+              {result.displayCity}
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">From the last 90 days.</p>
 
