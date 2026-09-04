@@ -62,11 +62,23 @@ export default async function CrmPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        // A board sideways, a list downwards. Seven 288px columns scrolled
+        // horizontally is a pipeline on a desktop and about two thousand
+        // pixels of one-handed swiping on a phone — five columns of it to
+        // reach "Won", most of them empty. Below sm the same columns stack,
+        // and empty ones are dropped: their only job on a board is to be a
+        // drop target, and nothing is dragged here — status changes through
+        // the select on each card.
+        <div className="flex flex-col gap-4 pb-4 sm:flex-row sm:overflow-x-auto">
           {COLUMNS.map((col) => {
             const items = byStatus.get(col.key) || []
             return (
-              <div key={col.key} className="flex w-72 shrink-0 flex-col gap-3">
+              <div
+                key={col.key}
+                className={`w-full flex-col gap-3 sm:flex sm:w-72 sm:shrink-0 ${
+                  items.length === 0 ? "hidden" : "flex"
+                }`}
+              >
                 <div className="flex items-center justify-between rounded-md bg-muted/50 px-2.5 py-1.5">
                   <h3 className="flex items-center gap-2 text-sm font-semibold">
                     <span className={`h-2 w-2 rounded-full ${col.dot}`} />
@@ -103,7 +115,8 @@ export default async function CrmPage() {
                     )
                   })}
                   {items.length === 0 && (
-                    <div className="rounded-md border border-dashed border-border/70 px-2 py-4 text-center text-xs text-muted-foreground/70">
+                    // Desktop only — on a phone the whole column is gone.
+                    <div className="hidden rounded-md border border-dashed border-border/70 px-2 py-4 text-center text-xs text-muted-foreground/70 sm:block">
                       Nothing here
                     </div>
                   )}
