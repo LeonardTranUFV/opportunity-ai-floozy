@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { LocationPicker } from "@/components/agents/location-picker"
 import { Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { readApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 const TOTAL_STEPS = 3
 const STEP_TITLES = ["Tell us about your business", "Where do you operate?", "Keywords"]
@@ -71,7 +72,7 @@ export default function NewAgentPage() {
       setNegativeKeywords(data.negative_keywords || "")
       setEnhanced(true)
     } catch {
-      setEnhanceError("AI enhancement failed — check the server log.")
+      setEnhanceError(CONNECTION_ERROR)
     } finally {
       setIsEnhancing(false)
     }
@@ -94,11 +95,11 @@ export default function NewAgentPage() {
       if (res.ok) {
         router.push("/agents")
       } else {
-        alert("Failed to save agent")
+        alert(await readApiError(res, "Couldn't save the agent"))
       }
     } catch (error) {
       console.error(error)
-      alert("Error saving agent")
+      alert(CONNECTION_ERROR)
     } finally {
       setIsSubmitting(false)
     }

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MapPin, Plus, Search, Store as StoreIcon } from "lucide-react"
 import { FacebookIcon, LinkedInIcon, NextdoorIcon, XIcon, RedditIcon } from "@/components/icons"
+import { readApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 type Platform = "facebook" | "marketplace" | "linkedin" | "nextdoor" | "twitter" | "reddit"
 
@@ -51,12 +52,14 @@ async function addGroup(platform: Platform, name: string, url: string): Promise<
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ platform, name, url, active: true }),
     })
-    const data = await res.json()
     if (res.ok) return { ok: true }
-    if (res.status === 409) return { ok: false, error: "That source is already being tracked." }
-    return { ok: false, error: data.error || "Failed to add source" }
+    // The server's sentence first. 409 used to be assumed to mean "already
+    // tracked", but the monitored-source limit answers 409 too — and telling
+    // someone at their limit that the source already exists sends them
+    // looking for a duplicate that isn't there.
+    return { ok: false, error: await readApiError(res, "Couldn't add that source") }
   } catch {
-    return { ok: false, error: "Failed to add source — check the server log." }
+    return { ok: false, error: CONNECTION_ERROR }
   }
 }
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Trash2 } from "lucide-react"
+import { readApiError } from "@/lib/format-error"
 
 export function DeleteAgentButton({ id, name }: { id: string; name: string }) {
   const router = useRouter()
@@ -21,7 +22,7 @@ export function DeleteAgentButton({ id, name }: { id: string; name: string }) {
       if (res.ok) {
         router.refresh()
       } else {
-        alert("Failed to delete agent")
+        alert(await readApiError(res, "Couldn't delete the agent"))
       }
       setConfirming(false)
     })

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { readApiError } from "@/lib/format-error"
 
 export function BusinessProfileForm({
   initialOwnerName,
@@ -40,7 +41,7 @@ export function BusinessProfileForm({
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
       } else {
-        alert("Failed to save business profile")
+        alert(await readApiError(res, "Couldn't save your business profile"))
       }
     })
   }

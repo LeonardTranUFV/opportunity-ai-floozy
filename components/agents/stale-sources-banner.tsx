@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { RefreshCw, TriangleAlert, CircleAlert } from "lucide-react"
-import { formatApiError } from "@/lib/format-error"
+import { formatApiError, readApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 /**
  * The "run it from your own computer" branch is gone, and with it the `hosted`
@@ -26,14 +26,21 @@ export function StaleSourcesBanner() {
     startTransition(async () => {
       try {
         const res = await fetch("/api/scrape", { method: "POST" })
+        // Status first, JSON second: a run the platform cut off is a 504 with
+        // an HTML body, and parsing that used to throw straight into the catch
+        // below with advice nobody can follow.
+        if (!res.ok) {
+          setError(await readApiError(res, "Couldn't refresh sources"))
+          return
+        }
         const data = await res.json()
-        if (!res.ok || !data.success) {
+        if (!data.success) {
           setError(formatApiError(data.error) || "Couldn't refresh sources — try again.")
           return
         }
         router.refresh()
       } catch {
-        setError("Couldn't refresh sources — check the server log.")
+        setError(CONNECTION_ERROR)
       }
     })
   }

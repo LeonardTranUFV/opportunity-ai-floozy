@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Pencil, Check, X } from "lucide-react"
+import { readApiError } from "@/lib/format-error"
 
 export function GroupName({ id, name, url }: { id: string; name: string; url: string }) {
   const router = useRouter()
@@ -32,7 +33,7 @@ export function GroupName({ id, name, url }: { id: string; name: string; url: st
         setEditing(false)
         router.refresh()
       } else {
-        alert("Failed to rename group")
+        alert(await readApiError(res, "Couldn't rename that source"))
       }
     })
   }

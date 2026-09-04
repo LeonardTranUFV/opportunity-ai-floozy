@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sparkles } from "lucide-react"
-import { formatApiError } from "@/lib/format-error"
+import { formatApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 // shortLabel shows in the collapsed trigger (space-constrained); label is the
 // unambiguous version shown in the dropdown — "3 days" alone reads as a
@@ -127,7 +127,7 @@ export function ScanAgentButton({ id }: { id: string }) {
         finishProgress()
         router.refresh()
       } catch {
-        setResult("Scan failed — check the server log.")
+        setResult(CONNECTION_ERROR)
         finishProgress()
       }
     })

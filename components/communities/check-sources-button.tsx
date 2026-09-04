@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { RefreshCw, CircleCheck, CircleAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { formatApiError } from "@/lib/format-error"
+import { formatApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 /**
  * "Scrape" is deliberately absent from everything a user reads. It describes
@@ -68,7 +68,7 @@ export function CheckSourcesButton({ disabledReason }: { disabledReason?: string
         router.refresh()
       } catch {
         setIsError(true)
-        setResult("Couldn't check your sources — check the server log.")
+        setResult(CONNECTION_ERROR)
       }
     })
   }

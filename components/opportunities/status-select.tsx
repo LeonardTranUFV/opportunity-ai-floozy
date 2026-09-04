@@ -3,6 +3,7 @@
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { readApiError } from "@/lib/format-error"
 
 const STATUSES = ["new", "contacted", "qualified", "appointment", "proposal", "won", "lost"] as const
 
@@ -20,7 +21,7 @@ export function StatusSelect({ id, status }: { id: string; status: string }) {
       if (res.ok) {
         router.refresh()
       } else {
-        alert("Failed to update status")
+        alert(await readApiError(res, "Couldn't update the status"))
       }
     })
   }

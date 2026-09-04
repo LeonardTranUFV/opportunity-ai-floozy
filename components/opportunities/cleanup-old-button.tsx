@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { readApiError, formatApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 const DAY_OPTIONS = [
   { value: "7", label: "7+ days old" },
@@ -34,15 +35,19 @@ export function CleanupOldButton() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ days: Number(days) }),
         })
+        if (!res.ok) {
+          alert(await readApiError(res, "Couldn't clean up old leads"))
+          return
+        }
         const data = await res.json()
-        if (!res.ok || !data.success) {
-          alert("Couldn't clean up old leads — try again.")
+        if (!data.success) {
+          alert(formatApiError(data.error) || "Couldn't clean up old leads — try again.")
           return
         }
         alert(data.deleted === 0 ? "No leads matched — nothing removed." : `Removed ${data.deleted} old lead(s).`)
         router.refresh()
       } catch {
-        alert("Couldn't clean up old leads — check the server log.")
+        alert(CONNECTION_ERROR)
       }
     })
   }

@@ -63,3 +63,40 @@ export function formatApiError(raw: string | undefined | null): string {
   const prefix = raw.slice(0, jsonStart).trim()
   return prefix || "The AI request failed. Try again in a moment."
 }
+
+/**
+ * The message for a request the server refused, taken from the server.
+ *
+ * Every mutation in the app used to answer failure with its own fixed string —
+ * "Failed to delete agent", "Failed to update status" — and throw the response
+ * body away. That body is where the useful sentence lives: the source limit,
+ * a validation message, the reason a comment could not be posted. A customer
+ * shown "Failed to update group" over a 409 that said exactly what to do has
+ * been handed a bug report instead of an instruction.
+ *
+ * Read as text first, because a run the platform cut off comes back as a 504
+ * whose body is an HTML page, and res.json() throwing on that is how several
+ * of these ended up in a catch block saying "check the server log".
+ */
+export async function readApiError(res: Response, fallback: string): Promise<string> {
+  const raw = await res.text().catch(() => "")
+  try {
+    const data = JSON.parse(raw) as { error?: unknown }
+    if (typeof data?.error === "string" && data.error.trim()) return formatApiError(data.error)
+  } catch {
+    // Not JSON — fall through to the status-based message.
+  }
+  if (res.status === 504 || res.status === 502) {
+    return "That took longer than the server allows and was stopped partway. Try again — it carries on from where it stopped."
+  }
+  return `${fallback} (the server returned ${res.status}).`
+}
+
+/**
+ * The message when the request never got an answer at all.
+ *
+ * A fetch that throws is a network problem, not a server one — the phone lost
+ * signal, a tunnel, a captive portal. "Check the server log" is the one thing
+ * a customer cannot do; checking their connection is the one thing they can.
+ */
+export const CONNECTION_ERROR = "Couldn't reach the server — check your connection and try again."

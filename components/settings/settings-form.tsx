@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { readApiError } from "@/lib/format-error"
 
 const GOAL_OPTIONS = [
   { value: "home_services", label: "Home Services (contractors, roofers, plumbers, electricians)" },
@@ -46,7 +47,7 @@ export function SettingsForm({
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
       } else {
-        alert("Failed to save settings")
+        alert(await readApiError(res, "Couldn't save settings"))
       }
     })
   }

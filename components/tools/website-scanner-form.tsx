@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CheckCircle2, XCircle, Search } from "lucide-react"
-import { formatApiError } from "@/lib/format-error"
+import { formatApiError, readApiError, CONNECTION_ERROR } from "@/lib/format-error"
 
 interface WebsiteCheck {
   label: string
@@ -40,14 +40,18 @@ export function WebsiteScannerForm() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),
         })
+        if (!res.ok) {
+          setError(await readApiError(res, "Couldn't scan that site"))
+          return
+        }
         const data = await res.json()
-        if (!res.ok || !data.success) {
-          setError(data.error || "Scan failed")
+        if (!data.success) {
+          setError(data.error || "Couldn't scan that site — try again.")
           return
         }
         setResult(data)
       } catch {
-        setError("Scan failed — check the server log.")
+        setError(CONNECTION_ERROR)
       }
     })
   }
