@@ -9,11 +9,15 @@ import { LocationMapSheet } from "@/components/dashboard/location-map-sheet"
 import { CallFirst } from "@/components/dashboard/call-first"
 import { SetupChecklist } from "@/components/dashboard/setup-checklist"
 import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
+import { listSessions } from "@/lib/session-store"
 
 export const dynamic = "force-dynamic"
 
 export default async function Home() {
   const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   const [
     { count: highIntentCount },
@@ -69,13 +73,24 @@ export default async function Home() {
     { count: agentCount },
     { count: postCount },
     { count: anySourceCount },
-    { count: connectedCount },
+    sessions,
   ] = await Promise.all([
     supabase.from("agents").select("*", { count: "exact", head: true }),
     supabase.from("posts").select("*", { count: "exact", head: true }),
     supabase.from("groups").select("*", { count: "exact", head: true }),
-    supabase.from("browser_sessions").select("*", { count: "exact", head: true }),
+    /**
+     * Through the session store, not the request client.
+     *
+     * browser_sessions has RLS on with no policies at all — deliberately, so
+     * that no browser-side client can ever read a session's ciphertext. That
+     * same wall stopped this count: the request-scoped client got zero rows
+     * for everyone, always, and the step this was meant to tick off stayed
+     * unticked for every customer who had connected. listSessions reads with
+     * the service role and scopes to this user explicitly.
+     */
+    user ? listSessions(user.id) : Promise.resolve([]),
   ])
+  const connectedCount = sessions.filter((s) => s.status === "active").length
   const setupState = {
     /**
      * A connected account, read from the thing that actually records one.
