@@ -54,6 +54,26 @@ const MAX_NODES_WALKED = 250_000;
 const MIN_TEXT_LENGTH = 20;
 const MAX_TEXT_LENGTH = 1500;
 
+/**
+ * The key a text-derived post id is hashed from.
+ *
+ * Must match lib/scraper.ts exactly, and did not: this side hashed the raw
+ * slice while the DOM extractor collapsed runs of whitespace first. Same post,
+ * two different ids, so it was stored twice — and because `posts` is unique on
+ * (user_id, external_post_id), nothing downstream could tell those two rows
+ * apart. The visible result was one Facebook post arriving as two leads with
+ * two different authors, since whichever copy failed to resolve an author fell
+ * back to "Anonymous Member".
+ *
+ * Whitespace is exactly what differs between the two paths: the DOM extractor
+ * reads text through the browser's layout, the capture reads it from the
+ * feed's own JSON, and newlines and indentation survive differently in each.
+ * Collapsing it is what makes the two agree.
+ */
+function textKey(text: string): string {
+  return text.slice(0, 160).toLowerCase().replace(/s+/g, " ");
+}
+
 function hashText(str: string): string {
   let h = 0;
   for (let i = 0; i < str.length; i++) {
@@ -139,7 +159,7 @@ const readFacebookStory: ShapeReader = (node) => {
   const created = typeof node.creation_time === "number" ? node.creation_time : null;
 
   return {
-    post_id: postId ? `fb_${postId}` : `fb_txt_${hashText(text.slice(0, 160).toLowerCase())}`,
+    post_id: postId ? `fb_${postId}` : `fb_txt_${hashText(textKey(text))}`,
     post_url: url,
     author_name: (actor && str(actor.name)) ?? "Anonymous Member",
     author_profile_url: actor ? (str(actor.url) ?? str(actor.profile_url)) : null,
@@ -168,7 +188,7 @@ const readLinkedInUpdate: ShapeReader = (node) => {
   return {
     post_id: activityId
       ? `li_activity_${activityId}`
-      : `li_txt_${hashText(text.slice(0, 160).toLowerCase())}`,
+      : `li_txt_${hashText(textKey(text))}`,
     post_url: activityId ? `https://www.linkedin.com/feed/update/urn:li:activity:${activityId}/` : null,
     author_name: actorName ?? "LinkedIn Professional",
     author_profile_url: nav ? str(nav.actionTarget) : null,
@@ -198,7 +218,7 @@ const readXTweet: ShapeReader = (node) => {
   const parsedDate = createdAt ? new Date(createdAt) : null;
 
   return {
-    post_id: idStr ? `x_${idStr}` : `x_txt_${hashText(text.slice(0, 160).toLowerCase())}`,
+    post_id: idStr ? `x_${idStr}` : `x_txt_${hashText(textKey(text))}`,
     post_url: screenName && idStr ? `https://x.com/${screenName}/status/${idStr}` : null,
     author_name: displayName ?? screenName ?? "X user",
     author_profile_url: screenName ? `https://x.com/${screenName}` : null,

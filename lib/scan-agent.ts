@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePostsForAgent, type AgentProfile, type RawPostInput } from "@/lib/ai";
 import { CREDIT_COSTS, hasCredits, spendCredits, InsufficientCreditsError } from "@/lib/credits";
 import { filterPostsForAgent, describeFilter } from "@/lib/post-filter";
+import { isExactPostUrl } from "@/lib/post-url";
 
 // Posts per Gemini request. Larger batches mean fewer total requests (less
 // time spent on inter-batch pacing below) — these are short social posts, so
@@ -55,6 +56,33 @@ export interface EvaluateAgentResult {
  * route) or a service-role client with RLS bypassed (cron route iterating
  * many users' agents).
  */
+/**
+ * Placeholder names the extractors use when a post's author could not be read.
+ *
+ * Kept as data rather than guessed at: each is written verbatim by one
+ * extractor in lib/feed-capture.ts, and a row carrying one of these is a worse
+ * version of the same lead than a row with a real name on it.
+ */
+const PLACEHOLDER_AUTHORS = new Set(["anonymous member", "linkedin professional", "x user"]);
+
+/**
+ * Of two rows describing the same ask, which is the better one to show.
+ *
+ * Not a judgment about the lead — they are the same lead. It decides which
+ * copy of it the customer sees, and the ranking is by what they can act on:
+ * a profile to message, then a real name to greet, then a permalink.
+ */
+function isBetterSourceRow(
+  candidate: { author_name: string; author_profile_url: string | null; post_url: string | null },
+  held: { author_name: string; author_profile_url: string | null; post_url: string | null }
+): boolean {
+  const score = (p: typeof candidate) =>
+    (p.author_profile_url ? 4 : 0) +
+    (PLACEHOLDER_AUTHORS.has((p.author_name ?? "").trim().toLowerCase()) ? 0 : 2) +
+    (isExactPostUrl(p.post_url) ? 1 : 0);
+  return score(candidate) > score(held);
+}
+
 export async function evaluateAgentPosts(
   supabase: SupabaseClient,
   agent: AgentProfile,
@@ -253,14 +281,45 @@ export async function evaluateAgentPosts(
       claimed.add(slot);
 
       // Posts whose text was identical to this one were never sent — one
-      // verdict answers for all of them. They still get their own rows, since
-      // each has its own author, permalink and platform to act on.
+      // verdict answers for all of them.
       const twins = filtered.duplicates.get(post.id) ?? [];
-      for (const p of [post, ...twins]) {
+      const sameAsk = [post, ...twins];
+
+      // Every one of them is marked evaluated, twins included, or the next run
+      // sends them to Gemini again for an answer we already have.
+      for (const p of sameAsk) {
         evaluatedToInsert.push({ user_id: userId, agent_id: agent.id, source_post_id: p.id });
+      }
 
-        if (!evalItem.relevant) continue;
+      if (!evalItem.relevant) return;
 
+      /**
+       * One card per thing that can actually be acted on separately.
+       *
+       * This used to write an opportunity for every twin, on the reasoning
+       * that each has its own permalink to reply to. That reasoning only holds
+       * when there *is* a permalink. Facebook often doesn't expose one, and the
+       * two id schemes that reach us for a single post — the numeric id from
+       * the feed's own JSON, and a hash of the text when there isn't one —
+       * mean one post routinely arrives as two rows with two different authors
+       * ("Joe De Luca" and "Anonymous Member"). Both then became cards for the
+       * same ask, pointing at the same group, and answering both means
+       * replying twice to one person.
+       *
+       * Grouping by the permalink collapses those: rows without one share a
+       * single slot, so they produce a single card, while genuine crossposts —
+       * the same ask in two groups, each with its own real permalink — still
+       * produce one card each, because those really are two places to reply.
+       */
+      const NO_PERMALINK = "__no_permalink__";
+      const byTarget = new Map<string, (typeof sameAsk)[number]>();
+      for (const p of sameAsk) {
+        const key = isExactPostUrl(p.post_url) ? p.post_url! : NO_PERMALINK;
+        const held = byTarget.get(key);
+        if (!held || isBetterSourceRow(p, held)) byTarget.set(key, p);
+      }
+
+      for (const p of byTarget.values()) {
         opportunitiesToInsert.push({
           user_id: userId,
           agent_id: agent.id,
