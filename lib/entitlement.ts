@@ -133,3 +133,56 @@ export async function getSourceCapacity(
 export function sourceLimitMessage(capacity: SourceCapacity): string {
   return `You're monitoring ${capacity.used} of ${capacity.limit} sources. Pause one to switch another on — paused sources keep the posts they've already collected. Reddit sources don't count toward this.`;
 }
+
+export type SubscriptionState = "free" | "trialing" | "active" | "past_due";
+
+export interface SubscriptionSummary {
+  state: SubscriptionState;
+  /** 'weekly' | 'monthly' once Stripe has told us; null before that or when free. */
+  plan: string | null;
+  /** End of the current period — for a trial, the day it converts to paid. */
+  periodEnd: Date | null;
+  /** Whole days until periodEnd, never negative. Null when there is no period. */
+  daysLeft: number | null;
+}
+
+/**
+ * The subscription as the header should describe it.
+ *
+ * Distinct from getPlan, which answers "what is this customer allowed" and
+ * collapses every non-paying state to the free plan. The header has to say
+ * *why* — "2 days left on your trial" and "your card was declined" are
+ * different sentences, and both are things a customer wants to know before
+ * they find out by being locked out.
+ *
+ * Fails open to free on any error, for the same reason getPlan does.
+ */
+export async function getSubscriptionSummary(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<SubscriptionSummary> {
+  const free: SubscriptionSummary = { state: "free", plan: null, periodEnd: null, daysLeft: null };
+  try {
+    const { data } = await supabase
+      .from("subscriptions")
+      .select("plan, status, current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!data) return free;
+
+    const status = data.status as string;
+    const plan = (data.plan as string | null) ?? null;
+    const periodEnd = data.current_period_end ? new Date(data.current_period_end as string) : null;
+    const daysLeft =
+      periodEnd && !Number.isNaN(periodEnd.getTime())
+        ? Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / 86_400_000))
+        : null;
+
+    if (status === "trialing") return { state: "trialing", plan, periodEnd, daysLeft };
+    if (status === "active") return { state: "active", plan, periodEnd, daysLeft };
+    if (status === "past_due") return { state: "past_due", plan, periodEnd, daysLeft };
+    return free;
+  } catch {
+    return free;
+  }
+}

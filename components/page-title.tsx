@@ -17,5 +17,8 @@ const TITLES: Record<string, string> = {
 export function PageTitle() {
   const pathname = usePathname()
   const title = TITLES[pathname] ?? "Floozy Opportunity AI"
-  return <h1 className="font-semibold text-sm">{title}</h1>
+  // truncate + min-w-0: the header's right-hand cluster grew a plan badge, and
+  // on a 375px screen "Connect Accounts" beside it has to give way, not wrap
+  // onto a second line or shove the bell off the edge.
+  return <h1 className="min-w-0 truncate font-semibold text-sm">{title}</h1>
 }

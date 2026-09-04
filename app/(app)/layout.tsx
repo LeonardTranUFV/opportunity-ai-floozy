@@ -4,12 +4,14 @@ import { PageTitle } from "@/components/page-title"
 import { NotificationsBell } from "@/components/notifications-bell"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { CreditBar } from "@/components/credit-bar"
+import { PlanBadge } from "@/components/plan-badge"
 import { MobileNav } from "@/components/mobile-nav"
 import { TourProvider } from "@/components/tour/tour-provider"
 import { TourOverlay } from "@/components/tour/tour-overlay"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/admin"
 import { PLAN_ALLOWANCES, ensureTrialCredits, ensurePlanCredits } from "@/lib/credits"
+import { getSubscriptionSummary, type SubscriptionSummary } from "@/lib/entitlement"
 import { getConsent } from "@/lib/consent"
 import { ConsentGate } from "@/components/consent-gate"
 
@@ -27,7 +29,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const consent = user ? await getConsent(supabase, user.id) : null
 
   let credits: { balance: number; allowance: number } | null = null
+  // Where they stand with billing, for the header badge. Asked for by name:
+  // "show how many day free trial left on top corner" — and an upgrade
+  // button, which until now existed only on the pricing page nobody
+  // signed-in ever visits.
+  let subscription: SubscriptionSummary | null = null
   if (user) {
+    subscription = await getSubscriptionSummary(supabase, user.id)
     // Seed the trial balance before reading it. Nothing granted credits on
     // signup, so accounts started at zero and the first AI action they tried
     // answered "Out of credits — upgrade your plan", which reads as a paywall
@@ -58,7 +66,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <SidebarTrigger />
           <div className="w-full flex justify-between items-center px-4">
             <PageTitle />
-            <div className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
+              {subscription && (
+                <PlanBadge
+                  state={subscription.state}
+                  plan={subscription.plan}
+                  daysLeft={subscription.daysLeft}
+                />
+              )}
               {credits && <CreditBar balance={credits.balance} allowance={credits.allowance} />}
               <ThemeToggle />
               <NotificationsBell />
