@@ -68,12 +68,25 @@ const TRADE_ALIASES: Record<string, string> = {
   concrete: "concrete", tiler: "tiling", tiling: "tiling",
 };
 
-/** Which Google locale to search. Rough, and only affects result ranking. */
-const CA_HINTS = [
+/**
+ * Which Google locale to search.
+ *
+ * Matched as whole words, never as substrings. As substrings, the two-letter
+ * province codes were catching American cities by accident: "on" is inside
+ * Boston, Houston and Washington, "ns" inside Kansas, "sk" inside Alaska,
+ * "mb" inside Columbus — and each of those was being searched with the
+ * Canadian locale, which biases every result toward the wrong country for
+ * exactly the half of the market the ads are meant to reach.
+ */
+const CA_HINTS = new Set([
   "bc", "ab", "on", "qc", "ns", "nb", "mb", "sk", "canada", "ontario", "alberta",
   "vancouver", "toronto", "calgary", "edmonton", "ottawa", "montreal", "winnipeg",
   "burnaby", "surrey", "richmond", "coquitlam", "hamilton", "kitchener", "halifax",
-];
+]);
+
+function looksCanadian(city: string): boolean {
+  return city.split(/[^a-z]+/).some((word) => CA_HINTS.has(word));
+}
 
 function normaliseTrade(raw: string): string | null {
   const cleaned = raw.toLowerCase().trim().replace(/[^a-z ]/g, "");
@@ -168,7 +181,7 @@ export async function POST(request: Request) {
   if (stale && process.env.SERPER_API_KEY) {
     searched = true;
     try {
-      const country = CA_HINTS.some((h) => city.includes(h)) ? "ca" : "us";
+      const country = looksCanadian(city) ? "ca" : "us";
       const hits = await findLeads(trade, city, { country });
 
       if (hits.length) {
