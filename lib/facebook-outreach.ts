@@ -56,6 +56,46 @@ export async function postFacebookComment(postUrl: string, message: string, user
     await page.keyboard.press("Enter");
     await page.waitForTimeout(2000);
 
+    /**
+     * Confirm it actually posted, rather than assuming Enter worked.
+     *
+     * This returned success unconditionally: type, press Enter, wait two
+     * seconds, report success. Every way Facebook can decline still looked
+     * identical to a posted comment — an "action blocked" dialog after too
+     * many comments, a post with commenting turned off, or Enter inserting a
+     * newline instead of submitting, which it does depending on the composer.
+     *
+     * The caller writes comment_sent_at on success and the card then reads
+     * "Comment posted" and stops offering the button. So an unverified
+     * success tells a contractor they replied to a lead they never replied
+     * to, and takes away the means to notice.
+     *
+     * The composer is the tell. Facebook clears it on a successful submit and
+     * leaves the text in place when it refuses, so a box that still holds the
+     * message means nothing was published — no guessing at success banners
+     * whose wording changes.
+     */
+    const blocked = await page
+      .getByText(/action blocked|you can't use this feature|try again later/i)
+      .count()
+      .catch(() => 0);
+    if (blocked > 0) {
+      return {
+        success: false,
+        error:
+          "Facebook blocked the comment — that account has been commenting too fast, or the group limits it. Wait a while, or reply by hand this time.",
+      };
+    }
+
+    const leftover = (await commentBox.innerText().catch(() => "")).trim();
+    if (leftover.length > 0) {
+      return {
+        success: false,
+        error:
+          "Facebook didn't accept the comment — the text is still sitting in the box. The post may have comments turned off. Nothing was published; open the post and reply there.",
+      };
+    }
+
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error posting comment";
