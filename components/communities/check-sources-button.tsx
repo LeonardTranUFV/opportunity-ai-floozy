@@ -75,8 +75,8 @@ export function CheckSourcesButton({ disabledReason }: { disabledReason?: string
 
   if (disabledReason) {
     return (
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" disabled className="w-fit">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+        <Button variant="outline" size="sm" disabled className="w-full sm:w-fit">
           <RefreshCw className="h-3.5 w-3.5" />
           Check for new posts
         </Button>
@@ -87,8 +87,17 @@ export function CheckSourcesButton({ disabledReason }: { disabledReason?: string
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={handleCheck} disabled={isPending} className="w-fit">
+      {/* Stacked on a phone. Side by side, a three-line paragraph squeezes the
+          button into a sliver and wraps itself into a ribbon two words wide —
+          which is what this looked like on the device most customers use. */}
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCheck}
+          disabled={isPending}
+          className="w-full sm:w-fit"
+        >
           <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
           {isPending ? "Checking your sources… (can take a minute)" : "Check for new posts"}
         </Button>

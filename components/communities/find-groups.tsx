@@ -215,7 +215,7 @@ export function FindGroups({
   return (
     <div className="flex flex-col gap-4">
       <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3">
-        <div className="flex min-w-40 flex-1 flex-col gap-1.5">
+        <div className="flex w-full flex-col gap-1.5 sm:w-auto sm:min-w-40 sm:flex-1">
           <Label htmlFor="fg-industry">What do you do?</Label>
           <Input
             id="fg-industry"
@@ -225,7 +225,7 @@ export function FindGroups({
             required
           />
         </div>
-        <div className="flex min-w-40 flex-1 flex-col gap-1.5">
+        <div className="flex w-full flex-col gap-1.5 sm:w-auto sm:min-w-40 sm:flex-1">
           <Label htmlFor="fg-location">Where do you work?</Label>
           <Input
             id="fg-location"
@@ -235,7 +235,15 @@ export function FindGroups({
             required
           />
         </div>
-        <Button type="submit" variant="brand" disabled={isSearching || noBrowser}>
+        {/* Full width on a phone. Two 160px fields technically fit side by
+            side at 375px, but the labels don't, and a submit button left at
+            auto width under them reads as unfinished. */}
+        <Button
+          type="submit"
+          variant="brand"
+          disabled={isSearching || noBrowser}
+          className="w-full sm:w-auto"
+        >
           {isSearching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
           {isSearching ? "Searching Facebook…" : "Find groups (5 credits)"}
         </Button>

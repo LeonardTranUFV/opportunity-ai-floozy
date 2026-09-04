@@ -48,7 +48,7 @@ export function ResyncGroupsButton() {
 
   return (
     <div className="flex flex-col items-start gap-2">
-      <Button variant="outline" onClick={run} disabled={running}>
+      <Button variant="outline" onClick={run} disabled={running} className="w-full sm:w-auto">
         <RefreshCw className={running ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
         {running ? "Reading your groups…" : "Refresh my Facebook groups"}
       </Button>

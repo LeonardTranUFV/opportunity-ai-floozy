@@ -252,7 +252,7 @@ export function AddSourceForm() {
       {(platform === "facebook" || platform === "linkedin") && (
         <form onSubmit={handleUrlSubmit} className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+            <div className="flex w-full flex-col gap-1.5 sm:w-auto sm:min-w-64 sm:flex-1">
               <Label htmlFor="source-url">Group link</Label>
               <Input
                 id="source-url"
@@ -266,7 +266,7 @@ export function AddSourceForm() {
                 required
               />
             </div>
-            <div className="flex min-w-48 flex-1 flex-col gap-1.5">
+            <div className="flex w-full flex-col gap-1.5 sm:w-auto sm:min-w-48 sm:flex-1">
               <Label htmlFor="source-name">Name</Label>
               <Input
                 id="source-name"
@@ -279,7 +279,7 @@ export function AddSourceForm() {
                 required
               />
             </div>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
               <Plus className="h-3.5 w-3.5" />
               {isSubmitting ? "Adding…" : "Add"}
             </Button>
