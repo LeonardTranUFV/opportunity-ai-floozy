@@ -90,10 +90,16 @@ alter view pooled_opportunities set (security_invoker = on);
 --   pool_opt_in            'true' | 'false'  — user contributes to the pool
 --   pool_consent_version   e.g. '2026-08-11' — which terms they accepted
 --   terms_accepted_at      ISO timestamp     — when they accepted
---   pool_access            'true'            — this account may READ the pool
---   is_admin               'true'            — may grant pool_access
+--   pool_access            'true'            — SUPERSEDED, see below
+--   is_admin               'true'            — SUPERSEDED, see below
 --
--- `pool_access` is granted only by an admin and is separate from `is_admin`
--- on purpose: a paying agency client can be given read access without being
--- handed the ability to grant it to anyone else.
+-- SUPERSEDED by 0016_privileges_out_of_settings.sql. Storing those two here
+-- was a mistake: `settings` lets a user write their own rows, so reading
+-- authorization from it let any account grant itself admin and pool access.
+-- Both now come from environment variables (lib/privileges.ts). The rows are
+-- deleted in 0016 and nothing reads these keys any more.
+--
+-- The distinction they encoded still holds and still applies to the env vars:
+-- pool read access is separate from admin on purpose, so a paying agency
+-- client can be given sight of the pool without the ability to grant it on.
 -- ─────────────────────────────────────────────────────────────────────────
