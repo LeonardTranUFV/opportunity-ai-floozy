@@ -226,11 +226,6 @@ export async function evaluateAgentPosts(
     }
     aiCalls += 1;
 
-    await spendCredits(supabase, userId, CREDIT_COSTS.scanBatch, "scan_batch", {
-      agent_id: agent.id,
-      batch_size: batch.length,
-    });
-
     const opportunitiesToInsert: {
       user_id: string;
       agent_id: string;
@@ -352,6 +347,28 @@ export async function evaluateAgentPosts(
       const { error } = await supabase.from("opportunities").insert(opportunitiesToInsert);
       if (error) throw new Error(error.message);
     }
+
+    /**
+     * Charged here, after both writes, not straight after the Gemini call.
+     *
+     * The AI call is already paid for by then either way — but the customer's
+     * side of it is what they can see, and charging before the writes left two
+     * ways to take money for nothing. If the evaluated_posts upsert failed the
+     * run threw with the batch already charged, and because those posts were
+     * never marked evaluated the next scan re-sent the same ones and charged
+     * again — the same work billed twice. If the opportunities insert failed,
+     * the batch was charged and its leads were lost, with the posts marked
+     * evaluated so they would never be retried.
+     *
+     * Charging last inverts both: a failed write now costs the run, not the
+     * customer. If this deduction is itself what fails, the work is saved and
+     * not billed — under-charging, which is the direction to fail in.
+     */
+    await spendCredits(supabase, userId, CREDIT_COSTS.scanBatch, "scan_batch", {
+      agent_id: agent.id,
+      batch_size: batch.length,
+      opportunities_saved: opportunitiesToInsert.length,
+    });
 
     // Count what was actually resolved, not the batch size — this includes the
     // duplicate posts that rode along on a verdict, and excludes any slot the
