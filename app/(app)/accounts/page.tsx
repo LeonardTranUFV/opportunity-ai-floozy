@@ -30,7 +30,7 @@ export default function AccountsPage() {
 
         <Card>
           <CardContent>
-            <SessionStatus />
+            <SessionStatus autoLoad />
           </CardContent>
         </Card>
 

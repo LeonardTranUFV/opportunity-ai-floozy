@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { RefreshCw, User } from "lucide-react"
@@ -82,40 +82,78 @@ function PlatformRow({
   )
 }
 
-export function SessionStatus() {
-  const [status, setStatus] = useState<Status | null>(null)
-  const [checking, setChecking] = useState(false)
+/**
+ * Which accounts are connected.
+ *
+ * `autoLoad` is set by the hosted Connect page and nowhere else. There the
+ * answer comes from stored sessions and costs a database read, so making
+ * somebody press "Check Status" to see it was a click for nothing — and a
+ * customer who had just finished connecting Facebook landed on an empty box
+ * that read as "it didn't take". Locally the same check drives four real
+ * Chrome windows, which is not something to fire on every page view.
+ */
+async function fetchStatus(): Promise<Status | null> {
+  const res = await fetch("/api/accounts/status")
+  const data = await res.json()
+  if (!res.ok || !data.success) return null
+  return {
+    source: data.source,
+    facebook: data.facebook,
+    facebookName: data.facebookName,
+    facebookError: data.facebookError,
+    facebookSince: data.facebookSince,
+    linkedin: data.linkedin,
+    linkedinName: data.linkedinName,
+    linkedinError: data.linkedinError,
+    linkedinSince: data.linkedinSince,
+    nextdoor: data.nextdoor,
+    nextdoorName: data.nextdoorName,
+    nextdoorError: data.nextdoorError,
+    nextdoorSince: data.nextdoorSince,
+    twitter: data.twitter,
+    twitterName: data.twitterName,
+    twitterError: data.twitterError,
+    twitterSince: data.twitterSince,
+  }
+}
 
-  const handleCheck = async () => {
+export function SessionStatus({ autoLoad = false }: { autoLoad?: boolean }) {
+  const [status, setStatus] = useState<Status | null>(null)
+  // Starts true when auto-loading so the first paint already says
+  // "Checking…" rather than flashing the click-to-check prompt first.
+  const [checking, setChecking] = useState(autoLoad)
+
+  const handleCheck = useCallback(async () => {
     setChecking(true)
     try {
-      const res = await fetch("/api/accounts/status")
-      const data = await res.json()
-      if (res.ok && data.success) {
-        setStatus({
-          source: data.source,
-          facebook: data.facebook,
-          facebookName: data.facebookName,
-          facebookError: data.facebookError,
-          facebookSince: data.facebookSince,
-          linkedin: data.linkedin,
-          linkedinName: data.linkedinName,
-          linkedinError: data.linkedinError,
-          linkedinSince: data.linkedinSince,
-          nextdoor: data.nextdoor,
-          nextdoorName: data.nextdoorName,
-          nextdoorError: data.nextdoorError,
-          nextdoorSince: data.nextdoorSince,
-          twitter: data.twitter,
-          twitterName: data.twitterName,
-          twitterError: data.twitterError,
-          twitterSince: data.twitterSince,
-        })
-      }
+      const next = await fetchStatus()
+      if (next) setStatus(next)
     } finally {
       setChecking(false)
     }
-  }
+  }, [])
+
+  // State is only set from the fetch's callbacks, never synchronously in the
+  // effect body — and a component that unmounts mid-request (navigating away
+  // from Connect) must not set state on its way out.
+  useEffect(() => {
+    if (!autoLoad) return
+    let cancelled = false
+    fetchStatus()
+      .then((next) => {
+        if (!cancelled && next) setStatus(next)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setChecking(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [autoLoad])
+
+  // The hosted answer is read from saved connections, not from signing in.
+  const stored = status?.source === "stored"
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3">
@@ -165,19 +203,31 @@ export function SessionStatus() {
             since={status.twitterSince}
             iconColor="bg-foreground/10 text-foreground"
           />
-          {(!status.facebook || !status.linkedin || !status.nextdoor || !status.twitter) && (
-            <p className="text-xs text-muted-foreground">
-              Not logged in means group discovery and monitoring won&apos;t find anything for that
-              platform. Use Connect below and make sure to actually finish logging in before closing
-              the popup. &quot;Check failed&quot; is different — the check itself broke (usually a
-              leftover window locking the profile), it says nothing about whether you&apos;re
-              actually logged in.
-            </p>
-          )}
+          {(!status.facebook || !status.linkedin || !status.nextdoor || !status.twitter) &&
+            (stored ? (
+              // Cloud connect: no popup, no profile directory, nothing to
+              // leave open. The old copy described a Chrome window on the
+              // operator's PC to customers who never saw one.
+              <p className="text-xs text-muted-foreground">
+                Not connected means nothing is collected from that platform yet. Connect it below —
+                you sign in yourself in a browser we open for you, and the login is saved so you
+                won&apos;t be asked again.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Not logged in means group discovery and monitoring won&apos;t find anything for that
+                platform. Use Connect below and make sure to actually finish logging in before
+                closing the popup. &quot;Check failed&quot; is different — the check itself broke
+                (usually a leftover window locking the profile), it says nothing about whether
+                you&apos;re actually logged in.
+              </p>
+            ))}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Click &quot;Check Status&quot; to see which accounts are connected.
+          {checking
+            ? "Checking your connections…"
+            : "Click \"Check Status\" to see which accounts are connected."}
         </p>
       )}
 
