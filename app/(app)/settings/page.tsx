@@ -223,8 +223,8 @@ export default async function SettingsPage() {
           {scrapeActivity.length === 0 ? (
             <EmptyState
               icon={Radar}
-              title="No communities yet"
-              description="Add a community to start collecting posts."
+              title="No sources yet"
+              description="Add a source to start collecting posts."
             />
           ) : (
             <div className="flex flex-col divide-y divide-border">

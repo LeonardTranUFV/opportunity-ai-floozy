@@ -191,7 +191,7 @@ export default async function Home() {
           <Card className="overflow-hidden transition-all hover:shadow-md hover:ring-1 hover:ring-brand/20">
             <CardContent className="flex items-start justify-between">
               <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-muted-foreground">Communities Monitored</span>
+                <span className="text-sm font-medium text-muted-foreground">Sources monitored</span>
                 <span className="font-heading text-2xl font-semibold tracking-tight">{communitiesMonitored ?? 0}</span>
                 <span className="text-xs text-muted-foreground">Active sources being monitored</span>
               </div>
@@ -228,7 +228,7 @@ export default async function Home() {
 
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Communities You&apos;re Monitoring</CardTitle>
+            <CardTitle>Sources you&apos;re watching</CardTitle>
             <CardDescription>Sources actively being monitored for opportunities.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -256,7 +256,7 @@ export default async function Home() {
               href="/communities"
               className="mt-2 flex items-center text-sm text-brand underline decoration-dotted underline-offset-4 hover:text-brand/80"
             >
-              View all communities →
+              View all sources →
             </Link>
           </CardContent>
         </Card>

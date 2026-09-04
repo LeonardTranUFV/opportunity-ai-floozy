@@ -136,7 +136,7 @@ export default function GuidePage() {
           steps={[
             "Go to Connect Accounts and click Connect Facebook — a real browser window opens, you log in yourself.",
             "Close that popup window once you're logged in (don't leave it open, or it'll block future checks/logins).",
-            "Go to Communities → Find groups to monitor, enter your trade and area, and Track the ones you want. Not sure what to search for? Open the AI suggestions. You can also paste a group URL under Add a Source.",
+            "Go to Sources → Find groups to monitor, enter your trade and area, and Track the ones you want. Not sure what to search for? Open the AI suggestions. You can also paste a group URL under Add a Source.",
             "Join the groups you want to reply in — tracking collects the leads, membership is what lets you answer them.",
             "Hit Find Opportunities on an AI Agent — it collects the newest posts and scores them for you.",
           ]}
@@ -155,7 +155,7 @@ export default function GuidePage() {
           steps={[
             "Go to Connect Accounts and click Connect LinkedIn — log in yourself in the popup window.",
             "Close the popup once logged in.",
-            "Go to Communities → Add a Source → LinkedIn and paste a feed or search-results URL.",
+            "Go to Sources → Add a Source → LinkedIn and paste a feed or search-results URL.",
           ]}
           useNowHref="/accounts"
         />
@@ -170,7 +170,7 @@ export default function GuidePage() {
           steps={[
             "Go to Connect Accounts and click Connect Nextdoor. Use your email + password, not \"Continue with Google\" — Google blocks sign-in from any automated browser.",
             "Close the popup once logged in.",
-            "Go to Communities → Add a Source → Nextdoor and click Add My Neighborhood — one click, no typing.",
+            "Go to Sources → Add a Source → Nextdoor and click Add My Neighborhood — one click, no typing.",
           ]}
           caveat="Nextdoor only shows content for neighborhoods verified to your address — there's no way to browse other areas without real presence there."
           useNowHref="/accounts"
@@ -186,7 +186,7 @@ export default function GuidePage() {
           steps={[
             "Go to Connect Accounts and click Connect X — log in yourself in the popup window.",
             "Close the popup once logged in.",
-            "Go to Communities → Add a Source → X and type what you're looking for, e.g. \"plumber recommendation Vancouver\" — the search link is built for you.",
+            "Go to Sources → Add a Source → X and type what you're looking for, e.g. \"plumber recommendation Vancouver\" — the search link is built for you.",
           ]}
           useNowHref="/accounts"
         />
@@ -200,7 +200,7 @@ export default function GuidePage() {
           description="Watch specific subreddits or search all of Reddit by keyword. Uses a free Reddit developer app, not your personal login."
           steps={[
             "Reddit locked down unauthenticated API access in 2023 — a free \"script\" app at reddit.com/prefs/apps is required (no Reddit password shared with this app, just a client ID/secret).",
-            "Go to Communities → Add a Source → Reddit and type what you're looking for, e.g. \"need a roofer Vancouver\" to search all of Reddit.",
+            "Go to Sources → Add a Source → Reddit and type what you're looking for, e.g. \"need a roofer Vancouver\" to search all of Reddit.",
             "Or click \"Or watch a specific subreddit\" and enter just the name, e.g. \"roofing\", to follow one subreddit's new posts.",
           ]}
           caveat="Backend wiring for the Reddit API is still in progress — sources can be added now, but monitoring won't return real posts until that's finished."

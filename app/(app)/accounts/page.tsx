@@ -67,7 +67,7 @@ export default function AccountsPage() {
             <EmptyState
               icon={ServerOff}
               title="Nothing to connect here — start with Reddit"
-              description="Reddit works on your account right now and needs no sign-in: we hold the API credentials, so all you do is add the communities you want watched. Facebook, LinkedIn, Nextdoor and X are different — reading those means driving a real, signed-in browser window, which this hosted site can't do. Ask us and we'll connect those for you."
+              description="Reddit works on your account right now and needs no sign-in: we hold the API credentials, so all you do is add the sources you want watched. Facebook, LinkedIn, Nextdoor and X are different — reading those means driving a real, signed-in browser window, which this hosted site can't do. Ask us and we'll connect those for you."
             />
             <Link href="/communities">
               <Button variant="brand">Add Reddit communities</Button>

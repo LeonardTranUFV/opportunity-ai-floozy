@@ -34,7 +34,7 @@ export function SetupChecklist({ state }: { state: SetupState }) {
       done: state.hasSources,
       icon: Compass,
       title: "Add somewhere to watch",
-      body: "Pick the groups or searches to monitor. Not sure? Get suggestions on the Communities page.",
+      body: "Pick the groups or searches to monitor. Not sure? Get suggestions on the Sources page.",
       href: "/communities",
       cta: "Add a source",
       tone: "text-emerald-600 dark:text-emerald-400",

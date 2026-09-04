@@ -74,9 +74,10 @@ export default async function CommunitiesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-3xl font-bold tracking-tight">Community Discovery</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Sources</h2>
         <p className="text-muted-foreground">
-          Find and monitor the communities most likely to contain your opportunities.
+          The groups, feeds and searches we read for you. Add the ones where people near you
+          ask for your trade.
         </p>
       </div>
 
@@ -130,7 +131,7 @@ export default async function CommunitiesPage() {
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex flex-col gap-1.5">
-              <CardTitle>Monitored Sources</CardTitle>
+              <CardTitle>Your sources</CardTitle>
               <CardDescription>
                 {groups.length} sources added. Finding opportunities checks these automatically
                 first — you only need this button if you want fresh posts without running a full

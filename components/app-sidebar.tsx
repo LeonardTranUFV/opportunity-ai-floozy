@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: Home, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", dot: "before:bg-blue-500" },
   { href: "/opportunities", label: "Opportunities", icon: ListTodo, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10", dot: "before:bg-rose-500" },
   { href: "/agents", label: "AI Agents", icon: Users, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", dot: "before:bg-violet-500" },
-  { href: "/communities", label: "Communities", icon: Compass, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", dot: "before:bg-emerald-500" },
+  { href: "/communities", label: "Sources", icon: Compass, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", dot: "before:bg-emerald-500" },
   { href: "/accounts", label: "Connect Accounts", icon: KeyRound, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", dot: "before:bg-amber-500" },
   { href: "/crm", label: "CRM Pipeline", icon: Briefcase, color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-500/10", dot: "before:bg-cyan-500" },
   { href: "/guide", label: "How It Works", icon: BookOpen, color: "text-fuchsia-600 dark:text-fuchsia-400", bg: "bg-fuchsia-500/10", dot: "before:bg-fuchsia-500" },
