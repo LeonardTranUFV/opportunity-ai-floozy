@@ -126,7 +126,10 @@ export default async function Home() {
 
       <CallFirst lead={callFirstLead} />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Two-up on a phone. These are small numbers, and four of them stacked
+          full-width pushed the first real content a screen and a half down.
+          The icon tiles step aside below sm to give the labels their width. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Link href="/opportunities?highIntent=1" className="block">
           <Card className="overflow-hidden transition-all hover:shadow-md hover:ring-1 hover:ring-brand/20">
             <CardContent className="flex items-start justify-between">
@@ -135,7 +138,7 @@ export default async function Home() {
                 <span className="font-heading text-2xl font-semibold tracking-tight">{highIntentCount ?? 0}</span>
                 <span className="text-xs text-muted-foreground">ASAP or high-urgency leads</span>
               </div>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/15 dark:text-rose-400">
+              <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/15 sm:flex dark:text-rose-400">
                 <Target className="h-5 w-5" />
               </div>
             </CardContent>
@@ -149,7 +152,7 @@ export default async function Home() {
                 <span className="font-heading text-2xl font-semibold tracking-tight">{activeConversations ?? 0}</span>
                 <span className="text-xs text-muted-foreground">Approved leads</span>
               </div>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 dark:text-blue-400">
+              <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 ring-1 ring-blue-500/15 sm:flex dark:text-blue-400">
                 <MessageSquare className="h-5 w-5" />
               </div>
             </CardContent>
@@ -163,7 +166,7 @@ export default async function Home() {
                 <span className="font-heading text-2xl font-semibold tracking-tight">{pendingReview ?? 0}</span>
                 <span className="text-xs text-muted-foreground">Leads awaiting your decision</span>
               </div>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400">
+              <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 sm:flex dark:text-amber-400">
                 <ListChecks className="h-5 w-5" />
               </div>
             </CardContent>
@@ -177,7 +180,7 @@ export default async function Home() {
                 <span className="font-heading text-2xl font-semibold tracking-tight">{communitiesMonitored ?? 0}</span>
                 <span className="text-xs text-muted-foreground">Active sources being monitored</span>
               </div>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
+              <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 sm:flex dark:text-emerald-400">
                 <Activity className="h-5 w-5" />
               </div>
             </CardContent>
@@ -185,8 +188,12 @@ export default async function Home() {
         </Link>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
+      {/* The spans belong to the 7-column layout only. Unprefixed, they were
+          applied at every width: on a phone's single column, "span 4" and
+          "span 3" conjure implicit tracks, so the second card rendered at
+          three-quarters width with a gutter of nothing beside it. */}
+      <div className="grid gap-4 lg:grid-cols-7">
+        <Card className="lg:col-span-4">
           <CardHeader>
             <CardTitle>Recent Alerts</CardTitle>
             <CardDescription>Latest leads your agents found.</CardDescription>
@@ -204,7 +211,7 @@ export default async function Home() {
           </CardContent>
         </Card>
 
-        <Card className="col-span-3">
+        <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Communities You&apos;re Monitoring</CardTitle>
             <CardDescription>Sources actively being monitored for opportunities.</CardDescription>

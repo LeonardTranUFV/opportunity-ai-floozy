@@ -47,14 +47,16 @@ export default async function AgentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      {/* Stacked below sm. A 3xl title, a sentence, and a button in one row
+          leaves the sentence a ribbon three words wide at 375px. */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2">
           <h2 className="text-3xl font-bold tracking-tight">AI Agents</h2>
           <p className="text-muted-foreground">
             Each agent independently searches for a specific kind of opportunity.
           </p>
         </div>
-        <Link href="/agents/new" className={buttonVariants({ variant: "brand" })}>
+        <Link href="/agents/new" className={`${buttonVariants({ variant: "brand" })} w-full sm:w-auto`}>
           <Plus />
           New Agent
         </Link>
