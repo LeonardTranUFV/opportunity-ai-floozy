@@ -10,13 +10,16 @@ const ALLOWED_RANGE_DAYS = [1, 3, 7];
 
 /**
  * A scan collects posts and then hands a batch to Gemini, so its wall clock is
- * set by two external services rather than by anything in this handler.
- * Vercel's default cap is short enough to cut that off mid-flight, and what the
- * customer sees is a function timeout — indistinguishable, from the dashboard,
- * from a scan that simply found nothing. 60s is the Hobby-plan ceiling; raise
- * it with the plan if scans start reaching it.
+ * set by two external services rather than by anything in this handler. Cut it
+ * off mid-flight and the customer sees a timeout — indistinguishable, from the
+ * dashboard, from a scan that found nothing.
+ *
+ * This said 60s because that was once the ceiling. It isn't: fluid compute
+ * makes 300s the default on every plan. Both halves below now get five times
+ * the room, and both still stop on their own before the limit rather than
+ * relying on it.
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   /**
@@ -68,7 +71,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // use every second it is given. Whatever it doesn't reach is picked up by
     // the next run, stalest first; an evaluation cut off halfway is just a
     // timeout the customer reads as "found nothing".
-    const scrapeResult = await scrapeAndStorePosts(supabase, user.id, { budgetMs: 20_000 });
+    // A third of the invocation for collecting, the rest for evaluating. The
+    // crawl will use everything it is given; evaluation is the half that
+    // decides whether the customer sees new opportunities today.
+    const scrapeResult = await scrapeAndStorePosts(supabase, user.id, {
+      budgetMs: Math.round(maxDuration * 1000 * 0.35),
+    });
     scraped = scrapeResult.inserted;
     scrapeLog = scrapeResult.log;
     brokenPlatforms = scrapeResult.brokenPlatforms;

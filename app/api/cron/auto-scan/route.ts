@@ -41,11 +41,12 @@ function isDue(agent: DueAgent, now: number): boolean {
 
 /**
  * This route loops over every due agent across every account, so its runtime
- * grows with the customer count — the one most likely to reach the cap as
- * testers are added. If it starts timing out, the fix is spreading agents
- * across runs, not a bigger number.
+ * grows with the customer count. It no longer times out — agents it cannot
+ * reach keep their timestamps and go first next tick — but more room means
+ * fewer customers waiting an extra hour, and nobody is watching a spinner
+ * here.
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;

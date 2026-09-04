@@ -28,7 +28,9 @@ import { errorMessage } from "@/lib/errors";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// The platform's own default. Reading a long joined-groups list means
+// scrolling a real page, and 60s was below the floor Vercel already gives.
+export const maxDuration = 300;
 
 interface StoredState {
   cookies?: unknown[];

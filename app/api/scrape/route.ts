@@ -2,8 +2,23 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 
-/** Paced HTTP reads against an external host — same timeout reasoning as scan. */
-export const maxDuration = 60;
+/**
+ * Five minutes, which is the platform's own default — this route was pinned to
+ * 60 seconds, below it.
+ *
+ * That number was written when the ceiling really was 60. It hasn't been for a
+ * while: with fluid compute the default is 300s on every plan and Pro allows
+ * 800s. So the app was throttling itself to a fifth of what it was already
+ * paying for, and the visible symptom was a customer clicking "check for new
+ * posts" over and over because each run only reached two or three sources.
+ *
+ * Not the full 800s. A person is watching a spinner while this runs, and a
+ * ten-minute request is also long enough for an intermediate network layer to
+ * drop an idle HTTP/1.1 connection — which would look like a failure after
+ * doing all the work. Unattended collection belongs on the cron, where nobody
+ * is waiting; this is the on-demand path.
+ */
+export const maxDuration = 300;
 
 export async function POST() {
   const supabase = await createClient();
@@ -15,7 +30,11 @@ export async function POST() {
   }
 
   try {
-    const { scraped, inserted, log, brokenPlatforms } = await scrapeAndStorePosts(supabase, user.id);
+    // Twenty seconds short of the ceiling, so the response and the database
+    // writes that follow still have room. See scrapeAndStorePosts.
+    const { scraped, inserted, log, brokenPlatforms } = await scrapeAndStorePosts(supabase, user.id, {
+      budgetMs: maxDuration * 1000 - 20_000,
+    });
     if (scraped === 0) {
       // "No posts found" is the right message only when the feeds really were
       // empty. When the canary says a platform's extractor stopped matching,

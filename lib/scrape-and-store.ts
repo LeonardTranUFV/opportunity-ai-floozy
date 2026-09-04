@@ -40,7 +40,19 @@ export async function scrapeAndStorePosts(
    * and would time out mid-evaluation — which looks exactly like a scan that
    * found nothing — if the crawl ate all 60 seconds first.
    */
-  options: { budgetMs?: number } = {}
+  options: {
+    budgetMs?: number;
+    /**
+     * How old a source's last visit must be before it is worth revisiting.
+     *
+     * Defaults to the 15-minute cooldown, which is right for someone sitting
+     * in the app: it stops four back-to-back scans re-reading the same
+     * sources. Scheduled collection passes a far longer window — running
+     * hourly with a 15-minute cooldown would re-crawl every source 24 times a
+     * day, and a rented browser is billed by the minute.
+     */
+    minAgeMs?: number;
+  } = {}
 ): Promise<ScrapeAndStoreResult> {
   const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
@@ -96,7 +108,7 @@ export async function scrapeAndStorePosts(
     };
   }
 
-  const cooldownCutoff = Date.now() - SCRAPE_COOLDOWN_MS;
+  const cooldownCutoff = Date.now() - (options.minAgeMs ?? SCRAPE_COOLDOWN_MS);
   // Stalest first. A rented browser can only get through part of a long source
   // list before the run's time budget stops it (see scrapeBrowserPlatform), so
   // the order decides which sources are read and which wait. Sorted this way,
