@@ -65,7 +65,9 @@ export default async function AdminPage() {
         <CardHeader>
           <CardTitle>Users</CardTitle>
           <CardDescription>
-            Plan allowances (monthly, rolls over): Trial {PLAN_ALLOWANCES.trial} · Starter {PLAN_ALLOWANCES.starter} · Pro {PLAN_ALLOWANCES.pro}
+            Plan allowances (granted each billing period, unused credits roll over): Trial{" "}
+            {PLAN_ALLOWANCES.trial} · Weekly {PLAN_ALLOWANCES.weekly}/week · Monthly{" "}
+            {PLAN_ALLOWANCES.monthly}/month
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">

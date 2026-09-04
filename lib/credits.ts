@@ -47,8 +47,17 @@ export const PLAN_ALLOWANCES: Record<string, number> = {
   // credit, the difference is under a dollar a head; running a test cohort out
   // of credits mid-evaluation costs far more than that in feedback.
   trial: 50,
-  starter: 300,
-  pro: 1000,
+
+  // The two live plans, keyed by the names the Stripe webhook writes.
+  //
+  // Weekly is $49 and monthly $149, so weekly costs roughly $212 a month —
+  // more, which is what paying for flexibility rather than committing buys.
+  // The allowances follow that: 300 a week is about 1,290 a month against the
+  // monthly plan's 1,000, so the per-credit price stays slightly better for
+  // the customer who commits. Neither is a different product; see
+  // lib/entitlement.ts.
+  weekly: 300,
+  monthly: 1000,
 };
 
 export class InsufficientCreditsError extends Error {
@@ -133,6 +142,110 @@ export async function grantCredits(
 
 /** Reason string for the one-time welcome grant, also used to detect it. */
 const TRIAL_GRANT_REASON = "trial_grant";
+
+/**
+ * Stripe statuses that entitle a customer to their plan's credits.
+ *
+ * past_due is included on purpose, matching lib/entitlement.ts: a failed
+ * renewal is usually an expired card, and Stripe is still retrying. Cutting
+ * someone's credits off at the first failed charge takes the product away over
+ * their bank's timing.
+ */
+const CREDITED_STATUSES = new Set(["trialing", "active", "past_due"]);
+
+/**
+ * Give a paying customer the credits their plan includes.
+ *
+ * ── The gap this closes ────────────────────────────────────────────────────
+ *
+ * The Stripe webhook has written `subscriptions` since it was added, and
+ * nothing changed `user_credits.plan`, which defaults to 'trial'. So paying
+ * did not alter a single thing the app could see: a customer paid $49 a week,
+ * kept the trial's 50 credits, and hit "Out of credits — upgrade your plan"
+ * after about eight scans. The upgrade they were being sold was the one they
+ * had already bought.
+ *
+ * ── Why reconciliation rather than a webhook grant ─────────────────────────
+ *
+ * The obvious fix is to grant inside the webhook. This does it on read
+ * instead, because the webhook is the part that can silently not happen — a
+ * missed delivery, an event arriving out of order, a signature check failing
+ * after a key rotation — and every one of those failures ends with a paying
+ * customer holding no credits and no way to tell anyone why. Running from what
+ * `subscriptions` currently says means a webhook that never arrives costs a
+ * few minutes rather than the customer's month, and a webhook delivered twice
+ * costs nothing.
+ *
+ * ── Idempotency ────────────────────────────────────────────────────────────
+ *
+ * The period's own end date is part of the transaction's reason string, so the
+ * grant for a given billing period can be looked up exactly. A renewal moves
+ * that date, which is what makes the next period's credits arrive — the same
+ * mechanism, not a second one.
+ *
+ * Never throws: failing to top somebody up must not break the page that called
+ * it, and the next page view tries again.
+ */
+export async function ensurePlanCredits(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  try {
+    const { data: sub, error: subError } = await supabase
+      .from("subscriptions")
+      .select("plan, status, current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (subError || !sub) return false;
+    if (!CREDITED_STATUSES.has(sub.status as string)) return false;
+
+    const plan = sub.plan as string | null;
+    // Null while Stripe has confirmed a checkout but the subscription event
+    // carrying the billing interval has not arrived yet. Waiting is right:
+    // guessing the plan here would grant the wrong number and, being
+    // idempotent, would never correct itself.
+    if (!plan) return false;
+
+    const allowance = PLAN_ALLOWANCES[plan];
+    if (!allowance) return false;
+
+    // "initial" covers the window between checkout and the first renewal,
+    // where Stripe has not yet told us when the period ends.
+    const periodKey = (sub.current_period_end as string | null) ?? "initial";
+    const reason = `plan_grant:${plan}:${periodKey}`;
+
+    const { data: priorGrant, error: lookupError } = await supabase
+      .from("credit_transactions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("reason", reason)
+      .limit(1)
+      .maybeSingle();
+
+    if (lookupError && isMigrationNotAppliedError(lookupError)) return false;
+    if (lookupError) return false;
+    if (priorGrant) return false;
+
+    await grantCredits(supabase, userId, allowance, reason, {
+      note: `${plan} plan credits`,
+      period_end: periodKey,
+    });
+
+    // The plan the UI reads its allowance from. Written through the service
+    // role because user_credits has no update policy for anyone else — every
+    // balance change goes through adjust_credits by design, and this column
+    // rides along with the grant that just happened.
+    await creditWriter()
+      .from("user_credits")
+      .update({ plan, updated_at: new Date().toISOString() })
+      .eq("user_id", userId);
+
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Gives a new account its trial credits the first time it's seen.

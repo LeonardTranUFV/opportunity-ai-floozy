@@ -9,7 +9,7 @@ import { TourProvider } from "@/components/tour/tour-provider"
 import { TourOverlay } from "@/components/tour/tour-overlay"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/admin"
-import { PLAN_ALLOWANCES, ensureTrialCredits } from "@/lib/credits"
+import { PLAN_ALLOWANCES, ensureTrialCredits, ensurePlanCredits } from "@/lib/credits"
 import { getConsent } from "@/lib/consent"
 import { ConsentGate } from "@/components/consent-gate"
 
@@ -34,6 +34,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // rather than a bug. This runs on every authenticated page load but only
     // grants once, keyed off its own transaction record.
     await ensureTrialCredits(supabase, user.id)
+    // And the credits their plan includes, if they are paying. Reconciled here
+    // rather than granted by the Stripe webhook, because the webhook is the
+    // part that can silently not happen — see ensurePlanCredits.
+    await ensurePlanCredits(supabase, user.id)
 
     const { data } = await supabase
       .from("user_credits")

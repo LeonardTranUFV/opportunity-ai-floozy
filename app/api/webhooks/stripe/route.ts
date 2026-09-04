@@ -147,6 +147,13 @@ export async function POST(request: Request) {
     }
 
     if (
+      // created matters as much as updated, and was missing. It is the first
+      // event that carries the billing interval — checkout.session.completed
+      // does not — and the plan is what decides how many credits the customer
+      // is owed. Without it the plan stayed null until Stripe next touched the
+      // subscription, which for a new signup is when the trial ends: they
+      // would have paid, and waited three days for the credits they bought.
+      event.type === "customer.subscription.created" ||
       event.type === "customer.subscription.updated" ||
       event.type === "customer.subscription.deleted"
     ) {
@@ -156,20 +163,35 @@ export async function POST(request: Request) {
 
       const periodEnd = object.current_period_end as number | undefined;
 
-      await admin
+      const { count } = await admin
         .from("subscriptions")
-        .update({
-          status:
-            event.type === "customer.subscription.deleted"
-              ? "canceled"
-              : ((object.status as string) ?? "unknown"),
-          plan: planFrom(object),
-          current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(
+          {
+            status:
+              event.type === "customer.subscription.deleted"
+                ? "canceled"
+                : ((object.status as string) ?? "unknown"),
+            plan: planFrom(object),
+            current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+            updated_at: new Date().toISOString(),
+          },
+          { count: "exact" }
+        )
         .eq("stripe_subscription_id", subscriptionId);
 
-      return NextResponse.json({ received: true });
+      // Nothing matched. Stripe does not guarantee the order of these against
+      // checkout.session.completed, which is the only event carrying our user
+      // id — so this is a real payment we cannot yet attribute. Logged rather
+      // than swallowed: the customer's credits are reconciled from this table
+      // on their next page view, so a row that never gets written is the one
+      // failure that leaves somebody paying for nothing.
+      if (!count) {
+        console.error(
+          `[stripe] ${event.type} for subscription ${subscriptionId} matched no row — checkout may not have linked it yet`
+        );
+      }
+
+      return NextResponse.json({ received: true, matched: count ?? 0 });
     }
 
     // Everything else is acknowledged and ignored. Returning non-2xx would
