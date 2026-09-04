@@ -122,18 +122,27 @@ const nextConfig: NextConfig = {
       "./node_modules/playwright/**",
     ],
     /**
-     * Same treatment for the group re-sync, which attaches to a cloud browser
-     * exactly as connect does.
+     * Every other route that reaches playwright needs the same treatment:
+     * scraping and the cron that drives it, both of which now open a cloud
+     * browser on the hosted deployment, and the group re-sync.
      *
-     * Adding a route rather than widening the pattern is deliberate — these
-     * files are ~18 MB against a 250 MB limit, and every route matched pays
-     * that. But the omission is invisible until runtime: the route deployed,
-     * built cleanly, and failed on first use with "Cannot find module
-     * '/var/task/node_modules/playwright-core/browsers.json'".
+     * Listed individually rather than widened to "/api/**" on purpose — these
+     * files are ~18 MB against a 250 MB limit, and every matched route pays
+     * that. But an omission is invisible until runtime: the groups route
+     * deployed, built cleanly, and failed on first use with "Cannot find
+     * module '/var/task/node_modules/playwright-core/browsers.json'".
      *
-     * The rule this encodes: any route that reaches playwright — even only to
-     * connect over CDP, never to launch — needs an entry here.
+     * The rule: any route that reaches playwright — even only to attach over
+     * CDP, never to launch — needs an entry here.
      */
+    "/api/scrape/**": [
+      "./node_modules/playwright-core/**",
+      "./node_modules/playwright/**",
+    ],
+    "/api/cron/**": [
+      "./node_modules/playwright-core/**",
+      "./node_modules/playwright/**",
+    ],
     "/api/groups/**": [
       "./node_modules/playwright-core/**",
       "./node_modules/playwright/**",

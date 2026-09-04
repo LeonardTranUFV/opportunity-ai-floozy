@@ -1,6 +1,8 @@
 import { getChromium } from "@/lib/browser";
 import { getAuthSessionPath, hasAuthSession, formatAuthLaunchError } from "@/lib/auth-session";
 import { loadSession, saveSession, isSessionPlatform } from "@/lib/session-store";
+import { isHostedDeployment } from "@/lib/deployment";
+import { getRemoteBrowserProvider } from "@/lib/remote-browser";
 import type { BrowserContext, BrowserContextOptions } from "playwright";
 
 /**
@@ -17,12 +19,18 @@ type StorageStateObject = Extract<
  * One way to open a signed-in browser context for a customer, whichever place
  * their session happens to live.
  *
- * There are two, and there will be two for as long as the migration takes:
+ * There are three:
+ *
+ *   cloud   — the same stored session, loaded into a browser rented from the
+ *             provider. Used where no local Chrome exists, which means the
+ *             hosted deployment. This is what stops collection depending on
+ *             one particular computer being switched on.
  *
  *   stored  — a `storageState` blob in `browser_sessions`, decrypted here and
- *             loaded into a fresh context. Works on any machine, which is the
- *             whole point: it is what lets a customer connect from the hosted
- *             site and a worker elsewhere do the crawling.
+ *             loaded into a fresh local context. Works on any machine, which is
+ *             the whole point: it is what lets a customer connect from the
+ *             hosted site and a worker elsewhere do the crawling. Preferred
+ *             over cloud wherever Chrome is available, because it is free.
  *
  *   profile — a Playwright persistent-context directory under
  *             `../.auth_sessions`, on the operator's own PC. Everything
@@ -38,7 +46,7 @@ const VIEWPORT = { width: 1280, height: 900 } as const;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-export type SessionSource = "stored" | "profile";
+export type SessionSource = "stored" | "profile" | "cloud";
 
 export type PlatformContext = {
   context: BrowserContext;
@@ -73,6 +81,86 @@ export async function openPlatformContext(
 
   if (isSessionPlatform(platform)) {
     const storageState = await loadSession(userId, platform);
+
+    /**
+     * No local Chrome? Rent one.
+     *
+     * This is what stops the product depending on a particular computer being
+     * switched on. Everything below launches Chrome on *this* machine, which
+     * on Vercel does not exist — so collection only ever ran from the
+     * operator's own PC, and every customer's leads stopped when it did. That
+     * is not a position anyone can sell from.
+     *
+     * The cloud browser is the same one connect already uses, so this adds a
+     * third source rather than a second system. Local stays preferred where it
+     * works: it is free, whereas a rented browser bills by the minute and its
+     * proxy by the gigabyte.
+     */
+    if (storageState && isHostedDeployment()) {
+      const provider = getRemoteBrowserProvider();
+      if (!provider) return null;
+
+      /**
+       * Crawls do NOT inherit the connect proxy, and that is a cost decision
+       * with numbers behind it.
+       *
+       * Measured on the live account: a connect session spends about 13 MB of
+       * proxy data, and the plan includes 1 GB a month. Connect happens once
+       * per customer, so that is roughly 79 of them — fine. A crawl happens on
+       * a schedule, pulls feeds full of images, and would exhaust the same
+       * allowance in days.
+       *
+       * The asymmetry is also about what the proxy is for. It exists because a
+       * datacentre IP triggers Meta's bot check at *login*. A crawl arrives
+       * already authenticated, carrying a session that platform issued itself,
+       * so it is a far weaker signal.
+       *
+       * CRAWL_USE_PROXY turns it on if collection starts getting blocked —
+       * which is the symptom that would justify the bill.
+       */
+      const session = await provider.startSession({
+        userId,
+        platform,
+        ...(process.env.CRAWL_USE_PROXY === "1" ? { proxyId: "residential" } : {}),
+      });
+
+      const browser = await chromium.connectOverCDP(session.connectUrl);
+      const context = browser.contexts()[0];
+      if (!context) {
+        await provider.endSession(session.id).catch(() => {});
+        return null;
+      }
+
+      // Injected into the context CDP already attached to, never a fresh one.
+      // `newContext({ storageState })` would build an empty context and read a
+      // signed-out page, which is indistinguishable from "this customer has
+      // nothing" and would quietly return zero leads forever.
+      const cookies = (storageState as StorageStateObject).cookies ?? [];
+      if (cookies.length) {
+        await context.addCookies(cookies as Parameters<typeof context.addCookies>[0]);
+      }
+
+      return {
+        context,
+        source: "cloud",
+        release: async () => {
+          // Same write-back as the stored path: platforms rotate session
+          // cookies as you browse, and persisting what they just handed us is
+          // what keeps a connection alive for months rather than days.
+          try {
+            const refreshed = await context.storageState();
+            await saveSession(userId, platform, refreshed);
+          } catch {
+            /* keep the older stored state */
+          }
+          await browser.close().catch(() => {});
+          // Always, on every path — a rented browser nobody released bills
+          // until its own timeout.
+          await provider.endSession(session.id).catch(() => {});
+        },
+      };
+    }
+
     if (storageState) {
       const browser = await chromium.launch({ headless: true, channel: "chrome" });
       const context = await browser.newContext({
