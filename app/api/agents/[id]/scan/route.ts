@@ -53,7 +53,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   let scrapeLog: string[] = [];
   let brokenPlatforms: string[] = [];
   try {
-    const scrapeResult = await scrapeAndStorePosts(supabase, user.id);
+    // Roughly a third of the invocation. A scan is two external services in
+    // series — crawl, then Gemini — and the crawl is the one that will happily
+    // use every second it is given. Whatever it doesn't reach is picked up by
+    // the next run, stalest first; an evaluation cut off halfway is just a
+    // timeout the customer reads as "found nothing".
+    const scrapeResult = await scrapeAndStorePosts(supabase, user.id, { budgetMs: 20_000 });
     scraped = scrapeResult.inserted;
     scrapeLog = scrapeResult.log;
     brokenPlatforms = scrapeResult.brokenPlatforms;

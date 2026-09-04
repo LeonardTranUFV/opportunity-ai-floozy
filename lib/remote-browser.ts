@@ -71,6 +71,23 @@ export type StartSessionOptions = {
    * not unbounded either.
    */
   idleTimeoutSeconds?: number;
+
+  /**
+   * Whether the browser should outlive our connection to it.
+   *
+   * True for a login, and it has to be: that flow is two separate requests —
+   * start a browser the customer signs into, come back later to read the
+   * cookies out — with no connection held in between. Without this the session
+   * is torn down at the first disconnect, taking a completed login with it.
+   *
+   * False for a crawl, and it has to be that too. A crawl is one function's
+   * lifetime, and the failure that matters is the function being killed: the
+   * cleanup that ends the session never runs, and a browser nobody is driving
+   * keeps billing until its own timeout expires. With keepAlive off, the
+   * dropped connection is itself the signal to shut down, so an interrupted
+   * crawl costs the seconds it actually ran.
+   */
+  keepAlive?: boolean;
 };
 
 /**

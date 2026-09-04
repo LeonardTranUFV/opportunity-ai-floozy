@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { postFacebookComment } from "@/lib/facebook-outreach";
-import { isHostedDeployment, BROWSER_UNAVAILABLE } from "@/lib/deployment";
+import { canRunSignedInBrowser } from "@/lib/remote-browser";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -14,8 +14,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  if (isHostedDeployment()) {
-    return NextResponse.json({ success: false, error: BROWSER_UNAVAILABLE }, { status: 501 });
+  // postFacebookComment already goes through openPlatformContext, so it works
+  // wherever a signed-in browser can be opened — including a rented one. This
+  // gate said "hosted", which stopped being the same question the moment the
+  // cloud path shipped: sending a comment was refused on the only deployment
+  // customers actually use, while the code behind it was fine.
+  if (!canRunSignedInBrowser()) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Sending a comment needs a signed-in browser, and none is set up on this deployment.",
+      },
+      { status: 501 }
+    );
   }
 
   const { data: opportunity, error: oppError } = await supabase

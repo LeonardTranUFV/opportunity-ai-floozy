@@ -3,14 +3,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { evaluateAgentPosts, type AgentProfile } from "@/lib/scan-agent";
 
 // Cron only evaluates posts already sitting in Supabase — it never scrapes.
-// Two reasons: (1) scraping needs a real, visible Chrome window and a
-// per-user persistent profile on disk, neither of which exists on Vercel's
-// serverless runtime (see lib/deployment.ts); (2) scraping is scoped by the
-// `groups` table with no user_id filter, relying on RLS to keep it
-// per-user — the service-role client here bypasses RLS, so reusing that
-// query as-is would scrape every user's groups under whichever user_id
-// happened to be running. Evaluation only needs `posts.user_id`, which we
-// filter explicitly, so it stays tenant-safe.
+//
+// Both original reasons for that have since gone away, and neither is why it
+// still holds. Scraping no longer needs a Chrome window on somebody's desk
+// (openPlatformContext rents one), and scrapeAndStorePosts now filters groups
+// by user_id explicitly rather than trusting RLS, so calling it with this
+// route's service-role client would no longer crawl every customer's sources
+// under one account.
+//
+// What is left is a cost decision, not a technical one. A rented browser bills
+// by the minute; scraping here would put every customer's crawl on a clock
+// nobody clicked, and this route already loops over every due agent across
+// every account inside one 60-second invocation. Turning it on means deciding
+// how many customers a tick may crawl and what that costs per month — an
+// answer the operator has to give, not one to arrive at by default.
+//
+// Until then: collection happens when someone opens the app and scans. This
+// route keeps finding opportunities in posts already collected.
 //
 // Always evaluate a 1-day lookback regardless of the agent's own interval:
 // evaluated_posts dedup makes re-checking the same window on every run free

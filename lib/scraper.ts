@@ -969,7 +969,12 @@ async function scrapeBrowserPlatform(
  * re-extracting after every scroll step since Facebook/LinkedIn virtualize
  * their feeds (posts scrolled past disappear from the DOM).
  */
-export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string): Promise<ScrapeSummary> {
+export async function scrapeActiveGroups(
+  groups: GroupToScrape[],
+  userId: string,
+  /** Wall-clock budget for rented browsers. See scrapeAndStorePosts. */
+  budgetMs = 45_000
+): Promise<ScrapeSummary> {
   // One persistent-context browser per platform, not one shared across all
   // of them — Chromium only lets one process hold a given profile directory
   // at a time, so a single browser reused across Facebook/LinkedIn/Nextdoor/X
@@ -1011,7 +1016,7 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
    * with the browser pass and never eats into its time.
    */
   const rented = isHostedDeployment();
-  const runDeadline = rented ? Date.now() + 45_000 : null;
+  const runDeadline = rented ? Date.now() + budgetMs : null;
 
   const buckets = [...groupsByPlatform.entries()];
   const redditBuckets = buckets.filter(([platform]) => platform === "reddit");

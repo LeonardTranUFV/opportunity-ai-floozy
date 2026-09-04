@@ -125,11 +125,13 @@ export const browserbaseProvider: RemoteBrowserProvider = {
         projectId: project,
         timeout: options.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
 
-        // keepAlive so the browser survives the moment between the customer
-        // finishing login and our own Playwright attaching to read the
-        // cookies. Without it a disconnect can tear the session down with the
-        // login still only in the browser's memory.
-        keepAlive: true,
+        // Defaults on, for connect: the browser has to survive the moment
+        // between the customer finishing login and our own Playwright
+        // attaching to read the cookies, and without it a disconnect tears the
+        // session down with the login still only in the browser's memory.
+        //
+        // Crawls pass false deliberately — see StartSessionOptions.keepAlive.
+        keepAlive: options.keepAlive ?? true,
 
         // Stamped at creation so the finish step can prove the caller owns
         // this session before reading cookies out of it. See

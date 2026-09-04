@@ -30,11 +30,27 @@ const SCRAPE_COOLDOWN_MS = 15 * 60 * 1000;
  */
 export async function scrapeAndStorePosts(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string
+  userId: string,
+  /**
+   * How long the browser crawl may take, when the browser is rented.
+   *
+   * The caller sets this because only the caller knows what else has to happen
+   * inside the same serverless invocation. /api/scrape does nothing but this,
+   * so it can spend the lot; a scan has to hand a batch to Gemini afterwards
+   * and would time out mid-evaluation — which looks exactly like a scan that
+   * found nothing — if the crawl ate all 60 seconds first.
+   */
+  options: { budgetMs?: number } = {}
 ): Promise<ScrapeAndStoreResult> {
   const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, platform, name, url, last_scraped_at")
+    // Explicit, not left to RLS. Every caller so far passes a request-scoped
+    // client where RLS already restricts this to the signed-in user, so this
+    // changes nothing today. It matters for the caller that doesn't: a
+    // service-role client bypasses RLS entirely, and this query would then
+    // return every customer's sources to be crawled under one person's login.
+    .eq("user_id", userId)
     .eq("active", true);
 
   if (groupsError) {
@@ -104,7 +120,7 @@ export async function scrapeAndStorePosts(
     return { scraped: 0, inserted: 0, log, brokenPlatforms: [] };
   }
 
-  const scrapeResult = await scrapeActiveGroups(dueGroups, userId);
+  const scrapeResult = await scrapeActiveGroups(dueGroups, userId, options.budgetMs);
   const posts = scrapeResult.posts;
   const brokenPlatforms = scrapeResult.brokenPlatforms;
   log.push(...scrapeResult.log);

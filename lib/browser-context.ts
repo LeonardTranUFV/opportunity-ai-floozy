@@ -121,6 +121,23 @@ export async function openPlatformContext(
       const session = await provider.startSession({
         userId,
         platform,
+
+        /**
+         * Two settings that only make sense for a crawl, both about what
+         * happens when this function doesn't get to finish.
+         *
+         * A crawl lives inside one invocation, and that invocation can be cut
+         * off at the platform's time limit. `release()` below is what ends the
+         * rented session; if it never runs, a browser with nobody driving it
+         * bills until it times out on its own. With keepAlive off the dropped
+         * connection ends the session by itself, and the short timeout is the
+         * backstop for anything that slips past even that.
+         *
+         * Connect keeps the opposite settings for equally good reasons.
+         */
+        keepAlive: false,
+        idleTimeoutSeconds: 120,
+
         ...(process.env.CRAWL_USE_PROXY === "1" ? { proxyId: "residential" } : {}),
       });
 
