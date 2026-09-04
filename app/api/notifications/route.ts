@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isPrivacyMode, maskName } from "@/lib/privacy-mode";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function GET() {
   const supabase = await createClient();
@@ -10,6 +11,9 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = await rateLimit(`notifications:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "requests");
 
   try {
     const { data: notifications, error } = await supabase

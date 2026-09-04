@@ -5,6 +5,7 @@ import {
   countsTowardSourceLimit,
   sourceLimitMessage,
 } from '@/lib/entitlement';
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 // GET the caller's own groups. The auth check is the second lock behind RLS —
 // a handler that returns rows to an anonymous caller and relies entirely on a
@@ -17,6 +18,9 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`groups-read:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "requests");
 
   try {
     const { data, error } = await supabase
@@ -41,6 +45,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`groups-add:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "sources added");
 
   try {
     const body = await request.json();
@@ -100,6 +107,9 @@ export async function PUT(request: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`groups-update:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "updates");
 
   try {
     const body = await request.json();
@@ -171,6 +181,9 @@ export async function DELETE(request: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`groups-delete:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "deletions");
 
   try {
     const body = await request.json();

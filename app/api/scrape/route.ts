@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 /**
  * Five minutes, which is the platform's own default — this route was pinned to
@@ -28,6 +29,13 @@ export async function POST() {
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  // The browser bucket, not standard. This opens a rented browser and may run
+  // for five minutes; unlimited, one account in a loop can spend the whole
+  // month's browser hours — and every other customer's scheduled collection
+  // shares that budget.
+  const rl = await rateLimit(`scrape:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "source checks");
 
   try {
     // Twenty seconds short of the ceiling, so the response and the database

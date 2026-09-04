@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -9,6 +10,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`agents-add:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "agents created");
 
   try {
     const body = await request.json();
@@ -43,6 +47,9 @@ export async function GET() {
     return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
   }
 
+  const rl = await rateLimit(`agents-read:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "requests");
+
   try {
     const { data: agents, error } = await supabase
       .from('agents')
@@ -71,6 +78,9 @@ export async function DELETE(request: Request) {
   if (!user) {
     return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`agents-delete:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "deletions");
 
   try {
     const { id } = await request.json();

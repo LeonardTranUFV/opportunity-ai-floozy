@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 // Settings can hold connected-account details, so this fails closed rather than
 // trusting RLS alone to keep one user's keys out of another's session.
@@ -11,6 +12,9 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`settings-read:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "requests");
 
   try {
     const { data: rows, error } = await supabase
@@ -65,6 +69,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  const rl = await rateLimit(`settings-write:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "saves");
 
   try {
     const body = await request.json();

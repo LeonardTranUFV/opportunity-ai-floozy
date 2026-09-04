@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 const VALID_STATUSES = ["new", "contacted", "qualified", "appointment", "proposal", "won", "lost"];
 
@@ -75,6 +76,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
+  const rl = await rateLimit(`opp-update:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "updates");
+
   const body = await request.json();
   const { status } = body;
 
@@ -138,6 +142,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = await rateLimit(`opp-delete:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "deletions");
 
   const { error, count } = await supabase
     .from("opportunities")

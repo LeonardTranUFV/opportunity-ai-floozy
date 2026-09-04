@@ -4,6 +4,7 @@ import { getChromium } from "@/lib/browser";
 import { isHostedDeployment } from "@/lib/deployment";
 import { listSessions } from "@/lib/session-store";
 import { getAuthSessionPath, formatAuthLaunchError } from "@/lib/auth-session";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 interface CheckResult {
   loggedIn: boolean;
@@ -141,6 +142,12 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  // Cheap on the hosted deployment (a stored-session read) and expensive
+  // locally, where it drives four real Chrome windows at once. Limited for the
+  // second case; the first never comes close.
+  const rl = await rateLimit(`account-status:${user.id}`, LIMITS.standard.limit, LIMITS.standard.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "status checks");
 
   /**
    * On the hosted deployment, answer from the stored sessions rather than 501.

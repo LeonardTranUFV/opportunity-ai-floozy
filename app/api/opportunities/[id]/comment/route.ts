@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { postFacebookComment } from "@/lib/facebook-outreach";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -13,6 +14,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!user) {
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
+
+  // Posts publicly to Facebook through the customer's own logged-in session.
+  // The cost of no limit is not money, it is their account: a loop here is
+  // indistinguishable from comment spam, and Facebook bans the account doing
+  // it, not us.
+  const rl = await rateLimit(`comment:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "comments");
 
   // postFacebookComment already goes through openPlatformContext, so it works
   // wherever a signed-in browser can be opened — including a rented one. This

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRemoteBrowserProvider } from "@/lib/remote-browser";
+import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 /**
  * Re-attach the screen to a browser that is still running.
@@ -31,6 +32,9 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = await rateLimit(`connect-view:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
+  if (!rl.allowed) return tooManyRequests(rl, "view links");
 
   const provider = getRemoteBrowserProvider();
   if (!provider) {
