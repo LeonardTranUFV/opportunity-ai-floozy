@@ -62,8 +62,39 @@ export function ScanAgentButton({ id }: { id: string }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rangeDays }),
         })
-        const data = await res.json()
-        const scrapedNote = data.scraped > 0 ? ` (+${data.scraped} new posts collected)` : ""
+        // Text first: a run the platform cut off returns an HTML error page,
+        // and res.json() throwing on that landed in the catch below as "check
+        // the server log" — advice the customer cannot act on, for a run whose
+        // finished batches were all saved.
+        const rawBody = await res.text()
+        let data: {
+          success?: boolean
+          error?: string
+          scraped?: number
+          evaluated?: number
+          remaining?: number
+          opportunities_found?: number
+          locally_filtered?: number
+          broken_platforms?: string[]
+          message?: string
+        } | null = null
+        try {
+          data = JSON.parse(rawBody)
+        } catch {
+          data = null
+        }
+
+        if (!data) {
+          setResult(
+            res.status === 504 || res.status === 502
+              ? "That ran longer than the server allows and was stopped partway. Everything it got through was saved — scan again to carry on."
+              : `Scan failed — the server returned ${res.status}.`
+          )
+          finishProgress()
+          return
+        }
+
+        const scrapedNote = data.scraped && data.scraped > 0 ? ` (+${data.scraped} new posts collected)` : ""
         if (!res.ok || !data.success) {
           setResult((formatApiError(data.error) || "Couldn't finish — try again.") + scrapedNote)
           finishProgress()
@@ -73,7 +104,9 @@ export function ScanAgentButton({ id }: { id: string }) {
         // so they cost nothing. Saying so turns an invisible optimization into
         // a visible reason the scan was cheap.
         const savedNote =
-          data.locally_filtered > 0 ? ` — ${data.locally_filtered} skipped the AI, free` : ""
+          data.locally_filtered && data.locally_filtered > 0
+            ? ` — ${data.locally_filtered} skipped the AI, free`
+            : ""
         // A broken extractor has to outrank the normal result line. Left to the
         // scrape log it reads as an ordinary quiet run, which is how a dead
         // source can go unnoticed for weeks.
@@ -82,11 +115,13 @@ export function ScanAgentButton({ id }: { id: string }) {
           broken.length > 0
             ? ` ⚠ ${broken.join(" and ")} collected nothing and looks broken — check the scrape log.`
             : ""
+        // Carries the "still to check" note when a run stopped on time.
+        const moreNote = data.message ? ` ${data.message}` : ""
         if (data.evaluated === 0) {
           setResult((data.message || "Nothing new to scan.") + scrapedNote + brokenNote)
         } else {
           setResult(
-            `Scanned ${data.evaluated} posts${scrapedNote}, found ${data.opportunities_found} opportunities${savedNote}.${brokenNote}`
+            `Scanned ${data.evaluated} posts${scrapedNote}, found ${data.opportunities_found} opportunities${savedNote}.${brokenNote}${moreNote}`
           )
         }
         finishProgress()

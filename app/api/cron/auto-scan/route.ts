@@ -71,10 +71,28 @@ export async function GET(request: Request) {
   const now = Date.now();
   const due = ((agents ?? []) as DueAgent[]).filter((a) => isDue(a, now));
 
+  /**
+   * This loop covers every due agent across every account inside one
+   * invocation, so it is the first thing here that will outgrow its time as
+   * customers are added — and being killed means the agents already scanned
+   * never get their last_auto_scan_at written, so the next tick redoes them
+   * and the tail is never reached.
+   *
+   * Each agent is given what remains, and an agent that cannot be started is
+   * simply left for the next tick with its timestamp untouched, which is
+   * exactly how it becomes first in line.
+   */
+  const deadline = Date.now() + (maxDuration * 1000 - 10_000);
+
   const results = [];
+  let skippedForTime = 0;
   for (const agent of due) {
+    if (Date.now() >= deadline) {
+      skippedForTime++;
+      continue;
+    }
     try {
-      const result = await evaluateAgentPosts(supabase, agent, agent.user_id, EVAL_RANGE_DAYS);
+      const result = await evaluateAgentPosts(supabase, agent, agent.user_id, EVAL_RANGE_DAYS, deadline);
       await supabase
         .from("agents")
         .update({ last_auto_scan_at: new Date().toISOString() })
@@ -89,5 +107,11 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ success: true, checked: (agents ?? []).length, ran: due.length, results });
+  return NextResponse.json({
+    success: true,
+    checked: (agents ?? []).length,
+    ran: due.length - skippedForTime,
+    skipped_for_time: skippedForTime,
+    results,
+  });
 }

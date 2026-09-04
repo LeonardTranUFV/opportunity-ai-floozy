@@ -35,6 +35,12 @@ export interface EvaluateAgentResult {
   /** Gemini requests actually made. This is what the run cost. */
   aiCalls: number;
   message?: string;
+  /**
+   * Posts left unevaluated because the run ran out of time, or 0 if it
+   * finished. Nothing is lost when this is non-zero — evaluated_posts records
+   * what was already scored, so the next run resumes rather than repeats.
+   */
+  remaining?: number;
 }
 
 /**
@@ -53,7 +59,21 @@ export async function evaluateAgentPosts(
   supabase: SupabaseClient,
   agent: AgentProfile,
   userId: string,
-  rangeDays: number
+  rangeDays: number,
+  /**
+   * When this run must be finished, or null for no limit.
+   *
+   * A scan is a loop of Gemini calls with deliberate pacing between them, and
+   * a customer with a few hundred fresh posts needs more of them than a
+   * serverless invocation has seconds. Being killed partway through is the bad
+   * ending: the response never arrives, and what the customer sees is "scan
+   * failed" even though every batch that finished was saved and charged.
+   *
+   * Stopping early is the good one, and it costs nothing to resume:
+   * evaluated_posts already records what has been scored, so the next run
+   * picks up exactly where this one stopped.
+   */
+  deadline: number | null = null
 ): Promise<EvaluateAgentResult> {
   const cutoffIso = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
 
@@ -122,12 +142,29 @@ export async function evaluateAgentPosts(
   let totalEvaluated = locallyResolved.length;
   let totalOpportunities = 0;
   let aiCalls = 0;
+  let remaining = 0;
+
+  /**
+   * What one more batch costs, so the loop can stop *before* starting one it
+   * cannot finish rather than discovering that by being killed.
+   *
+   * The floor covers a Gemini call plus the pacing sleep before it. After the
+   * first batch the measured time replaces it, so a slow model response or a
+   * retry makes the next check more cautious on its own.
+   */
+  const PER_BATCH_FLOOR_MS = BATCH_PACING_MS + 12_000;
+  let slowestBatchMs = 0;
 
   // Walk every unevaluated post in AI-request-sized batches — a single scan
   // click used to silently stop after the first 25 posts regardless of how
   // many more were waiting, which made "scan everything" impossible without
   // repeated manual clicks.
   for (let i = 0; i < toEvaluate.length; i += BATCH_SIZE) {
+    if (deadline !== null && Date.now() + Math.max(PER_BATCH_FLOOR_MS, slowestBatchMs) > deadline) {
+      remaining = toEvaluate.length - i;
+      break;
+    }
+    const batchStartedAt = Date.now();
     if (i > 0) await sleep(BATCH_PACING_MS);
     const batch = toEvaluate.slice(i, i + BATCH_SIZE);
 
@@ -262,7 +299,15 @@ export async function evaluateAgentPosts(
     // model failed to answer for.
     totalEvaluated += evaluatedToInsert.length;
     totalOpportunities += opportunitiesToInsert.length;
+    slowestBatchMs = Math.max(slowestBatchMs, Date.now() - batchStartedAt);
   }
+
+  // Said plainly, because "scanned 200" with 400 still waiting looks like the
+  // scan decided those 400 weren't worth reading.
+  const timeNote =
+    remaining > 0
+      ? `Stopped with ${remaining} post${remaining === 1 ? "" : "s"} still to check — scan again to carry on from here.`
+      : null;
 
   return {
     evaluated: totalEvaluated,
@@ -271,7 +316,8 @@ export async function evaluateAgentPosts(
     // duplicates that a single verdict answered for.
     locallyFiltered: locallyResolved.length + duplicateCount,
     aiCalls,
-    message: filterNote ?? undefined,
+    message: [filterNote, timeNote].filter(Boolean).join(" ") || undefined,
+    remaining,
   };
 }
 

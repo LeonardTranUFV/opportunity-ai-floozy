@@ -19,6 +19,16 @@ const ALLOWED_RANGE_DAYS = [1, 3, 7];
 export const maxDuration = 60;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  /**
+   * Both halves of a scan share one invocation, so both are given a share of
+   * it measured from the same start.
+   *
+   * Ten seconds are left unclaimed at the end. A response still has to be
+   * written and the agent's timestamp saved after the work finishes, and being
+   * killed during *that* would throw away results already paid for.
+   */
+  const startedAt = Date.now();
+  const RESPONSE_HEADROOM_MS = 10_000;
   const { id: agentId } = await params;
   const supabase = await createClient();
 
@@ -67,13 +77,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const result = await evaluateAgentPosts(supabase, agent as AgentProfile, user.id, rangeDays);
+    // Whatever is left of the invocation after collecting. Evaluation is the
+    // half that can always use more time — a few hundred fresh posts is more
+    // Gemini calls than 60 seconds holds — so it takes the remainder rather
+    // than a fixed slice, and stops cleanly instead of being cut off.
+    const evaluationDeadline = startedAt + (maxDuration * 1000 - RESPONSE_HEADROOM_MS);
+    const result = await evaluateAgentPosts(
+      supabase,
+      agent as AgentProfile,
+      user.id,
+      rangeDays,
+      evaluationDeadline
+    );
     return NextResponse.json({
       success: true,
       scraped,
       scrape_log: scrapeLog,
       broken_platforms: brokenPlatforms,
       evaluated: result.evaluated,
+      remaining: result.remaining ?? 0,
       opportunities_found: result.opportunitiesFound,
       locally_filtered: result.locallyFiltered,
       ai_calls: result.aiCalls,
