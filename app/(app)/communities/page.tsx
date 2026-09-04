@@ -12,6 +12,7 @@ import { CheckSourcesButton } from "@/components/communities/check-sources-butto
 import { ResyncGroupsButton } from "@/components/communities/resync-groups-button"
 import { isHostedDeployment } from "@/lib/deployment"
 import { canRunSignedInBrowser } from "@/lib/remote-browser"
+import { getSourceCapacity } from "@/lib/entitlement"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 
 export const dynamic = "force-dynamic"
@@ -45,6 +46,16 @@ export default async function CommunitiesPage() {
     postCountByGroup.set(p.group_id, (postCountByGroup.get(p.group_id) ?? 0) + 1)
   }
   const groups = (allGroups ?? []).map((g) => ({ ...g, post_count: postCountByGroup.get(g.id) ?? 0 }))
+
+  // What the plan allows, and what is being used. Shown rather than only
+  // enforced: a limit a customer discovers by being refused is a worse
+  // experience than the same limit they could see coming.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const capacity = user
+    ? await getSourceCapacity(supabase, user.id)
+    : { plan: "trial", used: 0, limit: 0, remaining: 0 }
 
   const groupsByPlatform = new Map<string, typeof groups>()
   for (const g of groups) {
@@ -117,11 +128,49 @@ export default async function CommunitiesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Monitored Sources</CardTitle>
-          <CardDescription>
-            {groups.length} sources being tracked. Finding opportunities checks these automatically first —
-            you only need this button if you want fresh posts without running a full scan.
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-col gap-1.5">
+              <CardTitle>Monitored Sources</CardTitle>
+              <CardDescription>
+                {groups.length} sources added. Finding opportunities checks these automatically
+                first — you only need this button if you want fresh posts without running a full
+                scan.
+              </CardDescription>
+            </div>
+
+            {/* The number that actually constrains them, kept next to the list
+                it constrains. Reddit is excluded because it needs no browser
+                and so costs nothing to watch — saying so here stops the count
+                looking wrong to anyone who has added one. */}
+            <div className="flex w-full shrink-0 flex-col gap-1.5 sm:w-52">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Actively monitored</span>
+                <span
+                  className={`text-sm font-semibold tabular-nums ${
+                    capacity.remaining === 0 ? "text-amber-600 dark:text-amber-400" : ""
+                  }`}
+                >
+                  {capacity.used} / {capacity.limit}
+                </span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    capacity.remaining === 0 ? "bg-amber-500" : "bg-brand"
+                  }`}
+                  style={{
+                    width: `${capacity.limit ? Math.min(100, (capacity.used / capacity.limit) * 100) : 0}%`,
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {capacity.remaining === 0
+                  ? "At your limit — pause one to switch another on."
+                  : `${capacity.remaining} more can be switched on.`}{" "}
+                Reddit sources don&apos;t count.
+              </p>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {/* Only disabled when there is genuinely nothing this deployment

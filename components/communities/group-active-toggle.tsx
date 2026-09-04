@@ -19,9 +19,18 @@ export function GroupActiveToggle({ id, active }: { id: string; active: boolean 
       })
       if (res.ok) {
         router.refresh()
-      } else {
-        alert("Failed to update group")
+        return
       }
+
+      // The server's own words, not a generic failure. The likeliest reason a
+      // toggle is refused is the monitored-source limit, and that message
+      // tells the customer exactly what to do about it — replacing it with
+      // "failed to update group" turns a solvable situation into a bug report.
+      const message = await res
+        .json()
+        .then((d: { error?: string }) => d.error)
+        .catch(() => null)
+      alert(message || "Couldn't update that source — try again.")
     })
   }
 
