@@ -27,6 +27,16 @@ export function ScanAgentButton({ id }: { id: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<string | null>(null)
+  /**
+   * Whether the last run failed, or finished with something worth noticing.
+   *
+   * Every outcome used to render as the same grey line: "found 6
+   * opportunities", "scan failed", and "a platform collected nothing and looks
+   * broken" were typographically identical. On the button customers press most,
+   * that makes a failure easy to read straight past — and a dead source can go
+   * unnoticed for weeks precisely because nothing about it looks different.
+   */
+  const [tone, setTone] = useState<"ok" | "warn" | "error">("ok")
   const [rangeDays, setRangeDays] = useState(3)
   const [progress, setProgress] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -54,6 +64,7 @@ export function ScanAgentButton({ id }: { id: string }) {
 
   const handleScan = () => {
     setResult(null)
+    setTone("ok")
     startProgress()
     startTransition(async () => {
       try {
@@ -85,6 +96,7 @@ export function ScanAgentButton({ id }: { id: string }) {
         }
 
         if (!data) {
+          setTone("error")
           setResult(
             res.status === 504 || res.status === 502
               ? "That ran longer than the server allows and was stopped partway. Everything it got through was saved — scan again to carry on."
@@ -96,6 +108,7 @@ export function ScanAgentButton({ id }: { id: string }) {
 
         const scrapedNote = data.scraped && data.scraped > 0 ? ` (+${data.scraped} new posts collected)` : ""
         if (!res.ok || !data.success) {
+          setTone("error")
           setResult((formatApiError(data.error) || "Couldn't finish — try again.") + scrapedNote)
           finishProgress()
           return
@@ -117,6 +130,9 @@ export function ScanAgentButton({ id }: { id: string }) {
             : ""
         // Carries the "still to check" note when a run stopped on time.
         const moreNote = data.message ? ` ${data.message}` : ""
+        // A broken extractor, or a run that stopped before finishing, is not a
+        // plain success — amber rather than grey, so it reads as "look at me".
+        setTone(broken.length > 0 || (data.remaining ?? 0) > 0 ? "warn" : "ok")
         if (data.evaluated === 0) {
           setResult((data.message || "Nothing new to scan.") + scrapedNote + brokenNote)
         } else {
@@ -127,6 +143,7 @@ export function ScanAgentButton({ id }: { id: string }) {
         finishProgress()
         router.refresh()
       } catch {
+        setTone("error")
         setResult(CONNECTION_ERROR)
         finishProgress()
       }
@@ -135,13 +152,13 @@ export function ScanAgentButton({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <Select
           value={String(rangeDays)}
           onValueChange={(v) => v && setRangeDays(Number(v))}
           disabled={isPending}
         >
-          <SelectTrigger className="w-36 shrink-0" aria-label="Scan lookback range">
+          <SelectTrigger className="w-full sm:w-36 sm:shrink-0" aria-label="Scan lookback range">
             <SelectValue>
               {(v: string) => RANGE_OPTIONS.find((opt) => String(opt.days) === v)?.shortLabel}
             </SelectValue>
@@ -174,7 +191,19 @@ export function ScanAgentButton({ id }: { id: string }) {
           </span>
         </Button>
       </div>
-      {result && <p className="text-xs text-muted-foreground">{result}</p>}
+      {result && (
+        <p
+          className={
+            tone === "error"
+              ? "text-xs text-destructive"
+              : tone === "warn"
+                ? "text-xs text-amber-600 dark:text-amber-400"
+                : "text-xs text-muted-foreground"
+          }
+        >
+          {result}
+        </p>
+      )}
     </div>
   )
 }
