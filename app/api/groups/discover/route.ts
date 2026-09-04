@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getChromium } from '@/lib/browser';
-import { isHostedDeployment, BROWSER_UNAVAILABLE } from '@/lib/deployment';
-import { getAuthSessionPath, formatAuthLaunchError } from '@/lib/auth-session';
+import { formatAuthLaunchError } from '@/lib/auth-session';
+import { openPlatformContext } from '@/lib/browser-context';
 import { errorMessage } from '@/lib/errors';
 import { spendCredits, CREDIT_COSTS, InsufficientCreditsError } from '@/lib/credits';
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
@@ -17,10 +16,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-  if (isHostedDeployment()) {
-    return NextResponse.json({ error: BROWSER_UNAVAILABLE }, { status: 501 });
-  }
-
+  // No hosted gate any more. It was here because this route launched Chrome
+  // locally; it now goes through openPlatformContext, which can rent one.
   const rl = await rateLimit(`group-discover:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
   if (!rl.allowed) return tooManyRequests(rl, "searches");
 
@@ -45,17 +42,28 @@ export async function POST(request: Request) {
     const searchQuery = exactQuery || `${industry} ${location}`;
     console.log(`📡 Launching Live Facebook Group Search for query: "${searchQuery}"...`);
 
-    const authPath = getAuthSessionPath(user.id, 'facebook');
+    /**
+     * Opened through the shared seam rather than by launching Chrome here.
+     *
+     * This route reached straight for a local persistent-context profile
+     * directory, which is why it refused outright on the hosted deployment:
+     * no Chrome, no profile. openPlatformContext knows all three places a
+     * session can live — including a cloud browser — so group search now works
+     * wherever the customer connected from.
+     *
+     * Null means genuinely nothing to open: no stored session and no local
+     * profile. That is a different answer from "the search found nothing", and
+     * the customer is told which.
+     */
+    const opened = await openPlatformContext(user.id, 'facebook');
+    if (!opened) {
+      return NextResponse.json(
+        { error: 'Connect Facebook first — group search signs in as you.' },
+        { status: 409 }
+      );
+    }
 
-    // Launch headless Playwright context utilizing saved session cookies
-    const chromium = await getChromium();
-    const browser = await chromium.launchPersistentContext(authPath, {
-      headless: true,
-      channel: 'chrome',
-      viewport: { width: 1280, height: 800 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    });
-
+    const browser = opened.context;
     const page = await browser.newPage();
     const searchUrl = `https://www.facebook.com/search/groups/?q=${encodeURIComponent(searchQuery)}`;
 
@@ -181,7 +189,10 @@ export async function POST(request: Request) {
           ? 'Your Facebook session has expired. Reconnect it under Connect Accounts, then try again.'
           : `Facebook search failed: ${message}`;
     } finally {
-      await browser.close();
+      // release(), not close(). The seam owns how the browser was opened: for
+      // a rented one this also writes refreshed cookies back and ends the paid
+      // session, neither of which closing a context would do.
+      await opened.release();
     }
 
     // Surface real failures instead of returning [] — an empty array renders as

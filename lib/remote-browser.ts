@@ -1,4 +1,5 @@
 import { browserbaseProvider } from "@/lib/remote-browser-browserbase";
+import { isHostedDeployment } from "@/lib/deployment";
 
 /**
  * The boundary between "we need a signed-in Chrome somewhere" and "who is
@@ -181,4 +182,25 @@ export function redactProviderSecrets(text: string): string {
 export function canConnectRemotely(): boolean {
   const provider = getRemoteBrowserProvider();
   return provider !== null && provider.isConfigured();
+}
+
+/**
+ * Whether a signed-in browser can be opened *anywhere* this code can reach.
+ *
+ * This is the question every "does the browser work here?" gate in the app was
+ * actually asking, and every one of them answered it with
+ * `isHostedDeployment()` — which was only ever a proxy for it. That proxy was
+ * true right up until openPlatformContext learned to rent a browser from the
+ * provider; after that the gates were telling customers a lie, because the
+ * capability was deployed and sitting behind a disabled button.
+ *
+ * Local: Chrome is on this machine. Hosted: only if a provider is configured,
+ * because with no key there is genuinely nothing to open.
+ *
+ * Note this says nothing about whether *a particular customer* has connected
+ * an account — openPlatformContext returning null is what answers that, and
+ * it is a different message to show.
+ */
+export function canRunSignedInBrowser(): boolean {
+  return !isHostedDeployment() || canConnectRemotely();
 }

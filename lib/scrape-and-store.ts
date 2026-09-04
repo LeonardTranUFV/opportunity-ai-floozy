@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { scrapeActiveGroups, sessionPlatform } from "@/lib/scraper";
-import { isHostedDeployment } from "@/lib/deployment";
+import { canRunSignedInBrowser } from "@/lib/remote-browser";
 
 export interface ScrapeAndStoreResult {
   scraped: number;
@@ -45,25 +45,29 @@ export async function scrapeAndStorePosts(
     return { scraped: 0, inserted: 0, log: ["No active groups to scrape."], brokenPlatforms: [] };
   }
 
-  // Facebook, LinkedIn, Nextdoor and X are read by driving a real Chrome
-  // profile off local disk, which Vercel has no way to provide. Reddit is not:
-  // it's an unauthenticated fetch of a public .json endpoint, no browser and no
-  // per-user session, so it runs anywhere.
+  // Facebook, LinkedIn, Nextdoor and X are read by driving a signed-in
+  // browser. Reddit is not: it's an unauthenticated fetch of a public .json
+  // endpoint, no browser and no per-user session, so it runs anywhere.
   //
-  // This used to bail out for every platform at once, which meant a signed-up
-  // customer on the hosted site could never collect a single post — the app
-  // worked only for whoever ran it on their own machine. Splitting the gate by
-  // platform is what lets a hosted account produce real leads on day one.
-  const hosted = isHostedDeployment();
-  const activeGroups = hosted
+  // The gate is no longer "are we hosted". Hosted used to mean no browser at
+  // all — no Chrome on Vercel, no persistent profile — so this dropped every
+  // browser platform, and a hosted customer could only ever collect Reddit.
+  // openPlatformContext can now rent a browser from the provider, and those
+  // groups collect here exactly as they do on the operator's machine.
+  //
+  // What is still true is that with no provider key there is nothing to rent.
+  // Driving a browser that doesn't exist would fail every group one at a time
+  // instead of saying so once, which is the only case this filter now covers.
+  const browserlessHost = !canRunSignedInBrowser();
+  const activeGroups = browserlessHost
     ? allGroups.filter((g) => sessionPlatform(g.platform) === "reddit")
     : allGroups;
-  const browserOnly = hosted ? allGroups.length - activeGroups.length : 0;
+  const browserOnly = browserlessHost ? allGroups.length - activeGroups.length : 0;
 
   const preamble: string[] = [];
   if (browserOnly > 0) {
     preamble.push(
-      `${browserOnly} source(s) need a signed-in browser, which this hosted site can't run — Reddit sources were scraped as normal.`
+      `${browserOnly} source(s) need a signed-in browser, which isn't set up on this deployment — Reddit sources were scraped as normal.`
     );
   }
 
@@ -77,9 +81,18 @@ export async function scrapeAndStorePosts(
   }
 
   const cooldownCutoff = Date.now() - SCRAPE_COOLDOWN_MS;
-  const dueGroups = activeGroups.filter(
-    (g) => !g.last_scraped_at || new Date(g.last_scraped_at).getTime() < cooldownCutoff
-  );
+  // Stalest first. A rented browser can only get through part of a long source
+  // list before the run's time budget stops it (see scrapeBrowserPlatform), so
+  // the order decides which sources are read and which wait. Sorted this way,
+  // consecutive runs rotate through everything instead of re-reading the same
+  // first few and starving the tail forever. Never scraped sorts first.
+  const dueGroups = activeGroups
+    .filter((g) => !g.last_scraped_at || new Date(g.last_scraped_at).getTime() < cooldownCutoff)
+    .sort(
+      (a, b) =>
+        (a.last_scraped_at ? new Date(a.last_scraped_at).getTime() : 0) -
+        (b.last_scraped_at ? new Date(b.last_scraped_at).getTime() : 0)
+    );
   const skippedGroups = activeGroups.filter((g) => !dueGroups.includes(g));
 
   const log: string[] = [

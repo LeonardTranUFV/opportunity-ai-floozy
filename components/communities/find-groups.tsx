@@ -71,10 +71,17 @@ const CATEGORY_TONE: Record<string, string> = {
 }
 
 export function FindGroups({
-  hosted = false,
+  /**
+   * No signed-in browser is reachable from this deployment, so Facebook search
+   * cannot run at all. Previously this prop was `hosted`, which conflated
+   * "we're on Vercel" with "there is no browser" — true until the crawler
+   * learned to rent one, and misleading afterwards: the feature worked and the
+   * button was still disabled.
+   */
+  noBrowser = false,
   defaultLocation = "",
 }: {
-  hosted?: boolean
+  noBrowser?: boolean
   defaultLocation?: string
 }) {
   const router = useRouter()
@@ -228,18 +235,18 @@ export function FindGroups({
             required
           />
         </div>
-        <Button type="submit" variant="brand" disabled={isSearching || hosted}>
+        <Button type="submit" variant="brand" disabled={isSearching || noBrowser}>
           {isSearching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
           {isSearching ? "Searching Facebook…" : "Find groups (5 credits)"}
         </Button>
       </form>
 
-      {/* Telling a hosted customer to "run the app locally" is a dead end —
-          they can't, and it left this card with no next step. Reddit is the
-          one source type that collects here, so send them there instead. */}
-      {hosted ? (
+      {/* Telling a customer to "run the app locally" is a dead end — they
+          can't, and it left this card with no next step. Reddit is the one
+          source type that collects anywhere, so send them there instead. */}
+      {noBrowser ? (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Facebook search needs a signed-in browser, which this hosted site can&apos;t run.{" "}
+          Facebook search needs a signed-in browser, and none is set up on this deployment.{" "}
           <strong className="text-foreground">Reddit works right now</strong> — add a subreddit
           under &ldquo;Add a Source&rdquo; below and it starts collecting posts immediately, with no
           account to connect and nothing to join.
@@ -259,7 +266,7 @@ export function FindGroups({
         </div>
       )}
 
-      {showSuggest && !hosted && (
+      {showSuggest && !noBrowser && (
         <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-muted/30 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <Button

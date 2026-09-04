@@ -1,5 +1,6 @@
 import { formatAuthLaunchError } from "@/lib/auth-session";
 import { openPlatformContext } from "@/lib/browser-context";
+import { isHostedDeployment } from "@/lib/deployment";
 import { attachFeedCapture } from "@/lib/feed-capture";
 import { DomainThrottle, fetchPaced } from "@/lib/fetchers";
 import { getRedditToken, toOAuthUrl, REDDIT_USER_AGENT, REDDIT_SETUP_HINT } from "@/lib/reddit-auth";
@@ -671,7 +672,15 @@ async function scrapeRedditPlatform(platformGroups: GroupToScrape[]): Promise<Pl
 async function scrapeBrowserPlatform(
   platform: string,
   platformGroups: GroupToScrape[],
-  userId: string
+  userId: string,
+  /**
+   * Absolute time this crawl must be finished by, or null for no limit.
+   *
+   * Shared across every platform in the run rather than per-platform: the
+   * constraint being respected is one serverless invocation's 60 seconds, and
+   * two platforms each granted their own 40 would blow it between them.
+   */
+  runDeadline: number | null = null
 ): Promise<PlatformScrapeResult> {
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
@@ -728,6 +737,29 @@ async function scrapeBrowserPlatform(
 
   const context = opened.context;
 
+  /**
+   * A wall-clock budget on the crawl — but only when the browser is rented.
+   *
+   * Two limits bite at once on the hosted deployment and neither exists
+   * locally. The serverless function is capped at 60 seconds, and a rented
+   * browser bills by the minute. A Facebook group takes 20-40 seconds to crawl
+   * at human pace, so a customer with ten groups cannot be crawled in one
+   * invocation no matter how it is written.
+   *
+   * Being killed mid-loop is the bad ending: `release()` in the finally below
+   * never runs, so the rented browser keeps billing until the provider's own
+   * idle timeout. Stopping early is the good one — the groups that were read
+   * are saved, the browser is closed properly, and the rest are picked up by
+   * the next run. Groups arrive stalest-first, so successive runs rotate
+   * through them rather than re-reading the same first few.
+   *
+   * Locally there is no function timeout and no per-minute bill, so the whole
+   * list is crawled in one pass exactly as before.
+   */
+  const deadline = opened.source === "cloud" ? runDeadline : null;
+  let processed = 0;
+  let stoppedEarly = false;
+
   try {
     const page = await context.newPage();
 
@@ -747,6 +779,11 @@ async function scrapeBrowserPlatform(
     });
 
     for (const group of platformGroups) {
+      if (deadline !== null && Date.now() > deadline) {
+        stoppedEarly = true;
+        break;
+      }
+      processed++;
       const extractor = extractorFor(group.platform);
       if (!extractor) {
         log.push(`Skipped "${group.name}" — ${group.platform} scraping isn't supported yet.`);
@@ -907,6 +944,13 @@ async function scrapeBrowserPlatform(
     await opened.release();
   }
 
+  if (stoppedEarly) {
+    const remaining = platformGroups.length - processed;
+    log.push(
+      `Stopped after ${processed} of ${platformGroups.length} ${platform} source(s) to stay inside the time limit — the other ${remaining} are next in line and will be read on the next run.`
+    );
+  }
+
   // One verdict for the whole platform, after every source has been seen. A
   // single empty group proves nothing; every group on a platform coming back
   // empty is a code problem until shown otherwise.
@@ -948,13 +992,51 @@ export async function scrapeActiveGroups(groups: GroupToScrape[], userId: string
     groupsByPlatform.set(sessionKey, list);
   }
 
-  const platformResults = await Promise.all(
-    [...groupsByPlatform.entries()].map(([platform, platformGroups]) =>
-      platform === "reddit"
-        ? scrapeRedditPlatform(platformGroups)
-        : scrapeBrowserPlatform(platform, platformGroups, userId)
-    )
-  );
+  /**
+   * On the hosted deployment every browser is rented, and that changes both
+   * limits this schedule has to respect.
+   *
+   * Concurrency: locally, running Facebook and LinkedIn at once costs nothing
+   * — they are separate Chrome processes on an idle machine. A provider sells
+   * concurrent browsers by the seat, and exceeding the plan's allowance is
+   * refused outright, which would show up as one platform collecting and
+   * another mysteriously failing every run. Sequential is slower and always
+   * works.
+   *
+   * Time: the whole run shares one 45-second budget, because what it is
+   * really sharing is one 60-second serverless invocation. Whatever the budget
+   * doesn't reach is read on the next run, stalest first.
+   *
+   * Reddit is exempt from both — no browser, just HTTP — so it stays parallel
+   * with the browser pass and never eats into its time.
+   */
+  const rented = isHostedDeployment();
+  const runDeadline = rented ? Date.now() + 45_000 : null;
+
+  const buckets = [...groupsByPlatform.entries()];
+  const redditBuckets = buckets.filter(([platform]) => platform === "reddit");
+  const browserBuckets = buckets.filter(([platform]) => platform !== "reddit");
+
+  const runBrowserBuckets = async (): Promise<PlatformScrapeResult[]> => {
+    if (!rented) {
+      return Promise.all(
+        browserBuckets.map(([platform, platformGroups]) =>
+          scrapeBrowserPlatform(platform, platformGroups, userId, runDeadline)
+        )
+      );
+    }
+    const results: PlatformScrapeResult[] = [];
+    for (const [platform, platformGroups] of browserBuckets) {
+      results.push(await scrapeBrowserPlatform(platform, platformGroups, userId, runDeadline));
+    }
+    return results;
+  };
+
+  const [redditResults, browserResults] = await Promise.all([
+    Promise.all(redditBuckets.map(([, platformGroups]) => scrapeRedditPlatform(platformGroups))),
+    runBrowserBuckets(),
+  ]);
+  const platformResults = [...redditResults, ...browserResults];
 
   const posts: ScrapedPost[] = [];
   const log: string[] = [];

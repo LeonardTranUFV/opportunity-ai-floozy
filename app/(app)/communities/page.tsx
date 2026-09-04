@@ -11,12 +11,23 @@ import { DeleteGroupButton } from "@/components/communities/delete-group-button"
 import { CheckSourcesButton } from "@/components/communities/check-sources-button"
 import { ResyncGroupsButton } from "@/components/communities/resync-groups-button"
 import { isHostedDeployment } from "@/lib/deployment"
+import { canRunSignedInBrowser } from "@/lib/remote-browser"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 
 export const dynamic = "force-dynamic"
 
 export default async function CommunitiesPage() {
   const hosted = isHostedDeployment()
+  // Two different questions, and this page was answering both with the first.
+  //
+  // `hosted` decides whether to offer the re-import of Facebook groups — that
+  // one really is about being on the hosted site, because locally the crawler
+  // reads a Chrome profile and there is nothing to re-import.
+  //
+  // `noBrowser` decides whether the Facebook features work at all, and that
+  // is now a separate fact: hosted with a cloud browser configured can run
+  // them, hosted without one cannot.
+  const noBrowser = !canRunSignedInBrowser()
   const supabase = await createClient()
 
   const { data: allGroups } = await supabase
@@ -42,7 +53,7 @@ export default async function CommunitiesPage() {
     groupsByPlatform.set(g.platform, list)
   }
   // Reddit needs no browser and no login, so it's the one source type that
-  // collects on the hosted deployment as well as it does locally.
+  // collects even where a signed-in browser can't be opened at all.
   const hasFetchableSource = groups.some((g) => g.platform === "reddit" && g.active)
   const platformSections = [
     ...PLATFORM_ORDER.filter((p) => groupsByPlatform.has(p)),
@@ -72,7 +83,7 @@ export default async function CommunitiesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FindGroups hosted={hosted} />
+          <FindGroups noBrowser={noBrowser} />
         </CardContent>
       </Card>
 
@@ -113,14 +124,15 @@ export default async function CommunitiesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {/* Reddit is read over plain HTTP, so checking sources works here
-              even though the signed-in-browser platforms don't. Disabling the
-              button outright told hosted customers nothing worked, when their
-              Reddit sources collect fine. */}
+          {/* Only disabled when there is genuinely nothing this deployment
+              could collect: no cloud browser configured *and* no Reddit source,
+              which is read over plain HTTP and works everywhere. With a cloud
+              browser the Facebook sources collect here too, so the button
+              stays live. */}
           <CheckSourcesButton
             disabledReason={
-              hosted && !hasFetchableSource
-                ? "Your sources all need a signed-in browser, which this hosted site can't run. Add a Reddit source and this will start collecting."
+              noBrowser && !hasFetchableSource
+                ? "None of your sources can be collected here: they all need a signed-in browser, and no cloud browser is configured. Add a Reddit source and this will start collecting."
                 : undefined
             }
           />

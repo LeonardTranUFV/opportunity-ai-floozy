@@ -6,7 +6,17 @@ import { Button } from "@/components/ui/button"
 import { RefreshCw, TriangleAlert, CircleAlert } from "lucide-react"
 import { formatApiError } from "@/lib/format-error"
 
-export function StaleSourcesBanner({ hosted }: { hosted: boolean }) {
+/**
+ * The "run it from your own computer" branch is gone, and with it the `hosted`
+ * prop that selected it.
+ *
+ * That instruction was true when refreshing meant launching Chrome on the
+ * operator's machine. It isn't now: /api/scrape opens a cloud browser for the
+ * signed-in platforms, and Reddit never needed one — so a hosted customer was
+ * being told to do something impossible in order to reach a button that would
+ * have worked.
+ */
+export function StaleSourcesBanner() {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -38,16 +48,10 @@ export function StaleSourcesBanner({ hosted }: { hosted: boolean }) {
             already saved, so they&apos;ll keep re-checking the same old ones until you refresh.
           </span>
         </div>
-        {hosted ? (
-          <span className="shrink-0 text-xs text-muted-foreground">
-            Refreshing needs to run from your own computer — open the app locally and refresh from there.
-          </span>
-        ) : (
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isPending} className="shrink-0">
-            <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
-            {isPending ? "Refreshing…" : "Refresh Sources Now"}
-          </Button>
-        )}
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isPending} className="shrink-0">
+          <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
+          {isPending ? "Refreshing…" : "Refresh Sources Now"}
+        </Button>
       </div>
       {error && (
         <div className="flex items-start gap-2 text-xs text-destructive">

@@ -9,7 +9,6 @@ import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
 import { ScanAgentButton } from "@/components/agents/scan-agent-button"
 import { AutoScanSelect } from "@/components/agents/auto-scan-select"
 import { StaleSourcesBanner } from "@/components/agents/stale-sources-banner"
-import { isHostedDeployment } from "@/lib/deployment"
 
 export const dynamic = "force-dynamic"
 
@@ -61,7 +60,7 @@ export default async function AgentsPage() {
         </Link>
       </div>
 
-      {sourcesAreStale && <StaleSourcesBanner hosted={isHostedDeployment()} />}
+      {sourcesAreStale && <StaleSourcesBanner />}
 
       {!agents || agents.length === 0 ? (
         <Card>
