@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { isAdmin } from "@/lib/privileges";
 
 const VALID_STATUSES = ["new", "contacted", "qualified", "appointment", "proposal", "won", "lost"];
 
@@ -58,8 +59,12 @@ async function dispatchToGHL(opportunity: Opportunity) {
       const data = await response.json();
       return { success: true, contactId: data.contact?.id };
     }
+    // Logged, not returned: GoHighLevel's error bodies name locations and
+    // fields belonging to the operator's account, and this reason travels
+    // back to the browser.
     const errText = await response.text();
-    return { success: false, reason: `GHL API responded with ${response.status}: ${errText}` };
+    console.error(`[ghl] dispatch failed ${response.status}: ${errText.slice(0, 300)}`);
+    return { success: false, reason: `GoHighLevel refused the contact (${response.status}).` };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown GHL dispatch error";
     return { success: false, reason: message };
@@ -115,17 +120,33 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .eq("id", opportunityId)
     .single();
 
-  // Qualifying an opportunity is the "approve" moment. GHL dispatch is opt-in
-  // per business (Settings → Integrations) since not every customer using
-  // this app has a GoHighLevel account to push into.
+  /**
+   * Qualifying is the "approve" moment, and it can push the lead to
+   * GoHighLevel — but only for the operator's own account.
+   *
+   * GHL_API_KEY and GHL_LOCATION_ID are deployment environment variables:
+   * one GoHighLevel account for the whole install, the operator's. The
+   * on/off switch, though, was a per-user setting. So any customer who
+   * turned it on and qualified a lead sent that person's name and phone
+   * number into somebody else's CRM — not their own, which is what the
+   * toggle led them to believe, and not anywhere they could ever see it.
+   *
+   * Two problems in one: a contractor's lead data leaving for a third party
+   * they never chose, and a feature that silently did nothing for them.
+   *
+   * Gated to admin until dispatch takes per-customer credentials. The
+   * settings toggle is hidden for everyone else for the same reason — this
+   * check is the control, that one is the explanation.
+   */
   let ghlResult = null;
   if (status === "qualified" && current.status !== "qualified" && updated) {
     const { data: ghlSetting } = await supabase
       .from("settings")
       .select("value")
+      .eq("user_id", user.id)
       .eq("key", "ghl_dispatch_enabled")
       .maybeSingle();
-    if (ghlSetting?.value === "true") {
+    if (ghlSetting?.value === "true" && (await isAdmin(supabase, user.id))) {
       ghlResult = await dispatchToGHL(updated as Opportunity);
     }
   }

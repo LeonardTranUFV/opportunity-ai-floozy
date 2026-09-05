@@ -151,7 +151,11 @@ export default async function SettingsPage() {
           <CardDescription>How leads are handed off and how much of your data the AI sees.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          <GhlToggle initialEnabled={ghlDispatchEnabled} />
+          {/* Operator-only. The GoHighLevel credentials are one set for the
+              whole deployment, so a customer switching this on would push
+              their leads into somebody else's CRM. Hidden until dispatch
+              takes per-customer credentials. */}
+          {userIsAdmin && <GhlToggle initialEnabled={ghlDispatchEnabled} />}
           <PrivacyModeToggle initialEnabled={privacyModeEnabled} />
         </CardContent>
       </Card>
