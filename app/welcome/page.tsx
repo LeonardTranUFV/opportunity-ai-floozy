@@ -1,4 +1,8 @@
 import Link from "next/link"
+import { Reveal } from "@/components/marketing/reveal"
+import { TiltCard } from "@/components/marketing/tilt-card"
+import { CountUp } from "@/components/marketing/count-up"
+import { DepthField } from "@/components/marketing/depth-field"
 
 /**
  * The public marketing page.
@@ -21,6 +25,19 @@ import Link from "next/link"
  * system. There is one now — $49/week and $149/month behind a 3-day trial —
  * and the hero says so, because the alternative is a visitor discovering the
  * number two clicks later and wondering what else was left out.
+ *
+ * ── On the motion ──────────────────────────────────────────────────────────
+ *
+ * The copy is unchanged from the version above; what changed is that the page
+ * now has depth. Sections surface from behind the page rather than fading onto
+ * it, the hero has a layered background that parallaxes as you scroll, and the
+ * example lead card turns toward the pointer — or the finger. All of it is in
+ * components/marketing and the `.mk-` rules in globals.css; none of it reaches
+ * the signed-in app, which has to stay fast and plain.
+ *
+ * Everything is readable at rest: the resting state is the visible one, so the
+ * page is complete with JavaScript off, in a thumbnail, and for anyone with
+ * reduced motion set — for whom every effect here is simply off.
  */
 export const metadata = {
   title: "Find the people already asking for what you sell",
@@ -55,81 +72,127 @@ const STEPS = [
   },
 ]
 
+const ARCHIVO = "font-[family-name:var(--font-archivo)]"
+
+/**
+ * The product's most characteristic object: one lead, as the dashboard shows
+ * it. Marked as an example, names nobody, names no platform.
+ */
+function ExampleLead() {
+  return (
+    <TiltCard className="rounded-2xl border border-border bg-card p-5 shadow-[0_30px_80px_-30px_rgb(0_0_0/0.35)] sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <span className="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">Example lead</span>
+        <span className="text-xs text-muted-foreground">Community group · 2h ago</span>
+      </div>
+      <p className="mt-4 text-[15px] leading-relaxed sm:text-base">
+        “Can anyone recommend a good electrician? Breaker keeps tripping in the garage and I&apos;d like
+        it sorted this week if possible. North Burnaby.”
+      </p>
+      <div className="mt-5 grid grid-cols-2 gap-3 border-y border-border py-3 text-sm">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Score</div>
+          <div className={`${ARCHIVO} mt-0.5 text-2xl font-black text-brand`}>91</div>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">Where</div>
+          <div className="mt-1 font-medium">North Burnaby</div>
+        </div>
+      </div>
+      <div className="mt-4 rounded-xl bg-accent/60 p-3.5 text-sm leading-relaxed">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Draft reply</div>
+        Hi — a breaker that keeps tripping is usually a quick find. I&apos;m in Burnaby and can come by
+        this week. Happy to take a look and tell you straight what it is.
+      </div>
+    </TiltCard>
+  )
+}
+
 export default function WelcomePage() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen overflow-x-hidden bg-background text-foreground">
       {/* Header */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <span className="font-[family-name:var(--font-archivo)] text-lg font-bold tracking-tight">
-          Opportunity AI
-        </span>
+      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+        <span className={`${ARCHIVO} text-lg font-bold tracking-tight`}>Opportunity AI</span>
         <nav className="flex items-center gap-6 text-sm">
           <Link href="/pricing" className="text-muted-foreground hover:text-foreground">
             Pricing
           </Link>
           <Link
             href="/login"
-            className="rounded-full bg-foreground px-5 py-2 font-medium text-background hover:opacity-90"
+            className="mk-lift rounded-full bg-foreground px-5 py-2 font-medium text-background"
           >
             Sign in
           </Link>
         </nav>
       </header>
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-6 pb-20 pt-16 md:pt-24">
-        <p className="mb-6 text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          Opportunity intelligence
-        </p>
-        <h1 className="font-[family-name:var(--font-archivo)] text-5xl font-black leading-[0.98] tracking-tight md:text-7xl">
-          Find the people already
-          <br />
-          asking for what you sell.
-        </h1>
-        <p className="mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
-          Every day someone near you posts “can anyone recommend a good electrician?” in a local
-          community group. Forty people see it before you do. Opportunity AI reads those posts and
-          tells you which ones are a real job.
-        </p>
-        {/* This used to read "Start a 7-day free trial" / "No card required",
-            which stopped being true the moment billing moved to a 3-day trial
-            with a card. A visitor read the generous version here and met the
-            real one two clicks later, which is a worse first impression than
-            the smaller number ever was.
+      {/* Hero: copy on the left, the product's one characteristic object on the right,
+          three depth planes drifting behind both. */}
+      <section className="mk-stage relative">
+        <DepthField />
+        <div className="relative z-10 mx-auto grid max-w-6xl gap-12 px-6 pb-24 pt-12 md:grid-cols-[1.15fr_1fr] md:items-center md:pt-20 lg:gap-16">
+          <div>
+            <Reveal as="p" className="mb-6 text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Opportunity intelligence
+            </Reveal>
+            <Reveal delay={70}>
+              {/* Balanced wrapping instead of a forced break: the <br /> that
+                  split this nicely into two lines on a desktop left "already"
+                  orphaned on a line of its own at 375px. */}
+              <h1
+                className={`${ARCHIVO} text-5xl font-black leading-[0.98] tracking-tight md:text-7xl`}
+                style={{ textWrap: "balance" }}
+              >
+                Find the people already asking for what you sell.
+              </h1>
+            </Reveal>
+            <Reveal as="p" delay={140} className="mt-8 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
+              Every day someone near you posts “can anyone recommend a good electrician?” in a local
+              community group. Forty people see it before you do. Opportunity AI reads those posts and
+              tells you which ones are a real job.
+            </Reveal>
+            {/* The offer appears in exactly one shape across the site — here, on
+                /pricing, and on the Stripe checkout. If it changes again, it has
+                to change in all three. */}
+            <Reveal delay={210} className="mt-10 flex flex-wrap items-center gap-4">
+              <Link
+                href="/scan"
+                className="mk-lift rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background"
+              >
+                See what&apos;s near you — free
+              </Link>
+              <Link
+                href="/pricing"
+                className="mk-lift rounded-full border border-border bg-background/60 px-8 py-4 text-base font-semibold backdrop-blur hover:bg-accent"
+              >
+                See pricing
+              </Link>
+            </Reveal>
+            <Reveal as="p" delay={280} className="mt-4 text-sm text-muted-foreground">
+              Free to look, no card. Paid plans start at $49 a week after a 3-day trial.
+            </Reveal>
+          </div>
 
-            The offer now appears in exactly one shape across the site — here,
-            on /pricing, and on the Stripe checkout. If it changes again, it has
-            to change in all three. */}
-        <div className="mt-10 flex flex-wrap items-center gap-4">
-          <Link
-            href="/scan"
-            className="rounded-full bg-foreground px-8 py-4 text-base font-semibold text-background hover:opacity-90"
-          >
-            See what&apos;s near you — free
-          </Link>
-          <Link
-            href="/pricing"
-            className="rounded-full border border-border px-8 py-4 text-base font-semibold hover:bg-accent"
-          >
-            See pricing
-          </Link>
+          <Reveal delay={160} className="md:justify-self-end md:w-full md:max-w-md">
+            <ExampleLead />
+          </Reveal>
         </div>
-        <p className="mt-4 text-sm text-muted-foreground">
-          Free to look, no card. Paid plans start at $49 a week after a 3-day trial.
-        </p>
       </section>
 
-      {/* The measured number */}
-      <section className="border-y border-border bg-accent/40">
-        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-16 md:grid-cols-[auto_1fr] md:items-center md:gap-16">
-          <div className="flex items-baseline gap-3">
-            <span className="font-[family-name:var(--font-archivo)] text-8xl font-black leading-none tracking-tighter md:text-9xl">
-              5
-            </span>
+      {/* The measured number. The figure counts up the first time it is seen —
+          the one reward for having scrolled here — and rests on the real value. */}
+      <section className="mk-stage border-y border-border bg-accent/40">
+        <div className="mx-auto grid max-w-6xl gap-10 px-6 py-20 md:grid-cols-[auto_1fr] md:items-center md:gap-16 md:py-28">
+          <Reveal className="flex items-baseline gap-3">
+            <CountUp
+              to={5}
+              className={`${ARCHIVO} text-8xl font-black leading-none tracking-tighter md:text-9xl`}
+            />
             <span className="text-2xl font-bold text-muted-foreground">a day</span>
-          </div>
-          <div>
-            <h2 className="font-[family-name:var(--font-archivo)] text-2xl font-bold md:text-3xl">
+          </Reveal>
+          <Reveal delay={120}>
+            <h2 className={`${ARCHIVO} text-2xl font-bold md:text-3xl`}>
               About five a day, in the Vancouver area.
             </h2>
             <p className="mt-4 max-w-xl text-muted-foreground">
@@ -137,62 +200,68 @@ export default function WelcomePage() {
               figure off a live dashboard over twelve days on the contractor niche, not a
               projection. Your number depends on your trade and how many groups you follow.
             </p>
-          </div>
+          </Reveal>
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="mx-auto max-w-6xl px-6 py-20">
-        <h2 className="font-[family-name:var(--font-archivo)] text-3xl font-black tracking-tight md:text-4xl">
-          How it works
-        </h2>
-        <ol className="mt-12 grid gap-10 md:grid-cols-2 lg:grid-cols-3">
-          {STEPS.map((s) => (
-            <li key={s.n}>
-              <div className="text-sm font-bold tracking-[0.2em] text-muted-foreground">{s.n}</div>
-              <h3 className="mt-3 font-[family-name:var(--font-archivo)] text-xl font-bold">
-                {s.title}
-              </h3>
+      {/* How it works. Steps surface one after another, 70ms apart, and each
+          lifts under the pointer. */}
+      <section className="mk-stage mx-auto max-w-6xl px-6 py-24 md:py-32">
+        <Reveal>
+          <h2 className={`${ARCHIVO} text-3xl font-black tracking-tight md:text-4xl`}>How it works</h2>
+        </Reveal>
+        <ol className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {STEPS.map((s, i) => (
+            <Reveal
+              as="li"
+              key={s.n}
+              delay={80 + i * 70}
+              className="mk-step rounded-2xl border border-border bg-card p-6"
+            >
+              <div className="mk-step-n text-sm font-bold tracking-[0.2em] text-muted-foreground">{s.n}</div>
+              <h3 className={`${ARCHIVO} mt-3 text-xl font-bold`}>{s.title}</h3>
               <p className="mt-2 leading-relaxed text-muted-foreground">{s.body}</p>
-            </li>
+            </Reveal>
           ))}
         </ol>
       </section>
 
       {/* Against bought leads */}
-      <section className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-20">
-          <h2 className="font-[family-name:var(--font-archivo)] text-3xl font-black tracking-tight md:text-4xl">
-            Not a lead you rent.
-          </h2>
+      <section className="mk-stage border-t border-border">
+        <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
+          <Reveal>
+            <h2 className={`${ARCHIVO} text-3xl font-black tracking-tight md:text-4xl`}>Not a lead you rent.</h2>
+          </Reveal>
           <div className="mt-8 grid gap-8 md:grid-cols-2">
-            <p className="text-lg leading-relaxed text-muted-foreground">
+            <Reveal as="p" delay={90} className="text-lg leading-relaxed text-muted-foreground">
               Buying leads means buying a race. The same name goes to four contractors and whoever
               calls back inside ten minutes wins the job you already paid for.
-            </p>
-            <p className="text-lg leading-relaxed text-muted-foreground">
+            </Reveal>
+            <Reveal as="p" delay={180} className="text-lg leading-relaxed text-muted-foreground">
               The person who needed that work posted about it publicly before any of that happened.
               You get the post itself — and nobody else was sold the same name.
-            </p>
+            </Reveal>
           </div>
         </div>
       </section>
 
       {/* Closing CTA */}
-      <section className="border-t border-border bg-accent/40">
-        <div className="mx-auto max-w-6xl px-6 py-20 text-center">
-          <h2 className="font-[family-name:var(--font-archivo)] text-4xl font-black tracking-tight md:text-5xl">
-            Point it at your trade.
-          </h2>
-          <p className="mt-4 text-lg text-muted-foreground">
+      <section className="mk-stage border-t border-border bg-accent/40">
+        <div className="mx-auto max-w-6xl px-6 py-24 text-center md:py-32">
+          <Reveal>
+            <h2 className={`${ARCHIVO} text-4xl font-black tracking-tight md:text-5xl`}>Point it at your trade.</h2>
+          </Reveal>
+          <Reveal as="p" delay={90} className="mt-4 text-lg text-muted-foreground">
             Tell it what you do and where. Counting what it finds costs nothing.
-          </p>
-          <Link
-            href="/scan"
-            className="mt-10 inline-block rounded-full bg-foreground px-10 py-4 text-base font-semibold text-background hover:opacity-90"
-          >
-            See what&apos;s near you
-          </Link>
+          </Reveal>
+          <Reveal delay={180}>
+            <Link
+              href="/scan"
+              className="mk-lift mt-10 inline-block rounded-full bg-foreground px-10 py-4 text-base font-semibold text-background"
+            >
+              See what&apos;s near you
+            </Link>
+          </Reveal>
         </div>
       </section>
 

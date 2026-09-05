@@ -192,3 +192,78 @@
     background-image: linear-gradient(135deg, var(--brand), var(--brand-2));
   }
 }
+/* ─────────────────────────────────────────────────────────────────────────
+   Marketing motion system (.mk-*). Public pages only.
+
+   Every rule here is inert for the signed-in app — nothing there carries an
+   .mk- class — and every animated state has a static resting state that is
+   the fully-visible one. Under prefers-reduced-motion the transitions are
+   removed and the transforms zeroed, so the page is simply a page.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* A section that hosts reveals gives its children a vanishing point. */
+.mk-stage { perspective: 1200px; perspective-origin: 50% 40%; }
+
+/* Reveal-from-depth. The class is only added once JS has confirmed the
+   viewer has not asked for reduced motion, so the no-JS state is "visible". */
+.mk-reveal {
+  opacity: 0;
+  transform: translate3d(0, 28px, -140px) scale(0.98);
+  transform-style: preserve-3d;
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.mk-reveal.mk-in { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+
+/* Pointer / touch tilt. Variables are written by the component per frame. */
+.mk-tilt {
+  --tilt-x: 0deg; --tilt-y: 0deg; --glare-x: 50%; --glare-y: 40%;
+  transform-style: preserve-3d;
+  transform: perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transition: transform 180ms ease-out, box-shadow 300ms ease;
+  will-change: transform;
+  position: relative;
+  touch-action: pan-y; /* a finger can still scroll the page through it */
+}
+.mk-tilt::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(360px circle at var(--glare-x) var(--glare-y), rgb(255 255 255 / 0.16), transparent 60%);
+  opacity: 0; transition: opacity 240ms ease;
+}
+.mk-tilt:hover::after, .mk-tilt:active::after { opacity: 1; }
+.mk-tilt > * { transform: translateZ(24px); }
+
+/* Depth field behind the hero. */
+.mk-depth { position: absolute; inset: -20% -10% -30% -10%; overflow: hidden; pointer-events: none; z-index: 0; }
+.mk-plane { position: absolute; border-radius: 50%; filter: blur(70px); will-change: transform; }
+.mk-plane-far  { width: 60vw; height: 60vw; right: -10vw; top: -10vw; background: color-mix(in oklab, var(--brand) 22%, transparent); }
+.mk-plane-mid  { width: 46vw; height: 46vw; left: -8vw;  top: 30%;   background: color-mix(in oklab, var(--brand) 14%, transparent); }
+.mk-plane-near { width: 34vw; height: 34vw; right: 12vw; top: 55%;   background: color-mix(in oklab, var(--brand) 10%, transparent); }
+@media (max-width: 640px) {
+  .mk-plane { filter: blur(48px); }
+  .mk-plane-far  { width: 110vw; height: 110vw; }
+  .mk-plane-mid  { width: 80vw;  height: 80vw;  }
+  .mk-plane-near { width: 60vw;  height: 60vw;  }
+}
+
+/* Buttons that lift. Translation plus shadow reads as the surface coming
+   toward you; colour alone reads as a state change. */
+.mk-lift { transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, opacity 150ms ease; }
+.mk-lift:hover { transform: translateY(-2px); box-shadow: 0 12px 30px -12px color-mix(in oklab, var(--foreground) 45%, transparent); }
+.mk-lift:active { transform: translateY(0); transition-duration: 80ms; }
+
+/* A card in the "how it works" grid: hover lifts it and brightens its number. */
+.mk-step { transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), background-color 260ms ease; }
+.mk-step:hover { transform: translateY(-4px); }
+.mk-step .mk-step-n { transition: color 260ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mk-step:hover .mk-step-n { color: var(--brand); transform: translateX(4px); }
+
+/* The whole system, switched off. */
+@media (prefers-reduced-motion: reduce) {
+  .mk-reveal { opacity: 1; transform: none; transition: none; }
+  .mk-tilt, .mk-lift, .mk-step, .mk-step .mk-step-n { transition: none; transform: none; }
+  .mk-tilt::after { display: none; }
+  .mk-plane { transform: none !important; }
+}
