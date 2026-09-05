@@ -332,10 +332,21 @@ export default function ScanPage() {
                 <div className="flex flex-col gap-3 border-t border-border pt-6 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
                   {captured ? (
                     <div>
-                      <p className="text-sm font-semibold">On its way.</p>
+                      {/* Says what happened, not what didn't.
+                          This read "On its way… if it doesn't arrive, check
+                          spam", which states that an email had been sent. None
+                          had: the address is recorded and a person sends the
+                          list. So the reader waited, searched their spam
+                          folder, found nothing, and concluded the product was
+                          broken — on the page paid traffic lands on. */}
+                      <p className="text-sm font-semibold">Got it.</p>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        We&apos;ll send this list to {email}. If it doesn&apos;t arrive, check spam —
-                        mail from a new domain often lands there.
+                        We&apos;ll send this list to {email}. A person puts it together rather than a
+                        robot, so give it a few hours — and it&apos;ll come from floozy.ca.
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Don&apos;t want to wait? Create a free account and the full list is on screen
+                        straight away.
                       </p>
                     </div>
                   ) : (
