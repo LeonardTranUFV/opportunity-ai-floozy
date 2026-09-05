@@ -14,6 +14,7 @@ import { formatDate, formatDateTimeFull } from "@/lib/format-date"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { isExactPostUrl } from "@/lib/post-url"
 import { isPrivacyMode, maskName, maskPhone } from "@/lib/privacy-mode"
+import { dedupeOpportunities } from "@/lib/dedupe-opportunities"
 
 export const dynamic = "force-dynamic"
 
@@ -126,7 +127,9 @@ export default async function OpportunitiesPage({
     .select("*, agents(name), posts:source_post_id(posted_at, scraped_at)")
     .order("intent_score", { ascending: false })
     .order("created_at", { ascending: false })
-    .limit(100)
+    // Three times what is shown: duplicates are collapsed after the fetch,
+    // and a top-100 taken before collapsing would come up short.
+    .limit(300)
 
   // A deep link from the dashboard's Recent Alerts — show just that one
   // opportunity regardless of status/agent/urgency, since the point is to
@@ -170,7 +173,12 @@ export default async function OpportunitiesPage({
   }
 
   const { data: rawOpportunities } = await query
-  const opportunities = rawOpportunities ? sortOpportunities(rawOpportunities, sort) : rawOpportunities
+  // One card per ask. See lib/dedupe-opportunities.ts for why, and for
+  // which copy is kept. A deep link to a single row passes straight through.
+  const collapsed = rawOpportunities
+    ? (params.id ? rawOpportunities : dedupeOpportunities(rawOpportunities).slice(0, 100))
+    : rawOpportunities
+  const opportunities = collapsed ? sortOpportunities(collapsed, sort) : collapsed
 
   // highIntent/location are deep-link-only filters (not part of FilterBar's
   // dropdowns), so surface them as separately-clearable chips that preserve

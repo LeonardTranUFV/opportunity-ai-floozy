@@ -368,7 +368,11 @@ export async function evaluateAgentPosts(
 
     if (opportunitiesToInsert.length > 0) {
       const { error } = await supabase.from("opportunities").insert(opportunitiesToInsert);
-      if (error) throw new Error(error.message);
+      // 23505 is the unique index from migration 0017: this post is already an
+      // opportunity for this agent. With the truncated-lookup bug fixed that
+      // should not happen, but if it ever does, the right outcome is "already
+      // recorded", not a failed scan.
+      if (error && error.code !== "23505") throw new Error(error.message);
     }
 
     /**

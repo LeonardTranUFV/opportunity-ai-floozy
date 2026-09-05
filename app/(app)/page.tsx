@@ -10,6 +10,7 @@ import { CallFirst } from "@/components/dashboard/call-first"
 import { SetupChecklist } from "@/components/dashboard/setup-checklist"
 import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
 import { listSessions } from "@/lib/session-store"
+import { dedupeOpportunities } from "@/lib/dedupe-opportunities"
 
 export const dynamic = "force-dynamic"
 
@@ -19,31 +20,30 @@ export default async function Home() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const [
-    { count: highIntentCount },
-    { count: activeConversations },
-    { count: pendingReview },
-    { count: communitiesMonitored },
-    { count: commentsSent },
-    { count: dmsSent },
-    { data: recentOpportunities },
-    { data: allGroups },
-    { data: locationsData },
-  ] = await Promise.all([
-    supabase.from("opportunities").select("*", { count: "exact", head: true }).in("urgency", ["asap", "high"]),
-    supabase.from("opportunities").select("*", { count: "exact", head: true }).eq("status", "qualified"),
-    supabase.from("opportunities").select("*", { count: "exact", head: true }).eq("status", "new"),
-    supabase.from("groups").select("*", { count: "exact", head: true }).eq("active", true),
-    supabase.from("opportunities").select("*", { count: "exact", head: true }).not("comment_sent_at", "is", null),
-    supabase.from("opportunities").select("*", { count: "exact", head: true }).not("dm_sent_at", "is", null),
-    supabase
-      .from("opportunities")
-      .select("id, author_name, ai_summary, content, urgency, location_mentioned, platform, post_url, created_at")
-      .order("created_at", { ascending: false })
-      .limit(20),
-    supabase.from("groups").select("id, platform, name, active").eq("active", true).order("created_at", { ascending: false }).limit(4),
-    supabase.from("opportunities").select("location_mentioned").not("location_mentioned", "is", null),
-  ])
+  // One fetch, collapsed once, and every number on this page derives from
+  // it. Six head-only count queries were cheaper per call, but they counted
+  // duplicates — the tiles said 706 where the customer had 223 leads. The
+  // collapse needs rows, so the rows are fetched once and counted in memory.
+  const [{ data: allOpportunities }, { count: communitiesMonitored }, { data: allGroups }] =
+    await Promise.all([
+      supabase
+        .from("opportunities")
+        .select(
+          "id, agent_id, author_name, ai_summary, content, status, urgency, location_mentioned, platform, post_url, author_profile_url, comment_sent_at, dm_sent_at, created_at"
+        )
+        .order("created_at", { ascending: false }),
+      supabase.from("groups").select("*", { count: "exact", head: true }).eq("active", true),
+      supabase.from("groups").select("id, platform, name, active").eq("active", true).order("created_at", { ascending: false }).limit(4),
+    ])
+
+  const leads = dedupeOpportunities(allOpportunities ?? [])
+  const highIntentCount = leads.filter((o) => o.urgency === "asap" || o.urgency === "high").length
+  const activeConversations = leads.filter((o) => o.status === "qualified").length
+  const pendingReview = leads.filter((o) => o.status === "new").length
+  const commentsSent = leads.filter((o) => o.comment_sent_at).length
+  const dmsSent = leads.filter((o) => o.dm_sent_at).length
+  const recentOpportunities = leads.slice(0, 20)
+  const locationsData = leads.filter((o) => o.location_mentioned).map((o) => ({ location_mentioned: o.location_mentioned }))
 
   // post counts per monitored group (small dataset, fine to do client-side)
   const groupIds = (allGroups ?? []).map((g) => g.id)

@@ -9,6 +9,7 @@ import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
 import { ScanAgentButton } from "@/components/agents/scan-agent-button"
 import { AutoScanSelect } from "@/components/agents/auto-scan-select"
 import { StaleSourcesBanner } from "@/components/agents/stale-sources-banner"
+import { dedupeOpportunities } from "@/lib/dedupe-opportunities"
 
 export const dynamic = "force-dynamic"
 
@@ -23,13 +24,19 @@ export default async function AgentsPage() {
     .order("created_at", { ascending: false })
 
   const agentIds = (agents ?? []).map((a) => a.id)
-  const { data: opportunityAgentIds } = agentIds.length
-    ? await supabase.from("opportunities").select("agent_id").in("agent_id", agentIds)
-    : { data: [] as { agent_id: string }[] }
+  // Counted after collapsing duplicates, so "706 opportunities found"
+  // becomes the 223 the customer can actually act on. The columns are what
+  // the collapse needs to pick a survivor; see lib/dedupe-opportunities.ts.
+  const { data: opportunityRows } = agentIds.length
+    ? await supabase
+        .from("opportunities")
+        .select("id, agent_id, content, status, author_name, author_profile_url, post_url, comment_sent_at, dm_sent_at, created_at")
+        .in("agent_id", agentIds)
+    : { data: [] }
 
   const countByAgent = new Map<string, number>()
-  for (const o of opportunityAgentIds ?? []) {
-    countByAgent.set(o.agent_id, (countByAgent.get(o.agent_id) ?? 0) + 1)
+  for (const o of dedupeOpportunities(opportunityRows ?? [])) {
+    if (o.agent_id) countByAgent.set(o.agent_id, (countByAgent.get(o.agent_id) ?? 0) + 1)
   }
 
   const { data: activeGroups } = await supabase.from("groups").select("last_scraped_at").eq("active", true)

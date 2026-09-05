@@ -4,6 +4,7 @@ import { Briefcase } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
+import { dedupeOpportunities } from "@/lib/dedupe-opportunities"
 
 export const dynamic = "force-dynamic"
 
@@ -20,10 +21,11 @@ const COLUMNS = [
 export default async function CrmPage() {
   const supabase = await createClient()
 
-  const { data: opportunities } = await supabase
+  const { data: rawOpportunities } = await supabase
     .from("opportunities")
-    .select("id, status, intent_score, urgency, ai_summary, content, author_name, estimated_value, agents(name)")
+    .select("id, agent_id, status, intent_score, urgency, ai_summary, content, author_name, author_profile_url, post_url, comment_sent_at, dm_sent_at, created_at, estimated_value, agents(name)")
     .order("intent_score", { ascending: false })
+  const opportunities = rawOpportunities ? dedupeOpportunities(rawOpportunities) : rawOpportunities
 
   const privacyMode = await isPrivacyMode(supabase)
 
