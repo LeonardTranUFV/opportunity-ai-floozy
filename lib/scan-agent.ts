@@ -105,12 +105,6 @@ export async function evaluateAgentPosts(
 ): Promise<EvaluateAgentResult> {
   const cutoffIso = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data: evaluatedRows } = await supabase
-    .from("evaluated_posts")
-    .select("source_post_id")
-    .eq("agent_id", agent.id);
-  const evaluatedIds = new Set((evaluatedRows ?? []).map((r) => r.source_post_id));
-
   // Posts with a parsed timestamp are filtered by that; posts where we couldn't
   // parse a relative age from the page (posted_at is null) fall back to when we
   // scraped them, so they aren't silently excluded from every range.
@@ -122,7 +116,36 @@ export async function evaluateAgentPosts(
     .order("scraped_at", { ascending: false })
     .limit(MAX_POSTS_PER_SCAN);
 
-  const unevaluated = ((allPosts ?? []) as PostRow[]).filter((p) => !evaluatedIds.has(p.id));
+  const candidates = (allPosts ?? []) as PostRow[];
+
+  /**
+   * Which of *these* posts this agent has already scored.
+   *
+   * This used to fetch every evaluated_posts row for the agent and filter in
+   * memory. PostgREST caps an unbounded select at 1000 rows and says nothing
+   * about it, so once an agent passed a thousand scored posts the excess came
+   * back invisible — and every post beyond the cap was re-scored on every
+   * single scan, minting a fresh duplicate opportunity each time.
+   *
+   * Measured on the live database before changing anything: one agent had
+   * 1,894 evaluated rows and this query returned 1,000. Its lead list had
+   * grown to 706, against 223 genuinely distinct asks.
+   *
+   * Asking about the candidates in hand instead of the whole history bounds
+   * the answer by MAX_POSTS_PER_SCAN, which is half the cap and cannot drift
+   * past it.
+   */
+  const candidateIds = candidates.map((p) => p.id);
+  const { data: evaluatedRows } = candidateIds.length
+    ? await supabase
+        .from("evaluated_posts")
+        .select("source_post_id")
+        .eq("agent_id", agent.id)
+        .in("source_post_id", candidateIds)
+    : { data: [] as { source_post_id: string }[] };
+  const evaluatedIds = new Set((evaluatedRows ?? []).map((r) => r.source_post_id));
+
+  const unevaluated = candidates.filter((p) => !evaluatedIds.has(p.id));
 
   if (unevaluated.length === 0) {
     return {

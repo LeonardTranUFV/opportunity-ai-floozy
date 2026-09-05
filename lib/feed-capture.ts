@@ -82,6 +82,23 @@ function hashText(str: string): string {
   return Math.abs(h).toString(36);
 }
 
+/**
+ * Pull the numeric story id out of Facebook's encoded form, or return the
+ * value unchanged when it is not that shape.
+ */
+function canonicalStoryId(id: string | null): string | null {
+  if (!id) return null;
+  if (/^d+$/.test(id)) return id;
+  try {
+    const decoded = Buffer.from(id, "base64").toString("utf8");
+    const match = decoded.match(/:VK:(d+)/);
+    if (match) return match[1];
+  } catch {
+    // Not base64 — fall through and keep the original.
+  }
+  return id;
+}
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -155,7 +172,20 @@ const readFacebookStory: ShapeReader = (node) => {
   const actor = isObject(actors[0]) ? (actors[0] as Record<string, unknown>) : null;
 
   const url = str(node.wwwURL) ?? str(node.url);
-  const postId = str(node.post_id) ?? str(node.id);
+  /**
+   * Facebook hands the same story two different ids depending on which shape
+   * of payload it arrives in: a bare numeric `post_id`, and an opaque `id`
+   * that is base64 of "S:_I<actor>:VK:<the same number>". Taking whichever was
+   * present stored one post twice, under two ids, and both copies were then
+   * scored as separate leads.
+   *
+   * Measured before changing: one post was in the database sixteen times, from
+   * a single group, under two ids that decode to the same number.
+   *
+   * Unwrapping the encoded form gives one canonical id, whichever shape the
+   * feed used.
+   */
+  const postId = str(node.post_id) ?? canonicalStoryId(str(node.id));
   const created = typeof node.creation_time === "number" ? node.creation_time : null;
 
   return {
