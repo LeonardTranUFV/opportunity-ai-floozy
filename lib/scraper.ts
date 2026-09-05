@@ -4,6 +4,7 @@ import { isHostedDeployment } from "@/lib/deployment";
 import { attachFeedCapture } from "@/lib/feed-capture";
 import { DomainThrottle, fetchPaced } from "@/lib/fetchers";
 import { getRedditToken, toOAuthUrl, REDDIT_USER_AGENT, REDDIT_SETUP_HINT } from "@/lib/reddit-auth";
+import { sessionPlatform } from "@/lib/session-platform";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randBetween = (min: number, max: number) => min + Math.floor(Math.random() * (max - min));
@@ -286,14 +287,9 @@ function extractNextdoorPosts(groupUrl: string): RawExtractedPost[] {
 }
 
 /** X (Twitter) search-results timeline — `data-testid` hooks are the stable, documented markers X itself uses for automated testing, so these are lower-risk than the Nextdoor guesses above. Still unverified live. */
-/**
- * Which saved login a source type actually uses. Marketplace has no login of
- * its own — it's Facebook — so it must resolve to the Facebook session both
- * for the profile directory and for concurrency bucketing.
- */
-export function sessionPlatform(platform: string): string {
-  return platform === "marketplace" ? "facebook" : platform;
-}
+// Re-exported so callers that already import it from here keep working; the
+// definition moved to a leaf module (see lib/session-platform.ts).
+export { sessionPlatform };
 
 /**
  * Facebook Marketplace listings.

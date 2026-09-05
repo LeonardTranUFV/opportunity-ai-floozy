@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sessionPlatform } from "@/lib/scraper";
+import { sessionPlatform } from "@/lib/session-platform";
 
 /**
  * What a customer's subscription entitles them to.

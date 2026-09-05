@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { scrapeActiveGroups, sessionPlatform } from "@/lib/scraper";
+import { scrapeActiveGroups } from "@/lib/scraper";
+import { sessionPlatform } from "@/lib/session-platform";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
 
 export interface ScrapeAndStoreResult {
