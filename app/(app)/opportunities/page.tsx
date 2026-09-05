@@ -13,7 +13,7 @@ import { FilterBar, type SortOption } from "@/components/opportunities/filter-ba
 import { formatDate, formatDateTimeFull } from "@/lib/format-date"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { isExactPostUrl } from "@/lib/post-url"
-import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
+import { isPrivacyMode, maskName, maskPhone } from "@/lib/privacy-mode"
 
 export const dynamic = "force-dynamic"
 
@@ -363,10 +363,18 @@ export default async function OpportunitiesPage({
                         <Phone className="h-3 w-3" />
                         Phone Number
                       </span>
+                      {/* Masked under privacy mode, and then not a link:
+                          a tel: href carries the full number even when the
+                          text is dots, which a screen recording of a hover or
+                          a long-press menu shows in full. */}
                       {opp.phone_number ? (
-                        <a href={`tel:${opp.phone_number}`} className="text-brand underline decoration-dotted underline-offset-2 hover:text-brand/80">
-                          {opp.phone_number}
-                        </a>
+                        privacyMode ? (
+                          <span className="tabular-nums">{maskPhone(opp.phone_number, true)}</span>
+                        ) : (
+                          <a href={`tel:${opp.phone_number}`} className="text-brand underline decoration-dotted underline-offset-2 hover:text-brand/80">
+                            {opp.phone_number}
+                          </a>
+                        )
                       ) : (
                         <span className="text-muted-foreground">Not stated</span>
                       )}
@@ -404,7 +412,11 @@ export default async function OpportunitiesPage({
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     )}
-                    {opp.author_profile_url && (
+                    {/* Hidden under privacy mode. A Facebook profile URL
+                        usually contains the person's name, so leaving this
+                        link visible published the very thing the initials
+                        above were hiding. */}
+                    {opp.author_profile_url && !privacyMode && (
                       <a
                         href={opp.author_profile_url}
                         target="_blank"
@@ -414,6 +426,12 @@ export default async function OpportunitiesPage({
                         <User className="h-3 w-3" />
                         View profile
                       </a>
+                    )}
+                    {opp.author_profile_url && privacyMode && (
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <User className="h-3 w-3" />
+                        Profile hidden
+                      </span>
                     )}
                   </div>
 
