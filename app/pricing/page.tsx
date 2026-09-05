@@ -10,6 +10,9 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card"
+import { Reveal } from "@/components/marketing/reveal"
+import { TiltCard } from "@/components/marketing/tilt-card"
+import { DepthField } from "@/components/marketing/depth-field"
 
 // Title carries no product suffix — the root layout's template appends it.
 export const metadata = {
@@ -37,6 +40,15 @@ export const metadata = {
  *
  * The older $97 Starter and $197 Pro links still exist in Stripe and still
  * bill anyone already on them. They are simply no longer offered here.
+ *
+ * ── On the motion ──────────────────────────────────────────────────────────
+ *
+ * Same depth system as /welcome (components/marketing, the .mk- rules in
+ * globals.css): the hero has parallax planes behind it, the three plan cards
+ * surface one after another and turn toward the pointer. Prices, copy and
+ * links are untouched — this page's job is to be trusted, and motion that
+ * drew attention away from the numbers would work against it. Everything is
+ * readable at rest and switches off under reduced motion.
  */
 const WEEKLY_LINK = "/api/checkout?plan=weekly"
 const MONTHLY_LINK = "/api/checkout?plan=monthly"
@@ -101,8 +113,8 @@ const TIERS = [
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
+    <div className="min-h-screen overflow-x-hidden bg-background">
+      <header className="relative z-10 mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2">
           <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 shadow-sm shadow-blue-600/30">
             <span className="font-bold text-white">O</span>
@@ -118,94 +130,101 @@ export default function PricingPage() {
           at the desktop spacing the hero filled the entire first screen — the
           prices, which are the reason anyone opened this page, sat below the
           fold behind a scroll. */}
-      <section className="mx-auto max-w-3xl px-6 pt-6 pb-10 text-center sm:pt-10 sm:pb-16">
-        <Badge variant="brand" className="mb-4">
-          For trades &amp; local service businesses
-        </Badge>
-        <h1 className="text-balance text-[2rem] font-semibold leading-[1.12] tracking-tight sm:text-5xl sm:leading-tight">
-          See the leads before your competitors even look.
-        </h1>
-        <p className="mt-4 text-pretty text-lg text-muted-foreground">
-          Angi and HomeStars sell the same lead to three or four of your competitors,
-          for $15 to $85 a time. We find the people near you asking for a plumber,
-          electrician, contractor — whatever you do — and hand them to you alone.
-        </p>
-        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Button
-            variant="brand"
-            size="lg"
-            nativeButton={false}
-            render={<Link href="/scan" />}
-          >
-            Run my free scan
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            nativeButton={false}
-            render={<a href="#pricing" />}
-          >
-            See pricing
-          </Button>
+      <section className="mk-stage relative">
+        <DepthField />
+        <div className="relative z-10 mx-auto max-w-3xl px-6 pt-6 pb-10 text-center sm:pt-10 sm:pb-16">
+          <Reveal>
+            <Badge variant="brand" className="mb-4">
+              For trades &amp; local service businesses
+            </Badge>
+          </Reveal>
+          <Reveal delay={70}>
+            <h1 className="text-balance text-[2rem] font-semibold leading-[1.12] tracking-tight sm:text-5xl sm:leading-tight">
+              See the leads before your competitors even look.
+            </h1>
+          </Reveal>
+          <Reveal as="p" delay={140} className="mt-4 text-pretty text-lg text-muted-foreground">
+            Angi and HomeStars sell the same lead to three or four of your competitors,
+            for $15 to $85 a time. We find the people near you asking for a plumber,
+            electrician, contractor — whatever you do — and hand them to you alone.
+          </Reveal>
+          <Reveal delay={210} className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Button
+              variant="brand"
+              size="lg"
+              className="mk-lift"
+              nativeButton={false}
+              render={<Link href="/scan" />}
+            >
+              Run my free scan
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="mk-lift"
+              nativeButton={false}
+              render={<a href="#pricing" />}
+            >
+              See pricing
+            </Button>
+          </Reveal>
+          <Reveal as="p" delay={280} className="mt-3 text-xs text-muted-foreground">
+            Your trade and your city, and that is it. No credit card, no accounts to
+            connect, results in about a minute.
+          </Reveal>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Your trade and your city, and that is it. No credit card, no accounts to
-          connect, results in about a minute.
-        </p>
       </section>
 
-      <section id="pricing" className="mx-auto max-w-5xl px-6 pb-24">
+      <section id="pricing" className="mk-stage mx-auto max-w-5xl px-6 pb-24">
         <div className="grid gap-6 sm:grid-cols-3">
-          {TIERS.map((tier) => (
-            <Card
-              key={tier.name}
-              className={
-                tier.highlighted
-                  ? "relative ring-2 ring-brand"
-                  : "relative"
-              }
-            >
-              {tier.highlighted && (
-                <Badge
-                  variant="brand"
-                  className="absolute -top-2.5 left-1/2 -translate-x-1/2"
+          {TIERS.map((tier, i) => (
+            <Reveal key={tier.name} delay={80 + i * 90} className="flex">
+              {/* A small tilt, and the same on every column: the popular plan
+                  is already marked, and making it move more than its
+                  neighbours would be a thumb on the scale. */}
+              <TiltCard max={5} className="flex w-full rounded-xl">
+                <Card
+                  className={`w-full ${tier.highlighted ? "relative ring-2 ring-brand" : "relative"}`}
                 >
-                  Most popular
-                </Badge>
-              )}
-              <CardHeader>
-                <CardTitle className="text-lg">{tier.name}</CardTitle>
-                <div className="mt-1 flex items-baseline gap-1">
-                  <span className="text-3xl font-semibold tracking-tight">
-                    {tier.price}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    {tier.period}
-                  </span>
-                </div>
-                <CardDescription className="mt-1">{tier.tagline}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1">
-                <ul className="flex flex-col gap-2.5">
-                  {tier.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2 text-sm">
-                      <Check className="mt-0.5 size-4 shrink-0 text-brand" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-              <CardFooter className="!border-t-0 !bg-transparent pt-0">
-                <Button
-                  variant={tier.variant}
-                  className="w-full"
-                  nativeButton={false}
-                  render={<Link href={tier.href} />}
-                >
-                  {tier.cta}
-                </Button>
-              </CardFooter>
-            </Card>
+                  {tier.highlighted && (
+                    <Badge
+                      variant="brand"
+                      className="absolute -top-2.5 left-1/2 -translate-x-1/2"
+                    >
+                      Most popular
+                    </Badge>
+                  )}
+                  <CardHeader>
+                    <CardTitle className="text-lg">{tier.name}</CardTitle>
+                    <div className="mt-1 flex items-baseline gap-1">
+                      <span className="text-3xl font-semibold tracking-tight">{tier.price}</span>
+                      <span className="text-sm text-muted-foreground">{tier.period}</span>
+                    </div>
+                    <CardDescription className="mt-1">{tier.tagline}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    <ul className="flex flex-col gap-2.5">
+                      {tier.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-2 text-sm">
+                          <Check className="mt-0.5 size-4 shrink-0 text-brand" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                  <CardFooter className="!border-t-0 !bg-transparent pt-0">
+                    <Button
+                      variant={tier.variant}
+                      className="mk-lift w-full"
+                      nativeButton={false}
+                      render={<Link href={tier.href} />}
+                    >
+                      {tier.cta}
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </TiltCard>
+            </Reveal>
           ))}
         </div>
         {/* This paragraph has now been wrong in both directions, which is worth a
@@ -220,11 +239,11 @@ export default function PricingPage() {
             the signed-in platforms are the ones a customer can switch on alone.
             Reddit is the one that can't currently collect. Whatever this says,
             it has to match what a customer gets on the day they pay. */}
-        <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
+        <Reveal as="p" delay={120} className="mx-auto mt-8 max-w-2xl text-center text-xs text-muted-foreground">
           Facebook, LinkedIn, Nextdoor and X each take one sign-in with your own
           account — about two minutes in a secure browser session you drive
           yourself. Prefer a hand? We&apos;ll do it with you on a call.
-        </p>
+        </Reveal>
         <p className="mt-4 text-center text-xs text-muted-foreground">
           No contracts. Cancel anytime. Prices in CAD.
         </p>
