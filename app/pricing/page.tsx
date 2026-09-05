@@ -1,5 +1,7 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { Check } from "lucide-react"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -111,7 +113,16 @@ const TIERS = [
   },
 ]
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  // Someone signed in has already been through this funnel. Their plan,
+  // credits and the upgrade buttons live on /billing, where the page can say
+  // what they have rather than sell it to them again.
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (user) redirect("/billing")
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
       <header className="relative z-10 mx-auto flex max-w-5xl items-center justify-between px-6 py-6">

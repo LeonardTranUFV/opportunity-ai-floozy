@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { scrapeActiveGroups } from "@/lib/scraper";
 import { sessionPlatform } from "@/lib/session-platform";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
+import { getSourceCapacity, partitionByCap } from "@/lib/entitlement";
 
 export interface ScrapeAndStoreResult {
   scraped: number;
@@ -57,7 +58,7 @@ export async function scrapeAndStorePosts(
 ): Promise<ScrapeAndStoreResult> {
   const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
-    .select("id, platform, name, url, last_scraped_at")
+    .select("id, platform, name, url, last_scraped_at, created_at")
     // Explicit, not left to RLS. Every caller so far passes a request-scoped
     // client where RLS already restricts this to the signed-in user, so this
     // changes nothing today. It matters for the caller that doesn't: a
@@ -88,12 +89,23 @@ export async function scrapeAndStorePosts(
   // Driving a browser that doesn't exist would fail every group one at a time
   // instead of saying so once, which is the only case this filter now covers.
   const browserlessHost = !canRunSignedInBrowser();
-  const activeGroups = browserlessHost
+  const runnableGroups = browserlessHost
     ? allGroups.filter((g) => sessionPlatform(g.platform) === "reddit")
     : allGroups;
-  const browserOnly = browserlessHost ? allGroups.length - activeGroups.length : 0;
+  const browserOnly = browserlessHost ? allGroups.length - runnableGroups.length : 0;
+
+  // The plan's cap, applied where it costs money: here, not only at the
+  // switch-on check. See partitionByCap for why the page and the crawl must
+  // agree on which sources are read.
+  const capacity = await getSourceCapacity(supabase, userId);
+  const { read: activeGroups, overCap } = partitionByCap(runnableGroups, capacity);
 
   const preamble: string[] = [];
+  if (overCap.length > 0) {
+    preamble.push(
+      `${overCap.length} source(s) are over your plan's limit of ${capacity.limit} and were not read — pause some sources to bring the rest back.`
+    );
+  }
   if (browserOnly > 0) {
     preamble.push(
       `${browserOnly} source(s) need a signed-in browser, which isn't set up on this deployment — Reddit sources were scraped as normal.`

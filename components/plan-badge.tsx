@@ -45,7 +45,7 @@ export function PlanBadge({
         <TooltipTrigger
           render={
             <Link
-              href="/pricing"
+              href="/billing"
               className={cn(
                 base,
                 "border-brand/30 bg-brand/10 text-brand hover:bg-brand/15 dark:border-brand/40"

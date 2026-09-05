@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen, ShieldCheck } from "lucide-react"
+import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen, ShieldCheck, Gem } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Each section gets its own accent color — same rotation the dashboard stat
@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { href: "/crm", label: "CRM Pipeline", icon: Briefcase, color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-500/10", dot: "before:bg-cyan-500" },
   { href: "/guide", label: "How It Works", icon: BookOpen, color: "text-fuchsia-600 dark:text-fuchsia-400", bg: "bg-fuchsia-500/10", dot: "before:bg-fuchsia-500" },
   { href: "/tools", label: "Tools", icon: Wrench, color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-500/10", dot: "before:bg-orange-500" },
+  { href: "/billing", label: "Plan & Credits", icon: Gem, color: "text-sky-600 dark:text-sky-400", bg: "bg-sky-500/10", dot: "before:bg-sky-500" },
   { href: "/settings", label: "Settings", icon: Settings, color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-500/10", dot: "before:bg-slate-500" },
 ]
 

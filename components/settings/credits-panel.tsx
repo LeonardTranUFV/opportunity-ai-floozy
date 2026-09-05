@@ -133,9 +133,9 @@ export function CreditsPanel({
 
       {!lastPayment && (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          No plan on this account yet — you&apos;re on trial credits. Plans start with a 3-day free trial; see the{" "}
-          <Link href="/pricing" className="text-brand underline decoration-dotted underline-offset-4">
-            pricing page
+          No plan on this account yet — you&apos;re on trial credits. Plans start with a 3-day free trial; see{" "}
+          <Link href="/billing" className="text-brand underline decoration-dotted underline-offset-4">
+            Plan &amp; Credits
           </Link>
           .
         </p>

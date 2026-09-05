@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sessionPlatform } from "@/lib/session-platform";
+import { hasPoolAccess } from "@/lib/privileges";
 
 /**
  * What a customer's subscription entitles them to.
@@ -101,6 +102,13 @@ export interface SourceCapacity {
   used: number;
   limit: number;
   remaining: number;
+  /**
+   * Admin and pool-access accounts are not capped. The operator's own account
+   * runs the demo and the pool, and rationing it against the budget it is
+   * responsible for makes no sense. `limit` still carries the plan's number
+   * for display; `remaining` is effectively infinite.
+   */
+  unlimited: boolean;
 }
 
 /** What the customer is using, and what they are allowed. */
@@ -119,7 +127,49 @@ export async function getSourceCapacity(
 
   const used = (data ?? []).filter((g) => countsTowardSourceLimit(g.platform as string)).length;
 
-  return { plan, used, limit, remaining: Math.max(0, limit - used) };
+  const unlimited = await hasPoolAccess(supabase, userId);
+  return {
+    plan,
+    used,
+    limit,
+    remaining: unlimited ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - used),
+    unlimited,
+  };
+}
+
+export interface CapGroup {
+  id: string;
+  platform: string;
+  created_at?: string | null;
+}
+
+/**
+ * Which active sources are actually read, and which sit over the limit.
+ *
+ * The cap used to exist only at the moment a source was switched on, so an
+ * account that was already over it — sources added before the limit, or by
+ * an admin — kept every one of them collecting while the page said "20 / 10".
+ * Both the collector and the page now call this, so the number on screen and
+ * the sources being read are the same set.
+ *
+ * Oldest first, by `created_at`: the sources a customer set up first keep
+ * their place, and the ones that fall outside the cap are the most recently
+ * added — the same order "pause one to switch another on" implies. Reddit
+ * never counts and is always read.
+ */
+export function partitionByCap<T extends CapGroup>(
+  groups: T[],
+  capacity: Pick<SourceCapacity, "limit" | "unlimited">
+): { read: T[]; overCap: T[] } {
+  if (capacity.unlimited) return { read: groups, overCap: [] };
+  const counted = groups
+    .filter((g) => countsTowardSourceLimit(g.platform))
+    .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+  const overIds = new Set(counted.slice(capacity.limit).map((g) => g.id));
+  return {
+    read: groups.filter((g) => !overIds.has(g.id)),
+    overCap: groups.filter((g) => overIds.has(g.id)),
+  };
 }
 
 /**

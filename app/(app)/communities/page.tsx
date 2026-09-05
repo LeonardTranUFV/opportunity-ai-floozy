@@ -12,7 +12,7 @@ import { CheckSourcesButton } from "@/components/communities/check-sources-butto
 import { ResyncGroupsButton } from "@/components/communities/resync-groups-button"
 import { isHostedDeployment } from "@/lib/deployment"
 import { canRunSignedInBrowser } from "@/lib/remote-browser"
-import { getSourceCapacity } from "@/lib/entitlement"
+import { getSourceCapacity, partitionByCap } from "@/lib/entitlement"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 
 export const dynamic = "force-dynamic"
@@ -33,7 +33,7 @@ export default async function CommunitiesPage() {
 
   const { data: allGroups } = await supabase
     .from("groups")
-    .select("id, platform, name, url, active, needs_membership")
+    .select("id, platform, name, url, active, needs_membership, created_at")
     .order("created_at", { ascending: false })
 
   const groupIds = (allGroups ?? []).map((g) => g.id)
@@ -55,7 +55,18 @@ export default async function CommunitiesPage() {
   } = await supabase.auth.getUser()
   const capacity = user
     ? await getSourceCapacity(supabase, user.id)
-    : { plan: "trial", used: 0, limit: 0, remaining: 0 }
+    : { plan: "trial", used: 0, limit: 0, remaining: 0, unlimited: false }
+
+  // The same split the collector makes, so a source flagged here is exactly
+  // one that is not being read. An account can be over its cap without ever
+  // being refused — sources added before the limit existed, or by an admin.
+  const overCapIds = new Set(
+    partitionByCap(
+      groups.filter((g) => g.active),
+      capacity
+    ).overCap.map((g) => g.id)
+  )
+  const overCapCount = overCapIds.size
 
   const groupsByPlatform = new Map<string, typeof groups>()
   for (const g of groups) {
@@ -148,26 +159,32 @@ export default async function CommunitiesPage() {
                 <span className="text-xs font-medium text-muted-foreground">Actively monitored</span>
                 <span
                   className={`text-sm font-semibold tabular-nums ${
-                    capacity.remaining === 0 ? "text-amber-600 dark:text-amber-400" : ""
+                    !capacity.unlimited && capacity.remaining === 0 ? "text-amber-600 dark:text-amber-400" : ""
                   }`}
                 >
-                  {capacity.used} / {capacity.limit}
+                  {capacity.unlimited ? `${capacity.used} · no limit` : `${capacity.used} / ${capacity.limit}`}
                 </span>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className={`h-full rounded-full transition-all ${
-                    capacity.remaining === 0 ? "bg-amber-500" : "bg-brand"
+                    !capacity.unlimited && capacity.remaining === 0 ? "bg-amber-500" : "bg-brand"
                   }`}
                   style={{
-                    width: `${capacity.limit ? Math.min(100, (capacity.used / capacity.limit) * 100) : 0}%`,
+                    width: capacity.unlimited
+                      ? "100%"
+                      : `${capacity.limit ? Math.min(100, (capacity.used / capacity.limit) * 100) : 0}%`,
                   }}
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {capacity.remaining === 0
-                  ? "At your limit — pause one to switch another on."
-                  : `${capacity.remaining} more can be switched on.`}{" "}
+                {capacity.unlimited
+                  ? "This account has no source limit (admin / pool access) — every active source is read."
+                  : overCapCount > 0
+                    ? `Over your limit — ${overCapCount} of these ${overCapCount === 1 ? "isn't" : "aren't"} being read. Pause ${overCapCount} to bring the rest back, or upgrade.`
+                    : capacity.remaining === 0
+                      ? "At your limit — pause one to switch another on."
+                      : `${capacity.remaining} more can be switched on.`}{" "}
                 Reddit sources don&apos;t count.
               </p>
             </div>
@@ -227,6 +244,14 @@ export default async function CommunitiesPage() {
                                 different from "you're a member" — guessing
                                 either way would put a warning on a source that
                                 is simply new. */}
+                            {g.active && overCapIds.has(g.id) && (
+                              <Badge
+                                variant="warning"
+                                title={`Your plan reads ${capacity.limit} sources at a time, oldest first. This one is outside that, so nothing is collected from it until you pause another.`}
+                              >
+                                Over limit — not being read
+                              </Badge>
+                            )}
                             {g.needs_membership === true && (
                               <Badge
                                 variant="warning"

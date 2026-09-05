@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { grantCredits } from "@/lib/credits";
 
 /**
  * Stripe's side of the conversation: what the customer actually bought.
@@ -121,6 +122,42 @@ export async function POST(request: Request) {
       // The one moment the Supabase user id is present. Every later event
       // arrives with Stripe ids only, which is why the row is created here.
       const userId = object.client_reference_id as string | null;
+
+      // A credit pack, not a plan. Sold by /api/credits/checkout in payment
+      // mode with the quantity in metadata; it must never touch
+      // `subscriptions`. Idempotent on the session id — Stripe retries, and
+      // a retried grant would be free credits.
+      if (object.mode === "payment") {
+        const sessionId = String(object.id ?? "");
+        const credits = Number((object.metadata as { credits?: string } | undefined)?.credits);
+        if (!userId || !sessionId || !Number.isInteger(credits) || credits <= 0) {
+          console.error(`[stripe] credit pack session ${sessionId} is missing a user or a quantity`);
+          return NextResponse.json({ received: true, linked: false });
+        }
+        if (object.payment_status !== "paid") {
+          // Async payment methods complete later; that arrives as its own
+          // event. Granting now would credit a payment that may never land.
+          return NextResponse.json({ received: true, pending: true });
+        }
+        const { data: existing } = await admin
+          .from("credit_transactions")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("reason", "top_up_purchase")
+          .contains("metadata", { session_id: sessionId })
+          .limit(1);
+        if (existing && existing.length > 0) {
+          return NextResponse.json({ received: true, duplicate: true });
+        }
+        await grantCredits(admin, userId, credits, "top_up_purchase", {
+          session_id: sessionId,
+          amount_total: object.amount_total ?? null,
+          currency: object.currency ?? null,
+        });
+        console.log(`[stripe] granted ${credits} credits to user ${userId} for session ${sessionId}`);
+        return NextResponse.json({ received: true, credited: credits });
+      }
+
       if (!userId) {
         // Someone reached a payment link directly rather than through
         // /api/checkout. The payment is real but unattributable, so say so

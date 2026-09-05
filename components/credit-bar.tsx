@@ -12,7 +12,7 @@ export function CreditBar({ balance, allowance }: { balance: number; allowance: 
       <TooltipTrigger
         render={
           <Link
-            href="/pricing"
+            href="/billing"
             aria-label={`${balance} of ${allowance} credits remaining — click to buy more`}
             className="flex items-center gap-1.5 rounded-full border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-muted"
           />

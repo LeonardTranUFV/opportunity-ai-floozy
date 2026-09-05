@@ -43,9 +43,19 @@ function allowList(raw: string | undefined): string[] {
  * session. A service-role client has no user, so this returns null and the
  * check falls back to matching by id — which is the safe direction.
  */
-async function callerEmail(supabase: SupabaseClient): Promise<string | null> {
+async function callerEmail(supabase: SupabaseClient, userId: string): Promise<string | null> {
   try {
     const { data } = await supabase.auth.getUser();
+    if (data.user?.email) return data.user.email.toLowerCase();
+  } catch {
+    // fall through to the admin lookup
+  }
+  // No session — the scheduled collector runs with the service role on
+  // behalf of each customer in turn. Without this, an email allowlist was
+  // invisible to the cron and an admin's own sources were capped there
+  // while the same account showed as unlimited in the browser.
+  try {
+    const { data } = await supabase.auth.admin.getUserById(userId);
     return data.user?.email?.toLowerCase() ?? null;
   } catch {
     return null;
@@ -64,7 +74,7 @@ async function isListed(
   const emails = allowList(emailsRaw);
   if (emails.length === 0) return false;
 
-  const email = await callerEmail(supabase);
+  const email = await callerEmail(supabase, userId);
   return !!email && emails.includes(email);
 }
 

@@ -12,6 +12,7 @@ const TITLES: Record<string, string> = {
   "/crm": "CRM Pipeline",
   "/tools": "Tools",
   "/settings": "Settings",
+  "/billing": "Plan & Credits",
 }
 
 export function PageTitle() {
