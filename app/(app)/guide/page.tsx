@@ -13,7 +13,7 @@ const PIPELINE = [
   {
     icon: KeyRound,
     title: "Connect Accounts",
-    description: "Log into Facebook, LinkedIn, Nextdoor, or X so the app can see what you see. A real browser window opens — you log in yourself, nothing is stored.",
+    description: "Sign into Facebook, LinkedIn, Nextdoor or X so the app can see what you see. A browser opens inside this page and you sign in yourself — we never see your password, and the sign-in is saved so you only do it once.",
     href: "/accounts",
     color: "text-amber-600 dark:text-amber-400",
     bg: "bg-amber-500/10",
@@ -134,8 +134,9 @@ export default function GuidePage() {
           title="Facebook Groups"
           description="Watch Facebook groups for people who need what you offer. Public groups work without joining; private ones need you to be a member."
           steps={[
-            "Go to Connect Accounts and click Connect Facebook — a real browser window opens, you log in yourself.",
-            "Close that popup window once you're logged in (don't leave it open, or it'll block future checks/logins).",
+            "Go to Connect Accounts and click Connect Facebook — a browser opens inside the page and you sign in there yourself.",
+            "Expect a security email from Facebook saying a new browser signed in. That's this, and it's normal.",
+            "Click \"I've logged in\" when you're through. Your sign-in is saved, encrypted, so you won't be asked again.",
             "Go to Sources → Find groups to monitor, enter your trade and area, and Track the ones you want. Not sure what to search for? Open the AI suggestions. You can also paste a group URL under Add a Source.",
             "Join the groups you want to reply in — tracking collects the leads, membership is what lets you answer them.",
             "Hit Find Opportunities on an AI Agent — it collects the newest posts and scores them for you.",
@@ -168,7 +169,7 @@ export default function GuidePage() {
           title="Nextdoor"
           description="Watch your own verified neighborhood feed for local job requests — the highest-intent, most local source there is."
           steps={[
-            "Go to Connect Accounts and click Connect Nextdoor. Use your email + password, not \"Continue with Google\" — Google blocks sign-in from any automated browser.",
+            "Go to Connect Accounts and click Connect Nextdoor. Use your email and password, not \"Continue with Google\" — Google refuses sign-in from an automated browser.",
             "Close the popup once logged in.",
             "Go to Sources → Add a Source → Nextdoor and click Add My Neighborhood — one click, no typing.",
           ]}
@@ -203,7 +204,7 @@ export default function GuidePage() {
             "Go to Sources → Add a Source → Reddit and type what you're looking for, e.g. \"need a roofer Vancouver\" to search all of Reddit.",
             "Or click \"Or watch a specific subreddit\" and enter just the name, e.g. \"roofing\", to follow one subreddit's new posts.",
           ]}
-          caveat="Backend wiring for the Reddit API is still in progress — sources can be added now, but monitoring won't return real posts until that's finished."
+          caveat="The app's Reddit support is finished and works — what it needs is API credentials. Reddit closed new Data API registrations to anything that isn't a moderation tool, so a new script app has to be approved by them first. Until this deployment has credentials, Reddit sources can be added but collect nothing."
           useNowHref="/communities"
         />
 
