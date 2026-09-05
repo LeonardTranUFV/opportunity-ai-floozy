@@ -31,7 +31,7 @@ export const TOUR_STEPS: TourStep[] = [
     target: "nav-accounts",
     route: "/",
     title: "1 — Connect an account",
-    body: "Start here. This opens a real browser window where you log into Facebook, LinkedIn, Nextdoor or X yourself. We never see your password — the app just borrows the logged-in session so it can read what you can read.",
+    body: "Start here. A browser opens inside the page and you sign into Facebook, LinkedIn, Nextdoor or X yourself. We never see your password, and the sign-in is saved so you only do it once.",
   },
   {
     target: "nav-communities",

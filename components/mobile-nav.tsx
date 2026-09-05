@@ -45,6 +45,12 @@ export function MobileNav() {
             key={href}
             href={href}
             aria-current={isActive ? "page" : undefined}
+            // Same anchors the sidebar carries. Without these the guided tour
+            // had nothing to point at on a phone: the sidebar is a closed
+            // sheet there, so every "1 — Connect an account" step fell back to
+            // a centred card after opening with "I'll point at each button as
+            // we go".
+            data-tour={`nav-${href === "/" ? "dashboard" : href.slice(1)}`}
             className="flex flex-1 flex-col items-center gap-1 py-2 text-[0.7rem] font-medium"
           >
             <span

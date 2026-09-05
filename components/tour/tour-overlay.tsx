@@ -37,9 +37,26 @@ export function TourOverlay() {
       return
     }
 
+    /**
+      * The anchor that is actually on screen.
+      *
+      * Two navigations carry each anchor — the sidebar and the phone's bottom
+      * bar — and only one of them is ever visible. querySelector returns the
+      * first in document order, which is the sidebar: on a phone that lives in
+      * a closed sheet and measures zero, so the tour would point at a
+      * zero-size box in the corner. Size is the test, because it is the same
+      * question the cut-out is about to ask.
+      */
+    const findVisible = (target: string): HTMLElement | null => {
+      const candidates = Array.from(
+        document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`)
+      )
+      return candidates.find((el) => el.getBoundingClientRect().width > 0) ?? null
+    }
+
     let raf = 0
     const measure = () => {
-      const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`)
+      const el = findVisible(step.target)
       if (!el) {
         // Target isn't on this page (collapsed sidebar, different route mid-
         // navigation). Fall back to a centred card rather than pointing at
@@ -53,7 +70,7 @@ export function TourOverlay() {
 
     // One frame's delay lets route transitions settle before measuring.
     raf = requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`)
+      const el = findVisible(step.target)
       el?.scrollIntoView({ block: "center", behavior: "smooth" })
       measure()
     })
