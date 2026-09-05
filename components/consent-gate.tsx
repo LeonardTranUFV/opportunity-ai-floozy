@@ -18,7 +18,24 @@ import { Button } from "@/components/ui/button"
  * lets another business act on a lead this user's agent found — so it has to
  * be a choice they actively make, not one they fail to notice.
  */
-export function ConsentGate({ poolAlreadyOn }: { poolAlreadyOn: boolean }) {
+/**
+  * `returning` separates the two reasons this gate appears.
+  *
+  * It shows whenever the accepted terms version isn't the current one — which
+  * is true both for somebody who has never accepted anything and for somebody
+  * whose acceptance predates a revision. The component could not tell those
+  * apart, so it greeted every new signup with "We've updated our Terms and
+  * Privacy Policy", implying they had agreed to something before. On the first
+  * screen after signing up, that is the wrong sentence and a slightly
+  * dishonest one.
+  */
+export function ConsentGate({
+  poolAlreadyOn,
+  returning,
+}: {
+  poolAlreadyOn: boolean
+  returning: boolean
+}) {
   const router = useRouter()
   const [accepted, setAccepted] = useState(false)
   const [pool, setPool] = useState(poolAlreadyOn)
@@ -46,11 +63,12 @@ export function ConsentGate({ poolAlreadyOn }: { poolAlreadyOn: boolean }) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/95 p-4 backdrop-blur-sm">
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl">
         <h2 className="font-[family-name:var(--font-archivo)] text-xl font-bold">
-          Before you continue
+          {returning ? "Before you continue" : "Before you start"}
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          We&apos;ve updated our Terms and Privacy Policy. Please read and accept them to keep using
-          Opportunity AI.
+          {returning
+            ? "We've updated our Terms and Privacy Policy. Please read and accept them to keep using Opportunity AI."
+            : "Please read and accept our Terms and Privacy Policy. Here's what matters most, in plain language."}
         </p>
 
         <div className="mt-5 space-y-3 rounded-lg border border-border bg-accent/40 p-4 text-sm">

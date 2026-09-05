@@ -85,7 +85,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <MobileNav />
       <TourOverlay />
-      {consent && !consent.current && <ConsentGate poolAlreadyOn={consent.poolOptIn} />}
+      {consent && !consent.current && (
+        <ConsentGate
+          poolAlreadyOn={consent.poolOptIn}
+          // Having a stored version at all means they accepted once before,
+          // so this is a re-consent rather than a first one.
+          returning={consent.termsVersion !== null}
+        />
+      )}
       </TourProvider>
     </SidebarProvider>
   )
