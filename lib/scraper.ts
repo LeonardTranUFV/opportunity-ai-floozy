@@ -63,11 +63,21 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
   const parseRelativeAge = (container: Element): string | null => {
     const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
     const now = Date.now();
+    /**
+     * Noon UTC, not noon wherever this browser happens to be.
+     *
+     * This runs inside the scraped page, and the page runs in a rented cloud
+     * browser that can be in any region. `new Date(y, m, d, 12)` builds noon
+     * in *that* zone; the app then renders it in America/Vancouver. From a
+     * browser far enough east the two disagree about which calendar day it is,
+     * and "15 May" showed up as 14 May. Anchoring to noon UTC keeps the same
+     * date for any viewer between roughly UTC-11 and UTC+11.
+     */
     const fromParts = (monthIdx: number, day: number, year: number | null): string | null => {
-      const y = year ?? new Date(now).getFullYear();
-      const d = new Date(y, monthIdx, day, 12, 0, 0);
+      const y = year ?? new Date(now).getUTCFullYear();
+      const d = new Date(Date.UTC(y, monthIdx, day, 12, 0, 0));
       if (Number.isNaN(d.getTime())) return null;
-      if (!year && d.getTime() > now + 86400e3) d.setFullYear(y - 1);
+      if (!year && d.getTime() > now + 86400e3) d.setUTCFullYear(y - 1);
       return d.toISOString();
     };
     const parseLabel = (raw: string): string | null => {
@@ -104,14 +114,25 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
       }
       return null;
     };
-    // The permalink and its <abbr> carry the date; aria-label is the fullest
-    // form ("15 May at 10:32"), the visible text the shortest ("15 May").
-    const candidates = container.querySelectorAll("a[aria-label], abbr, a[href*='/posts/'], a[href*='/permalink'], a, span");
-    for (const el of candidates) {
-      for (const label of [el.getAttribute("aria-label"), el.textContent]) {
-        if (!label) continue;
-        const parsed = parseLabel(label);
-        if (parsed) return parsed;
+    /**
+     * One pass per selector, most specific first.
+     *
+     * These used to be a single comma-separated query, and querySelectorAll
+     * returns **document order, not selector order** — so a <span> in the
+     * post's own body was checked before the timestamp anchor. A post whose
+     * text happened to contain "2 weeks" dated itself two weeks old. The
+     * permalink and its <abbr> carry the real date; aria-label is the fullest
+     * form ("15 May at 10:32"), the visible text the shortest ("15 May"). The
+     * bare a/span passes stay last, as a fallback rather than a first guess.
+     */
+    const passes = ["a[aria-label]", "abbr", "a[href*='/posts/']", "a[href*='/permalink']", "a", "span"];
+    for (const selector of passes) {
+      for (const el of container.querySelectorAll(selector)) {
+        for (const label of [el.getAttribute("aria-label"), el.textContent]) {
+          if (!label) continue;
+          const parsed = parseLabel(label);
+          if (parsed) return parsed;
+        }
       }
     }
     return null;
@@ -156,8 +177,19 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
     if (seenTexts.has(textKey)) return;
     seenTexts.add(textKey);
 
+    /**
+     * The post's own permalink is the FIRST one in the container.
+     *
+     * This used to assign inside a forEach with no break, so the *last*
+     * matching anchor won. A Facebook post container routinely holds more
+     * than one permalink-shaped href — a shared post carries the original's
+     * link, and comment anchors have the same shape — so the stored link was
+     * often somebody else's post. It also poisoned `post_id`, which is
+     * derived from this URL, so the wrong link produced the wrong dedupe key
+     * as well as a broken "View original post".
+     */
     let directUrl: string | null = null;
-    container.querySelectorAll("a").forEach((a) => {
+    for (const a of container.querySelectorAll("a")) {
       const href = a.getAttribute("href") || "";
       if (
         href.includes("/share/p/") ||
@@ -168,9 +200,10 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
         try {
           const resolvedUrl = href.startsWith("http") ? href : window.location.origin + href;
           directUrl = resolvedUrl.split("?")[0];
+          break;
         } catch {}
       }
-    });
+    }
 
     const finalPostUrl = directUrl || groupUrl;
     const uniquePostId = directUrl

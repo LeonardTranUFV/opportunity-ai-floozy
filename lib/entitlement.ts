@@ -42,17 +42,18 @@ export const FREE_PLAN = "trial";
  * no browser and no session. Counting it would ration something that costs
  * nothing.
  *
- * ── Why every plan is the same number today ────────────────────────────────
+ * ── Why monthly gets more ──────────────────────────────────────────────────
  *
- * Because there is only one product. Weekly and monthly are the same thing
- * billed differently, not two tiers, so a per-plan number would be inventing a
- * distinction the pricing page does not sell. The map is keyed by plan so that
- * a real tier is one line here rather than a refactor.
+ * Monthly is now a real tier rather than the same product billed differently:
+ * it monitors 30 sources against the other plans' 10. Trial and weekly stay
+ * at 10 deliberately — the cap exists to ration shared crawl time, and the
+ * plan paying the most for a full period is the one that can fairly claim
+ * more of it.
  */
 export const ACTIVE_SOURCE_LIMITS: Record<string, number> = {
   trial: 10,
   weekly: 10,
-  monthly: 10,
+  monthly: 30,
 };
 
 const DEFAULT_ACTIVE_SOURCE_LIMIT = 10;
