@@ -46,18 +46,72 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
   const seenTexts = new Set<string>();
   const postContainers = document.querySelectorAll('div[role="feed"] > div, div[role="article"]');
 
+  /**
+   * Runs in the page. Facebook writes a post's age in at least four shapes,
+   * and this used to read only the first:
+   *
+   *   "2h" · "3d" · "1w"                         relative, recent
+   *   "5 h" · "12 d" · "2 y" · "3 yrs ago"       relative, spaced or worded
+   *   "Yesterday at 10:32"                        yesterday
+   *   "15 May" · "May 15" · "15 May 2025" · "May 15 at 10:32"   absolute
+   *
+   * Anything it couldn't read became "no date", and the card then showed the
+   * day we scraped the post instead — a post from May read as two days old.
+   * Absolute dates default to this year and roll back a year if that would
+   * put them in the future.
+   */
   const parseRelativeAge = (container: Element): string | null => {
-    const candidates = container.querySelectorAll("a, abbr, span");
-    for (const el of candidates) {
-      const label = (el.getAttribute("aria-label") || el.textContent || "").trim();
-      const m = label.match(/^(\d{1,2})\s*(m|h|d|w)$/i);
-      if (m) {
-        const value = parseInt(m[1], 10);
-        const unitMs = { m: 60e3, h: 3600e3, d: 86400e3, w: 604800e3 }[m[2].toLowerCase() as "m" | "h" | "d" | "w"];
-        return new Date(Date.now() - value * unitMs).toISOString();
+    const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const now = Date.now();
+    const fromParts = (monthIdx: number, day: number, year: number | null): string | null => {
+      const y = year ?? new Date(now).getFullYear();
+      const d = new Date(y, monthIdx, day, 12, 0, 0);
+      if (Number.isNaN(d.getTime())) return null;
+      if (!year && d.getTime() > now + 86400e3) d.setFullYear(y - 1);
+      return d.toISOString();
+    };
+    const parseLabel = (raw: string): string | null => {
+      const label = raw.trim().replace(/\s+/g, " ");
+      if (!label || label.length > 40) return null;
+      if (/^just now$/i.test(label)) return new Date(now).toISOString();
+      if (/^yesterday/i.test(label)) return new Date(now - 86400e3).toISOString();
+      const rel = label.match(/^(\d{1,3})\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(?:\s+ago)?$/i);
+      if (rel) {
+        const value = parseInt(rel[1], 10);
+        const u = rel[2].toLowerCase();
+        const unitMs = u.startsWith("m")
+          ? 60e3
+          : u.startsWith("h")
+            ? 3600e3
+            : u.startsWith("d")
+              ? 86400e3
+              : u.startsWith("w")
+                ? 604800e3
+                : 365 * 86400e3;
+        return new Date(now - value * unitMs).toISOString();
       }
-      if (/^yesterday/i.test(label)) {
-        return new Date(Date.now() - 86400e3).toISOString();
+      // "15 May", "15 May 2025", "15 May at 10:32"
+      let abs = label.match(/^(\d{1,2})\s+([a-z]{3,9})\.?(?:\s+(\d{4}))?(?:\s+at\s+.*)?$/i);
+      if (abs) {
+        const mi = MONTHS.indexOf(abs[2].slice(0, 3).toLowerCase());
+        if (mi >= 0) return fromParts(mi, parseInt(abs[1], 10), abs[3] ? parseInt(abs[3], 10) : null);
+      }
+      // "May 15", "May 15, 2025", "May 15 at 10:32"
+      abs = label.match(/^([a-z]{3,9})\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?(?:\s+at\s+.*)?$/i);
+      if (abs) {
+        const mi = MONTHS.indexOf(abs[1].slice(0, 3).toLowerCase());
+        if (mi >= 0) return fromParts(mi, parseInt(abs[2], 10), abs[3] ? parseInt(abs[3], 10) : null);
+      }
+      return null;
+    };
+    // The permalink and its <abbr> carry the date; aria-label is the fullest
+    // form ("15 May at 10:32"), the visible text the shortest ("15 May").
+    const candidates = container.querySelectorAll("a[aria-label], abbr, a[href*='/posts/'], a[href*='/permalink'], a, span");
+    for (const el of candidates) {
+      for (const label of [el.getAttribute("aria-label"), el.textContent]) {
+        if (!label) continue;
+        const parsed = parseLabel(label);
+        if (parsed) return parsed;
       }
     }
     return null;

@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn } from "@/lib/utils"
-import { MapPin, Phone, ExternalLink, Flame, Search, Clock, X, User } from "lucide-react"
+import { MapPin, Phone, ExternalLink, Flame, Search, X, User } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { StatusSelect } from "@/components/opportunities/status-select"
 import { GenerateReplyButton } from "@/components/opportunities/generate-reply-button"
@@ -10,7 +10,8 @@ import { ApproveRejectButtons } from "@/components/opportunities/approve-reject-
 import { SendOutreachButtons } from "@/components/opportunities/send-outreach-buttons"
 import { DeleteOpportunityButton } from "@/components/opportunities/delete-opportunity-button"
 import { FilterBar, type SortOption } from "@/components/opportunities/filter-bar"
-import { formatDate, formatDateTimeFull } from "@/lib/format-date"
+import { postAge } from "@/lib/post-age"
+import { PostAgeLabel } from "@/components/opportunities/post-age"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { isExactPostUrl } from "@/lib/post-url"
 import { isPrivacyMode, maskName, maskPhone } from "@/lib/privacy-mode"
@@ -63,33 +64,7 @@ function sortOpportunities<
   return list
 }
 
-// Facebook's relative-age labels ("2h", "3d") get parsed into an ISO string
-// at scrape time (posts.posted_at); when that parse fails the post has no
-// posted_at, so scraped_at (always set) is the next-best signal of freshness.
-function formatPostAge(postedAt: string | null, scrapedAt: string | null): { label: string; exact: string } | null {
-  const iso = postedAt || scrapedAt;
-  if (!iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const diffMs = Date.now() - date.getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  let label: string;
-  if (minutes < 1) label = "just now";
-  else if (minutes < 60) label = `${minutes}m ago`;
-  else if (hours < 24) label = `${hours}h ago`;
-  else if (days < 7) label = `${days}d ago`;
-  // Pinned locale and time zone. `undefined` means "whatever this runtime has",
-  // which differs between the Node server and the browser — the mismatch that
-  // broke hydration on the dashboard. See lib/format-date.ts.
-  else label = formatDate(date);
-
-  const exact = formatDateTimeFull(date);
-  return { label: (postedAt ? "" : "~") + label, exact };
-}
+// The age label lives in lib/post-age.ts and ticks in components/opportunities/post-age.tsx.
 
 export default async function OpportunitiesPage({
   searchParams,
@@ -294,7 +269,7 @@ export default async function OpportunitiesPage({
             const confidence = Math.max(0, Math.min(100, opp.intent_score ?? 0))
             const agentName = (opp.agents as unknown as { name: string } | null)?.name ?? "Unknown agent"
             const sourcePost = opp.posts as unknown as { posted_at: string | null; scraped_at: string | null } | null
-            const postAge = formatPostAge(sourcePost?.posted_at ?? null, sourcePost?.scraped_at ?? null)
+            const age = postAge(sourcePost?.posted_at ?? null, sourcePost?.scraped_at ?? null)
             const source = platformMeta(opp.platform)
 
             return (
@@ -329,14 +304,12 @@ export default async function OpportunitiesPage({
                           </Badge>
                         )}
                       </div>
-                      {postAge && (
-                        <span
-                          className="flex items-center gap-1 text-xs text-muted-foreground"
-                          title={`Posted ${postAge.exact}`}
-                        >
-                          <Clock className="h-3 w-3" />
-                          {postAge.label}
-                        </span>
+                      {age && (
+                        <PostAgeLabel
+                          postedAt={sourcePost?.posted_at ?? null}
+                          scrapedAt={sourcePost?.scraped_at ?? null}
+                          initial={age}
+                        />
                       )}
                       <span className="text-xs text-muted-foreground">
                         Agent: {agentName}

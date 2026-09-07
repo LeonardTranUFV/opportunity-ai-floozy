@@ -12,6 +12,8 @@ interface Lead {
   platform: string | null
   post_url: string | null
   created_at: string
+  /** The source post's own dates, when the query joined them. */
+  posts?: { posted_at: string | null; scraped_at: string | null } | null
 }
 
 /**
@@ -29,6 +31,20 @@ function elapsed(iso: string): { value: string; unit: string; stale: boolean } {
   if (minutes < 60) return { value: String(minutes), unit: minutes === 1 ? "min ago" : "mins ago", stale: false }
   if (hours < 24) return { value: String(hours), unit: hours === 1 ? "hour ago" : "hours ago", stale: hours >= 6 }
   return { value: String(days), unit: days === 1 ? "day ago" : "days ago", stale: true }
+}
+
+/**
+ * Which moment the big number counts from.
+ *
+ * This used to be the opportunity's created_at — the moment it was scored —
+ * so a post written in May and scored this morning read "2 hours ago" in the
+ * one place that tells a contractor whether to pick up the phone. The post's
+ * own date wins when the scraper caught it; otherwise the day we first saw
+ * it, said as such.
+ */
+function ageSource(lead: Lead): { iso: string; known: boolean } {
+  if (lead.posts?.posted_at) return { iso: lead.posts.posted_at, known: true }
+  return { iso: lead.posts?.scraped_at ?? lead.created_at, known: false }
 }
 
 const URGENCY = {
@@ -62,7 +78,9 @@ export function CallFirst({ lead }: { lead: Lead | null }) {
   }
 
   const tone = URGENCY[lead.urgency as keyof typeof URGENCY] ?? URGENCY.high
-  const time = elapsed(lead.created_at)
+  const { iso: ageIso, known: ageKnown } = ageSource(lead)
+  const time = elapsed(ageIso)
+  if (!ageKnown) time.unit = time.unit.replace(" ago", " since seen")
   const { label: platformLabel, Icon } = platformMeta(lead.platform ?? "")
 
   return (

@@ -29,7 +29,7 @@ export default async function Home() {
       supabase
         .from("opportunities")
         .select(
-          "id, agent_id, author_name, ai_summary, content, status, urgency, location_mentioned, platform, post_url, author_profile_url, comment_sent_at, dm_sent_at, created_at"
+          "id, agent_id, author_name, ai_summary, content, status, urgency, location_mentioned, platform, post_url, author_profile_url, comment_sent_at, dm_sent_at, created_at, posts:source_post_id(posted_at, scraped_at)"
         )
         .order("created_at", { ascending: false }),
       supabase.from("groups").select("*", { count: "exact", head: true }).eq("active", true),
@@ -121,6 +121,10 @@ export default async function Home() {
   const recentAlerts = (recentOpportunities ?? []).map((o) => ({
     ...o,
     author_name: maskName(o.author_name, privacyMode),
+    // PostgREST types a to-one join as an array; it is one row or none.
+    posts: (Array.isArray(o.posts) ? (o.posts[0] ?? null) : o.posts) as
+      | { posted_at: string | null; scraped_at: string | null }
+      | null,
   }))
 
   // recentAlerts is already newest-first, so the first urgent one is

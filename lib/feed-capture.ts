@@ -71,7 +71,7 @@ const MAX_TEXT_LENGTH = 1500;
  * Collapsing it is what makes the two agree.
  */
 function textKey(text: string): string {
-  return text.slice(0, 160).toLowerCase().replace(/s+/g, " ");
+  return text.slice(0, 160).toLowerCase().replace(/\s+/g, " ");
 }
 
 function hashText(str: string): string {
@@ -88,10 +88,10 @@ function hashText(str: string): string {
  */
 function canonicalStoryId(id: string | null): string | null {
   if (!id) return null;
-  if (/^d+$/.test(id)) return id;
+  if (/^\d+$/.test(id)) return id;
   try {
     const decoded = Buffer.from(id, "base64").toString("utf8");
-    const match = decoded.match(/:VK:(d+)/);
+    const match = decoded.match(/:VK:(\d+)/);
     if (match) return match[1];
   } catch {
     // Not base64 — fall through and keep the original.
@@ -163,6 +163,35 @@ type ShapeReader = (node: Record<string, unknown>) => CapturedPost | null;
  * the AI scoring step is what decides relevance, exactly as it does for DOM
  * scraped posts.
  */
+/**
+ * The story's own timestamp, wherever Facebook put it.
+ *
+ * `creation_time` is rarely on the story node itself. It usually sits a few
+ * levels down — under comet_sections → context_layout → story → metadata —
+ * and moves between payload shapes. Reading only the top level left nine
+ * Facebook posts in ten with no date, and the card then showed the day we
+ * scraped them as if it were the day they were written. A bounded walk of the
+ * story's subtree finds the first `creation_time` / `publish_time` number.
+ */
+function findCreationTime(root: Record<string, unknown>): number | null {
+  const stack: Array<{ node: Record<string, unknown>; depth: number }> = [{ node: root, depth: 0 }];
+  let walked = 0;
+  while (stack.length && walked < 400) {
+    const { node, depth } = stack.pop()!;
+    walked++;
+    for (const [key, value] of Object.entries(node)) {
+      if ((key === "creation_time" || key === "publish_time") && typeof value === "number" && value > 1e9 && value < 4e9) {
+        return value;
+      }
+      if (depth < 8 && isObject(value)) stack.push({ node: value, depth: depth + 1 });
+      else if (depth < 8 && Array.isArray(value)) {
+        for (const item of value) if (isObject(item)) stack.push({ node: item, depth: depth + 1 });
+      }
+    }
+  }
+  return null;
+}
+
 const readFacebookStory: ShapeReader = (node) => {
   const message = node.message;
   const text = isObject(message) ? str(message.text) : null;
@@ -186,7 +215,7 @@ const readFacebookStory: ShapeReader = (node) => {
    * feed used.
    */
   const postId = str(node.post_id) ?? canonicalStoryId(str(node.id));
-  const created = typeof node.creation_time === "number" ? node.creation_time : null;
+  const created = typeof node.creation_time === "number" ? node.creation_time : findCreationTime(node);
 
   return {
     post_id: postId ? `fb_${postId}` : `fb_txt_${hashText(textKey(text))}`,
