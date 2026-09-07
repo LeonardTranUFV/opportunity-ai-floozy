@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { type AgentProfile } from "@/lib/ai";
 import { evaluateAgentPosts } from "@/lib/scan-agent";
+import { getPlan, scanPostLimitFor } from "@/lib/entitlement";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 import { InsufficientCreditsError } from "@/lib/credits";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
@@ -90,12 +91,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Gemini calls than 60 seconds holds — so it takes the remainder rather
     // than a fixed slice, and stops cleanly instead of being cut off.
     const evaluationDeadline = startedAt + (maxDuration * 1000 - RESPONSE_HEADROOM_MS);
+    // How deep into the backlog this plan may read in one run.
+    const plan = await getPlan(supabase, user.id);
     const result = await evaluateAgentPosts(
       supabase,
       agent as AgentProfile,
       user.id,
       rangeDays,
-      evaluationDeadline
+      evaluationDeadline,
+      scanPostLimitFor(plan)
     );
     return NextResponse.json({
       success: true,

@@ -58,6 +58,27 @@ export const ACTIVE_SOURCE_LIMITS: Record<string, number> = {
 
 const DEFAULT_ACTIVE_SOURCE_LIMIT = 10;
 
+/**
+ * How many collected posts one "Find opportunities" run may consider.
+ *
+ * Not a limit on results — it is how deep into the backlog a single scan
+ * reads before the function's own five-minute ceiling stops it anyway. A
+ * bigger budget only pays off when there is time left over, which is exactly
+ * the case on an account whose sources were crawled recently, so the plan
+ * that monitors three times as many sources gets twice the reading budget.
+ */
+export const SCAN_POST_LIMITS: Record<string, number> = {
+  trial: 500,
+  weekly: 500,
+  monthly: 1000,
+};
+
+const DEFAULT_SCAN_POST_LIMIT = 500;
+
+export function scanPostLimitFor(plan: string): number {
+  return SCAN_POST_LIMITS[plan] ?? DEFAULT_SCAN_POST_LIMIT;
+}
+
 export function activeSourceLimitFor(plan: string): number {
   return ACTIVE_SOURCE_LIMITS[plan] ?? DEFAULT_ACTIVE_SOURCE_LIMIT;
 }

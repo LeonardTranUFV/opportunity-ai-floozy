@@ -8,6 +8,7 @@ import { isExactPostUrl } from "@/lib/post-url";
 // time spent on inter-batch pacing below) — these are short social posts, so
 // even 100 of them per call is nowhere near Gemini's 1M-token context window.
 const BATCH_SIZE = 100;
+/** Fallback when no plan-specific budget is passed. See SCAN_POST_LIMITS. */
 const MAX_POSTS_PER_SCAN = 500;
 // Gemini's free tier caps requests per minute (~10 RPM as of mid-2026) and
 // does NOT get retried on 429 (see lib/ai.ts) — so a scan with many batches
@@ -101,8 +102,15 @@ export async function evaluateAgentPosts(
    * evaluated_posts already records what has been scored, so the next run
    * picks up exactly where this one stopped.
    */
-  deadline: number | null = null
+  deadline: number | null = null,
+  /**
+   * How many posts this run may read, from the caller's plan. Bounded here as
+   * well as at the call site: this figures in the evaluated_posts lookup
+   * below, which has to stay under PostgREST's 1000-row ceiling.
+   */
+  maxPosts: number = MAX_POSTS_PER_SCAN
 ): Promise<EvaluateAgentResult> {
+  const postBudget = Math.max(1, Math.min(1000, Math.floor(maxPosts) || MAX_POSTS_PER_SCAN));
   const cutoffIso = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
 
   // Posts with a parsed timestamp are filtered by that; posts where we couldn't
@@ -114,7 +122,7 @@ export async function evaluateAgentPosts(
     .eq("user_id", userId)
     .or(`posted_at.gte.${cutoffIso},and(posted_at.is.null,scraped_at.gte.${cutoffIso})`)
     .order("scraped_at", { ascending: false })
-    .limit(MAX_POSTS_PER_SCAN);
+    .limit(postBudget);
 
   const candidates = (allPosts ?? []) as PostRow[];
 
@@ -132,17 +140,30 @@ export async function evaluateAgentPosts(
    * grown to 706, against 223 genuinely distinct asks.
    *
    * Asking about the candidates in hand instead of the whole history bounds
-   * the answer by MAX_POSTS_PER_SCAN, which is half the cap and cannot drift
-   * past it.
+   * the answer by the post budget, which is clamped to 1000 above so it can
+   * never drift past the cap.
+   */
+  /**
+   * Asked in chunks, because `.in()` becomes a query string.
+   *
+   * supabase-js sends a select as a GET, so every id in the list is spelled
+   * out in the URL — a UUID and its separator is about 40 bytes, so a
+   * thousand candidates is a ~40KB request line that proxies reject long
+   * before Postgres sees it. Two hundred at a time keeps each URL small, and
+   * the results are unioned; the queries are independent so they run together.
    */
   const candidateIds = candidates.map((p) => p.id);
-  const { data: evaluatedRows } = candidateIds.length
-    ? await supabase
-        .from("evaluated_posts")
-        .select("source_post_id")
-        .eq("agent_id", agent.id)
-        .in("source_post_id", candidateIds)
-    : { data: [] as { source_post_id: string }[] };
+  const ID_CHUNK = 200;
+  const idChunks: string[][] = [];
+  for (let i = 0; i < candidateIds.length; i += ID_CHUNK) {
+    idChunks.push(candidateIds.slice(i, i + ID_CHUNK));
+  }
+  const evaluatedChunks = await Promise.all(
+    idChunks.map((chunk) =>
+      supabase.from("evaluated_posts").select("source_post_id").eq("agent_id", agent.id).in("source_post_id", chunk)
+    )
+  );
+  const evaluatedRows = evaluatedChunks.flatMap((r) => (r.data ?? []) as { source_post_id: string }[]);
   const evaluatedIds = new Set((evaluatedRows ?? []).map((r) => r.source_post_id));
 
   const unevaluated = candidates.filter((p) => !evaluatedIds.has(p.id));
