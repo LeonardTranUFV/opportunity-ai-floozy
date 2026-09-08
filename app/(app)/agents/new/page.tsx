@@ -11,6 +11,7 @@ import { LocationPicker } from "@/components/agents/location-picker"
 import { Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { readApiError, CONNECTION_ERROR } from "@/lib/format-error"
+import { AGENT_TEMPLATES, type AgentTemplate } from "@/lib/agent-templates"
 
 const TOTAL_STEPS = 3
 const STEP_TITLES = ["Tell us about your business", "Where do you operate?", "Keywords"]
@@ -22,6 +23,7 @@ export default function NewAgentPage() {
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [enhanceError, setEnhanceError] = useState<string | null>(null)
   const [enhanced, setEnhanced] = useState(false)
+  const [templateId, setTemplateId] = useState<string | null>(null)
 
   const [name, setName] = useState("")
   const [goal, setGoal] = useState("")
@@ -35,6 +37,24 @@ export default function NewAgentPage() {
 
   const nextStep = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS))
   const prevStep = () => setStep((s) => Math.max(s - 1, 1))
+
+  /**
+   * Prefill from a trade rather than leaving step 1 blank.
+   *
+   * A blank textarea is where zero-result agents come from: the operator
+   * writes a few vague words, the enhancer expands them into something
+   * plausible, and the keywords come out as multi-word phrases that never
+   * match how people actually post. lib/agent-templates.ts carries the
+   * measured comparison behind the wording of these.
+   */
+  const applyTemplate = (t: AgentTemplate) => {
+    setTemplateId(t.id)
+    setName(t.name)
+    setGoal(t.goal)
+    setKeywords(t.keywords)
+    setEnhanceError(null)
+    setEnhanced(false)
+  }
 
   // Shared by both AI actions: step 1's "Enhance with AI" (rewrites the goal,
   // guesses a name/location, and fills keywords) and step 3's "AI Suggest"
@@ -134,6 +154,27 @@ export default function NewAgentPage() {
         <CardContent>
           {step === 1 && (
             <div className="flex flex-col gap-4">
+              <div className="space-y-2">
+                <Label>Start from your trade</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {AGENT_TEMPLATES.map((t) => (
+                    <Button
+                      key={t.id}
+                      type="button"
+                      variant={templateId === t.id ? "brand" : "outline"}
+                      size="xs"
+                      onClick={() => applyTemplate(t)}
+                    >
+                      <span aria-hidden>{t.icon}</span>
+                      {t.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Fills in a goal and a keyword set that is known to find leads. Change anything below.
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="goal">Tell us about your business, in your own words</Label>
                 <Textarea
