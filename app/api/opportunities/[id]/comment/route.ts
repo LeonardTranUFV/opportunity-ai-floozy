@@ -1,9 +1,37 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { postFacebookComment } from "@/lib/facebook-outreach";
-import { canRunSignedInBrowser } from "@/lib/remote-browser";
 import { isExactPostUrl } from "@/lib/post-url";
-import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+
+/**
+ * Comments are prepared here and published by a person. Never by the server.
+ *
+ * This route used to call `postFacebookComment`, which drove the customer's
+ * own logged-in session and published the reply itself. The reasoning for
+ * allowing that was narrow and, as far as it went, correct: CASL attaches to
+ * commercial messages sent to an *electronic address*, and a comment on a
+ * public post is not sent to an address at all. So the anti-spam argument that
+ * forced the DM route to draft-only genuinely did not apply here.
+ *
+ * It was the wrong test, because two other things apply and neither is about
+ * CASL:
+ *
+ *   - **Meta's platform terms prohibit automating a logged-in session.** This
+ *     is the rule that actually gets enforced, and automated commenting is the
+ *     single most detectable form of it. The account it bans is the customer's,
+ *     not ours — we would be spending an asset that isn't ours to spend.
+ *   - **It publishes in the customer's name, in public, without them reading
+ *     it.** A drafted reply that misjudges the post is a mistake their whole
+ *     audience can see, attached to their business, permanently.
+ *
+ * The first contact is now always a human decision — a person reads the post,
+ * reads the draft, and chooses. What happens *after* the other person replies
+ * is a different question with a different answer, because a reply is an
+ * inquiry and answering one is exempt; that is where automation belongs, and
+ * it is not this route.
+ *
+ * POST  prepares the comment and returns it. Nothing is published.
+ * PATCH records that the operator posted it, after they actually did.
+ */
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -16,29 +44,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  // Posts publicly to Facebook through the customer's own logged-in session.
-  // The cost of no limit is not money, it is their account: a loop here is
-  // indistinguishable from comment spam, and Facebook bans the account doing
-  // it, not us.
-  const rl = await rateLimit(`comment:${user.id}`, LIMITS.browser.limit, LIMITS.browser.windowMs);
-  if (!rl.allowed) return tooManyRequests(rl, "comments");
-
-  // postFacebookComment already goes through openPlatformContext, so it works
-  // wherever a signed-in browser can be opened — including a rented one. This
-  // gate said "hosted", which stopped being the same question the moment the
-  // cloud path shipped: sending a comment was refused on the only deployment
-  // customers actually use, while the code behind it was fine.
-  if (!canRunSignedInBrowser()) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Sending a comment needs a signed-in browser, and none is set up on this deployment.",
-      },
-      { status: 501 }
-    );
-  }
-
   const { data: opportunity, error: oppError } = await supabase
     .from("opportunities")
     .select("id, platform, post_url, suggested_comment")
@@ -49,55 +54,62 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ success: false, error: "Opportunity not found" }, { status: 404 });
   }
 
-  if (opportunity.platform !== "facebook") {
-    return NextResponse.json(
-      { success: false, error: "Automated comments are only supported for Facebook right now." },
-      { status: 400 }
-    );
-  }
-
   /**
    * A link to the group is not a link to the post.
    *
-   * When Facebook doesn't expose a permalink the extractors fall back to the
-   * group's feed URL, and this check only asked whether *some* URL existed. So
-   * the automation would open the group's front page and comment there —
-   * publishing the customer's drafted reply, in their name, on whatever post
-   * happened to be at the top, or on nothing at all.
-   *
-   * That is the worst class of bug in this product: a public action, taken on
-   * a real person's behalf, in the wrong place. Refused outright rather than
-   * attempted, and the UI disables the button for the same reason.
+   * Less dangerous than it was — nothing is published now, so the worst case
+   * is a wasted trip rather than a comment on a stranger's unrelated post —
+   * but still not something to hand somebody as "reply to this". The
+   * extractors fall back to the group's feed URL whenever no permalink was
+   * found, and there is no way to tell from here which post was meant.
    */
   if (!isExactPostUrl(opportunity.post_url)) {
     return NextResponse.json(
       {
         success: false,
         error:
-          "This platform didn't give us a direct link to that post, only to the group — so we can't be sure a comment would land on the right one. Open the group and reply there yourself.",
+          "This platform didn't give us a direct link to that post, only to the group — so we can't point you at the right one. Open the group and reply there yourself.",
       },
       { status: 400 }
     );
   }
 
-  if (!opportunity.post_url) {
-    return NextResponse.json({ success: false, error: "This opportunity has no linked post URL." }, { status: 400 });
-  }
-
   if (!opportunity.suggested_comment) {
     return NextResponse.json(
-      { success: false, error: "Generate a personalized response first, then send it." },
+      { success: false, error: "Generate a personalized response first." },
       { status: 400 }
     );
   }
 
-  const result = await postFacebookComment(opportunity.post_url, opportunity.suggested_comment, user.id);
+  // Prepared, not published. `comment_sent_at` stays null until a person says
+  // otherwise, through PATCH below.
+  return NextResponse.json({
+    success: true,
+    message: opportunity.suggested_comment,
+    openUrl: opportunity.post_url,
+  });
+}
 
-  if (!result.success) {
-    return NextResponse.json({ success: false, error: result.error }, { status: 502 });
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id: opportunityId } = await params;
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: "Not authenticated" }, { status: 401 });
   }
 
-  await supabase.from("opportunities").update({ comment_sent_at: new Date().toISOString() }).eq("id", opportunityId);
+  // Recording what the operator did, not doing it for them. Scoped to the
+  // caller's own rows by RLS, the same as the DM route.
+  const { error } = await supabase
+    .from("opportunities")
+    .update({ comment_sent_at: new Date().toISOString() })
+    .eq("id", opportunityId);
 
+  if (error) {
+    return NextResponse.json({ success: false, error: "Could not record that." }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }
