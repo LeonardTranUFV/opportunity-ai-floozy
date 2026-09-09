@@ -44,7 +44,35 @@ interface RawExtractedPost {
 function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
   const results: RawExtractedPost[] = [];
   const seenTexts = new Set<string>();
-  const postContainers = document.querySelectorAll('div[role="feed"] > div, div[role="article"]');
+  /**
+   * Post containers, with comments removed.
+   *
+   * `div[role="article"]` does not mean "a post" on Facebook — it is also
+   * every COMMENT. Read off a live group feed while fixing this: of six
+   * role="article" elements on screen, four carried
+   * `aria-label="Comment by <name> 4 days ago"`, and all six were nested
+   * inside a `div[role="feed"] > div` that was already being scraped in its
+   * own right.
+   *
+   * A comment clears the length checks below, so it stored as a post — but it
+   * has no `/posts/` permalink and no timestamp anchor, so it landed with the
+   * group's feed URL and no date. That is exactly the shape of the gap
+   * measured in production: 2,423 Facebook rows, 34% with a real permalink,
+   * 17% with a date. The missing majority were never posts.
+   *
+   * Dropping any candidate that sits inside another candidate fixes it
+   * without a language-specific test. A comment is always nested inside its
+   * post, in every locale — whereas matching the string "Comment by" would
+   * work here and silently fail on the Vietnamese groups this same account
+   * scrapes. The role="article" arm stays, so a layout that really does
+   * expose posts as top-level articles keeps working.
+   */
+  const containerCandidates = Array.from(
+    document.querySelectorAll('div[role="feed"] > div, div[role="article"]')
+  );
+  const postContainers = containerCandidates.filter(
+    (c) => !containerCandidates.some((other) => other !== c && other.contains(c))
+  );
 
   /**
    * Runs in the page. Facebook writes a post's age in at least four shapes,
@@ -101,13 +129,31 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
         return new Date(now - value * unitMs).toISOString();
       }
       // "15 May", "15 May 2025", "15 May at 10:32"
-      let abs = label.match(/^(\d{1,2})\s+([a-z]{3,9})\.?(?:\s+(\d{4}))?(?:\s+at\s+.*)?$/i);
+      /**
+       * Searched, not anchored — because the real label leads with a weekday.
+       *
+       * What Facebook actually puts on a group post's timestamp anchor is
+       * `aria-label="Friday 4 September 2026 at 16:02"`. Both patterns here
+       * were anchored with ^, so neither could match it: the first wants a
+       * leading number and sees "Friday", and the second reads "Friday" as
+       * the month, takes "4" as the day, then reaches $ with
+       * " September 2026 at 16:02" still unconsumed and fails.
+       *
+       * So every absolute date on Facebook was unreadable, which is why
+       * production holds none parsed from an absolute label. The only dates
+       * that landed came from the relative "4d" text sitting beside it — a
+       * full day of slack, from a label that names the minute.
+       *
+       * Searching costs nothing and drops the weekday for free, in any
+       * language, because a weekday is never also a month name.
+       */
+      let abs = label.match(/(?:^|\s)(\d{1,2})\s+([a-z]{3,9})\.?(?:\s+(\d{4}))?(?=\s|,|$)/i);
       if (abs) {
         const mi = MONTHS.indexOf(abs[2].slice(0, 3).toLowerCase());
         if (mi >= 0) return fromParts(mi, parseInt(abs[1], 10), abs[3] ? parseInt(abs[3], 10) : null);
       }
       // "May 15", "May 15, 2025", "May 15 at 10:32"
-      abs = label.match(/^([a-z]{3,9})\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?(?:\s+at\s+.*)?$/i);
+      abs = label.match(/(?:^|\s)([a-z]{3,9})\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?(?=\s|,|$)/i);
       if (abs) {
         const mi = MONTHS.indexOf(abs[1].slice(0, 3).toLowerCase());
         if (mi >= 0) return fromParts(mi, parseInt(abs[2], 10), abs[3] ? parseInt(abs[3], 10) : null);
