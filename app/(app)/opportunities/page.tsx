@@ -32,21 +32,36 @@ const PLATFORM_RANK: Record<string, number> = Object.fromEntries(PLATFORM_ORDER.
 function resolvePostTimestamp(
   posts: { posted_at: string | null; scraped_at: string | null } | null,
   createdAt: string
-): number {
+): { ts: number; known: boolean } {
   const iso = posts?.posted_at || posts?.scraped_at || createdAt
   const ts = new Date(iso).getTime()
-  return Number.isNaN(ts) ? 0 : ts
+  return { ts: Number.isNaN(ts) ? 0 : ts, known: !!posts?.posted_at }
+}
+
+function hasPostDate(posts: unknown): boolean {
+  return !!(posts as { posted_at: string | null } | null)?.posted_at
 }
 
 function sortOpportunities<
   T extends { urgency: string; intent_score: number | null; created_at: string; posts: unknown; platform: string }
 >(list: T[], sort: SortOption): T[] {
   if (sort === "newest" || sort === "oldest") {
+    // Only a post carrying its own date can be ordered by date honestly. The
+    // rest fall back to when we scraped them, which is a different fact, so
+    // they sit together at the end instead of interleaving - otherwise a post
+    // written in May but found this morning lands above one written yesterday,
+    // and "Newest First" quietly means "most recently scraped".
     const withTs = list.map((opp) => ({
       opp,
-      ts: resolvePostTimestamp(opp.posts as { posted_at: string | null; scraped_at: string | null } | null, opp.created_at),
+      ...resolvePostTimestamp(
+        opp.posts as { posted_at: string | null; scraped_at: string | null } | null,
+        opp.created_at
+      ),
     }))
-    withTs.sort((a, b) => (sort === "newest" ? b.ts - a.ts : a.ts - b.ts))
+    withTs.sort((a, b) => {
+      if (a.known !== b.known) return a.known ? -1 : 1
+      return sort === "newest" ? b.ts - a.ts : a.ts - b.ts
+    })
     return withTs.map((x) => x.opp)
   }
   if (sort === "urgency") {
@@ -75,6 +90,7 @@ export default async function OpportunitiesPage({
     status?: string
     platform?: string
     sort?: string
+    dated?: string
     id?: string
     highIntent?: string
     location?: string
@@ -86,6 +102,7 @@ export default async function OpportunitiesPage({
     params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency" || params.sort === "platform"
       ? params.sort
       : "relevance"
+  const datedOnly = params.dated === "1"
   const supabase = await createClient()
 
   const { data: agents } = await supabase.from("agents").select("id, name").order("name")
@@ -148,11 +165,19 @@ export default async function OpportunitiesPage({
   }
 
   const { data: rawOpportunities } = await query
+  // "Has post date": drop the rows the platform never gave a post date for.
+  // Applied before the dedupe so a group of duplicates keeps its dated copy
+  // rather than collapsing onto an undated twin and disappearing entirely.
+  // A deep link to one row is exempt - the point there is that specific lead.
+  const datedRows =
+    rawOpportunities && datedOnly && !params.id
+      ? rawOpportunities.filter((opp) => hasPostDate(opp.posts))
+      : rawOpportunities
   // One card per ask. See lib/dedupe-opportunities.ts for why, and for
   // which copy is kept. A deep link to a single row passes straight through.
-  const collapsed = rawOpportunities
-    ? (params.id ? rawOpportunities : dedupeOpportunities(rawOpportunities).slice(0, 100))
-    : rawOpportunities
+  const collapsed = datedRows
+    ? (params.id ? datedRows : dedupeOpportunities(datedRows).slice(0, 100))
+    : datedRows
   const opportunities = collapsed ? sortOpportunities(collapsed, sort) : collapsed
 
   // highIntent/location are deep-link-only filters (not part of FilterBar's
@@ -165,6 +190,7 @@ export default async function OpportunitiesPage({
     if (params.status) search.set("status", params.status)
     if (params.platform) search.set("platform", params.platform)
     if (params.sort && params.sort !== "relevance") search.set("sort", params.sort)
+    if (datedOnly) search.set("dated", "1")
     const highIntent = "highIntent" in overrides ? overrides.highIntent : params.highIntent
     const location = "location" in overrides ? overrides.location : params.location
     if (highIntent === "1") search.set("highIntent", "1")
@@ -221,6 +247,7 @@ export default async function OpportunitiesPage({
             platform={params.platform || ""}
             sort={sort}
             q={params.q || ""}
+            dated={datedOnly}
           />
         </div>
       )}

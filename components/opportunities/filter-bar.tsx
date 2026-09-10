@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { ListFilter, X, ArrowDownWideNarrow, RefreshCw, Search, ChevronDown } from "lucide-react"
+import { ListFilter, X, ArrowDownWideNarrow, RefreshCw, Search, ChevronDown, Check } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
@@ -64,6 +64,7 @@ export function FilterBar({
   platform,
   sort,
   q = "",
+  dated,
 }: {
   agents: { id: string; name: string }[]
   agentId: string
@@ -72,6 +73,7 @@ export function FilterBar({
   platform: string
   sort: SortOption
   q?: string
+  dated: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -85,6 +87,7 @@ export function FilterBar({
     platform?: string
     sort?: SortOption
     q?: string
+    dated?: boolean
   }) => {
     const merged = {
       agent: next.agent ?? agentId,
@@ -93,6 +96,7 @@ export function FilterBar({
       platform: next.platform ?? platform,
       sort: next.sort ?? sort,
       q: next.q ?? q,
+      dated: next.dated ?? dated,
     }
     const search = new URLSearchParams()
     if (merged.agent) search.set("agent", merged.agent)
@@ -101,15 +105,21 @@ export function FilterBar({
     if (merged.platform) search.set("platform", merged.platform)
     if (merged.sort !== "relevance") search.set("sort", merged.sort)
     if (merged.q.trim()) search.set("q", merged.q.trim())
+    if (merged.dated) search.set("dated", "1")
     const qs = search.toString()
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
   // Counted, not just detected: "Filters (2)" tells a phone user why the list
   // is short without them having to open the panel to find out.
-  const activeCount = [agentId, urgency, status, platform, sort !== "relevance" ? "1" : ""].filter(
-    Boolean
-  ).length
+  const activeCount = [
+    agentId,
+    urgency,
+    status,
+    platform,
+    dated ? "1" : "",
+    sort !== "relevance" ? "1" : "",
+  ].filter(Boolean).length
   const hasActiveFilters = activeCount > 0 || !!q
 
   const refresh = () => startRefresh(() => router.refresh())
@@ -237,6 +247,34 @@ export function FilterBar({
           </SelectContent>
         </Select>
 
+        {/* Most posts arrive without their own date - the platform only showed
+            "15 May" and the parser could not read it - so the card falls back to
+            "seen 5d ago", which is when we found it, not when it was written.
+            This drops those rows, leaving only leads whose real age is known. */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={dated}
+          onClick={() => navigate({ dated: !dated })}
+          title="Show only leads whose original post date is known. Leads labelled 'seen 5d ago' are hidden - that is when we found the post, not when it was written."
+          className={cn(
+            "flex h-8 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
+            dated
+              ? "border-brand/40 bg-brand/10 text-foreground"
+              : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-input/30 dark:hover:bg-input/50"
+          )}
+        >
+          <span
+            className={cn(
+              "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+              dated ? "border-brand bg-brand text-brand-foreground" : "border-muted-foreground/50"
+            )}
+          >
+            {dated && <Check className="h-2.5 w-2.5" strokeWidth={3.5} />}
+          </span>
+          Has post date
+        </button>
+
         <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
 
         <ArrowDownWideNarrow className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" />
@@ -259,7 +297,17 @@ export function FilterBar({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate({ agent: "", urgency: "", status: "", platform: "", sort: "relevance", q: "" })}
+            onClick={() =>
+              navigate({
+                agent: "",
+                urgency: "",
+                status: "",
+                platform: "",
+                sort: "relevance",
+                q: "",
+                dated: false,
+              })
+            }
           >
             <X className="h-3.5 w-3.5" />
             Clear
