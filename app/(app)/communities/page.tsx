@@ -10,6 +10,7 @@ import { isHostedDeployment } from "@/lib/deployment"
 import { canRunSignedInBrowser } from "@/lib/remote-browser"
 import { getSourceCapacity, partitionByCap } from "@/lib/entitlement"
 import { SourceList } from "@/components/communities/source-list"
+import { listSessions } from "@/lib/session-store"
 
 export const dynamic = "force-dynamic"
 
@@ -52,6 +53,13 @@ export default async function CommunitiesPage() {
   const capacity = user
     ? await getSourceCapacity(supabase, user.id)
     : { plan: "trial", used: 0, limit: 0, remaining: 0, unlimited: false }
+
+  // Whether each platform has a saved login, so a folded section can still
+  // say so. browser_sessions is unreachable to anon/authenticated callers by
+  // design — RLS filters rows, not columns, and a readable row would hand the
+  // browser its own ciphertext — so this goes through the admin client here,
+  // server-side, and only a platform name ever reaches the page.
+  const connectedPlatforms = user ? (await listSessions(user.id)).map((session) => session.platform) : []
 
   // The same split the collector makes, so a source flagged here is exactly
   // one that is not being read. An account can be over its cap without ever
@@ -200,6 +208,7 @@ export default async function CommunitiesPage() {
               groups={groups.map((g) => ({ ...g, active: !!g.active }))}
               overCapIds={[...overCapIds]}
               capacityLimit={capacity.limit}
+              connectedPlatforms={connectedPlatforms}
             />
           )}
         </CardContent>
