@@ -114,21 +114,38 @@ export async function syncJoinedGroups(
   const result: GroupSyncResult = { found: groups.length, synced: 0, skipped: 0 };
 
   for (const group of groups) {
-    const { data, error } = await supabase
+    /**
+     * Insert-only. `active: false` is a starting state, not a correction.
+     *
+     * This ran as DO UPDATE, so it did not merely add newly joined groups —
+     * it rewrote every row it rediscovered, and `active: false` went with
+     * it. Anything the customer had deliberately switched on was switched
+     * back off. /api/cron/refresh-groups runs this weekly, so the symptom was
+     * "I resumed all my groups and days later they were paused again", with
+     * the only survivors being sources the extractor does not rediscover —
+     * ones added by URL by hand, or on another platform.
+     *
+     * DO NOTHING makes the intent honest: a group we have never seen arrives
+     * inactive so the crawler is never silently pointed at forty sources, and
+     * a group we already hold keeps whatever the customer chose. Names are
+     * left alone for the same reason — a refresh must not undo a decision.
+     */
+    const { error } = await supabase
       .from("groups")
       .upsert(
         { user_id: userId, platform: "facebook", name: group.name, url: group.url, active: false },
-        { onConflict: "user_id,url", ignoreDuplicates: false }
-      )
-      .select("id");
+        { onConflict: "user_id,url", ignoreDuplicates: true }
+      );
 
     if (error) {
       console.error(`[groups] could not save "${group.name}": ${error.message}`);
       result.skipped++;
-    } else if (data && data.length > 0) {
-      result.synced++;
     } else {
-      result.skipped++;
+      // Empty `data` now means the row already existed and DO NOTHING left
+      // it alone. That is a successful sync, not a skip — only a real error
+      // is a skip, or the count would read as failure every week once the
+      // customer's groups are all known.
+      result.synced++;
     }
   }
 

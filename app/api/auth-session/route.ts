@@ -115,7 +115,9 @@ export async function POST() {
           .from('groups')
           .upsert(
             { user_id: user.id, platform: 'facebook', name: grp.name, url: grp.url, active: false },
-            { onConflict: 'user_id,url', ignoreDuplicates: false }
+            // Insert-only: see syncJoinedGroups. As DO UPDATE this re-paused
+            // every group the customer had switched on, every time it ran.
+            { onConflict: 'user_id,url', ignoreDuplicates: true }
           )
           .select('id');
 
