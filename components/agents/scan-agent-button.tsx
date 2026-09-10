@@ -38,6 +38,7 @@ export function ScanAgentButton({ id }: { id: string }) {
    */
   const [tone, setTone] = useState<"ok" | "warn" | "error">("ok")
   const [rangeDays, setRangeDays] = useState(3)
+  const [includeUndated, setIncludeUndated] = useState(false)
   const [progress, setProgress] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -71,7 +72,7 @@ export function ScanAgentButton({ id }: { id: string }) {
         const res = await fetch(`/api/agents/${id}/scan`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rangeDays }),
+          body: JSON.stringify({ rangeDays, includeUndated }),
         })
         // Text first: a run the platform cut off returns an HTML error page,
         // and res.json() throwing on that landed in the catch below as "check
@@ -191,6 +192,29 @@ export function ScanAgentButton({ id }: { id: string }) {
           </span>
         </Button>
       </div>
+
+      {/* Off by default on purpose: an undated post cannot honestly answer
+          "posted in the last 3 days", so including it is a decision, not a
+          default. Worth offering because the platforms whose markup we read
+          worst are also the ones with real leads in them. */}
+      <label className="flex cursor-pointer items-start gap-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-brand"
+          checked={includeUndated}
+          onChange={(e) => setIncludeUndated(e.target.checked)}
+          disabled={isPending}
+        />
+        <span>
+          Also include posts we couldn&apos;t date
+          <span className="block text-[11px] opacity-80">
+            Some platforms don&apos;t give us a post date. These get read anyway, dated by when we
+            first saw them — the card will say &ldquo;seen&rdquo; instead of a post date, so you can
+            tell them apart.
+          </span>
+        </span>
+      </label>
+
       {result && (
         <p
           className={

@@ -108,7 +108,19 @@ export async function evaluateAgentPosts(
    * well as at the call site: this figures in the evaluated_posts lookup
    * below, which has to stay under PostgREST's 1000-row ceiling.
    */
-  maxPosts: number = MAX_POSTS_PER_SCAN
+  maxPosts: number = MAX_POSTS_PER_SCAN,
+  /**
+   * Whether to also read posts we could not put a date on.
+   *
+   * Off by default, and off for every automatic run, because an undated post
+   * cannot honestly satisfy "posted in the last N days" — see the query below.
+   * But excluding them outright throws away real leads on the platforms whose
+   * markup we read worst, so this is the customer's call to make rather than
+   * ours to make silently. They are dated by when we first saw them, and the
+   * card says "seen" rather than a post date so the difference stays visible
+   * all the way to the point of deciding whether to call.
+   */
+  includeUndated: boolean = false
 ): Promise<EvaluateAgentResult> {
   const postBudget = Math.max(1, Math.min(1000, Math.floor(maxPosts) || MAX_POSTS_PER_SCAN));
   const cutoffIso = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
@@ -130,20 +142,28 @@ export async function evaluateAgentPosts(
    * counted and reported rather than silently dropped: this trades recall for
    * truth, and they should be able to see how much recall it cost.
    */
-  const { data: allPosts } = await supabase
+  const base = supabase
     .from("posts")
     .select("id, platform, author_name, author_profile_url, post_url, raw_text")
-    .eq("user_id", userId)
-    .gte("posted_at", cutoffIso)
-    .order("posted_at", { ascending: false })
-    .limit(postBudget);
+    .eq("user_id", userId);
 
-  const { count: undatedInWindow } = await supabase
-    .from("posts")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .is("posted_at", null)
-    .gte("scraped_at", cutoffIso);
+  const { data: allPosts } = includeUndated
+    ? await base
+        .or(`posted_at.gte.${cutoffIso},and(posted_at.is.null,scraped_at.gte.${cutoffIso})`)
+        .order("scraped_at", { ascending: false })
+        .limit(postBudget)
+    : await base.gte("posted_at", cutoffIso).order("posted_at", { ascending: false }).limit(postBudget);
+
+  // Only worth counting when they were left out — included, they are simply
+  // part of the run and saying "0 skipped" every time is noise.
+  const { count: undatedInWindow } = includeUndated
+    ? { count: 0 }
+    : await supabase
+        .from("posts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .is("posted_at", null)
+        .gte("scraped_at", cutoffIso);
 
   const candidates = (allPosts ?? []) as PostRow[];
 
@@ -197,7 +217,7 @@ export async function evaluateAgentPosts(
    */
   const undatedNote =
     undatedInWindow && undatedInWindow > 0
-      ? `${undatedInWindow} post${undatedInWindow === 1 ? "" : "s"} skipped — the platform didn't give us a date, so we can't tell if they're recent.`
+      ? `${undatedInWindow} post${undatedInWindow === 1 ? "" : "s"} skipped — no date from the platform, so we can't tell how old they are. Tick "include undated posts" to scan them anyway.`
       : "";
 
   if (unevaluated.length === 0) {

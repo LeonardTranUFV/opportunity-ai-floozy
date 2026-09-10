@@ -38,6 +38,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const body = await request.json().catch(() => ({}));
   const rangeDays = ALLOWED_RANGE_DAYS.includes(body.rangeDays) ? body.rangeDays : 3;
+  // Opt-in, and only ever from an explicit tick in the UI. An undated post
+  // cannot honestly satisfy a lookback window, so the default stays strict and
+  // this is the customer overriding that for a run they chose.
+  const includeUndated = body.includeUndated === true;
 
   const {
     data: { user },
@@ -99,7 +103,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       user.id,
       rangeDays,
       evaluationDeadline,
-      scanPostLimitFor(plan)
+      scanPostLimitFor(plan),
+      includeUndated
     );
     return NextResponse.json({
       success: true,
