@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "check": "tsx scripts/check-logic.ts",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "auto-scrape": "tsx scripts/auto-scrape.ts"
   },
   "dependencies": {
