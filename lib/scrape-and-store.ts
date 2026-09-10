@@ -186,7 +186,7 @@ export async function scrapeAndStorePosts(
   const dedupedPosts = new Map<string, (typeof posts)[number]>();
   for (const p of posts) dedupedPosts.set(p.external_post_id, p);
 
-  const rows = [...dedupedPosts.values()].map((p) => ({
+  const base = [...dedupedPosts.values()].map((p) => ({
     user_id: userId,
     group_id: p.group_id,
     platform: p.platform,
@@ -194,17 +194,61 @@ export async function scrapeAndStorePosts(
     post_url: p.post_url,
     author_name: p.author_name,
     author_profile_url: p.author_profile_url,
-    posted_at: p.posted_at,
     raw_text: p.raw_text,
+    posted_at: p.posted_at,
   }));
 
-  const { error: insertError, count } = await supabase
-    .from("posts")
-    .upsert(rows, { onConflict: "user_id,external_post_id", count: "exact" });
+  /**
+   * Two upserts, split on whether this pass actually read a date.
+   *
+   * This used to be one, writing every column including `posted_at`. Because
+   * the upsert resolves a conflict with DO UPDATE, re-scraping a post we
+   * already had **overwrote its date with null** whenever the second pass
+   * couldn't read one — and Facebook gives you a timestamp anchor only while
+   * the post is still mounted in its virtualised feed, so the second pass
+   * frequently can't.
+   *
+   * The Contractor agent scans every four hours, so a post that landed on
+   * Monday with a clean date had many chances to be re-read and blanked. That
+   * is why fixing the *parser* moved nothing: dates were being read correctly
+   * and then erased. Coverage was measuring erosion, not extraction.
+   *
+   * Splitting the batch is the whole fix. Rows that carry a date write it.
+   * Rows that don't omit the column entirely, so PostgREST leaves whatever is
+   * already stored — an insert still gets null, an update keeps the good
+   * value. A date, once learned, is never unlearned.
+   */
+  const dated = base.filter((r) => r.posted_at);
+  const undated = base
+    .filter((r) => !r.posted_at)
+    .map((r) => ({
+      user_id: r.user_id,
+      group_id: r.group_id,
+      platform: r.platform,
+      external_post_id: r.external_post_id,
+      post_url: r.post_url,
+      author_name: r.author_name,
+      author_profile_url: r.author_profile_url,
+      raw_text: r.raw_text,
+    }));
 
-  if (insertError) {
-    throw new Error(insertError.message);
+  let upserted = 0;
+
+  if (dated.length) {
+    const { error, count } = await supabase
+      .from("posts")
+      .upsert(dated, { onConflict: "user_id,external_post_id", count: "exact" });
+    if (error) throw new Error(error.message);
+    upserted += count ?? dated.length;
   }
 
-  return { scraped: posts.length, inserted: count ?? posts.length, log, brokenPlatforms };
+  if (undated.length) {
+    const { error, count } = await supabase
+      .from("posts")
+      .upsert(undated, { onConflict: "user_id,external_post_id", count: "exact" });
+    if (error) throw new Error(error.message);
+    upserted += count ?? undated.length;
+  }
+
+  return { scraped: posts.length, inserted: upserted, log, brokenPlatforms };
 }
