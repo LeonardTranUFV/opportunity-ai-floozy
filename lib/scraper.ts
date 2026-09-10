@@ -209,13 +209,45 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
     const authorElement = container.querySelector("h2 a, h3 a, strong a");
     const raw_text = getMessage(container).slice(0, 1500);
     const author_name = authorElement ? (authorElement.textContent || "").trim() : "Anonymous Member";
-    const authorHref = authorElement ? authorElement.getAttribute("href") : null;
-    // Unlike post_url below, this was never resolved to an absolute URL —
-    // Facebook's author anchors are relative ("/groups/.../user/123/?__cft__..."),
-    // which is a broken link once stored and clicked from outside facebook.com.
-    const author_profile_url = authorHref
-      ? (authorHref.startsWith("http") ? authorHref : window.location.origin + authorHref).split("?")[0]
-      : null;
+
+    /**
+     * Find the author's profile, falling back to the first profile-shaped
+     * anchor in the post.
+     *
+     * The name usually sits in an h2/h3/strong wrapping the profile link, but
+     * not always — Facebook moves that heading around, and when the selector
+     * misses, the post arrives with no way to reach the person who wrote it.
+     * That is most of the value gone: a lead you cannot open is a lead you
+     * cannot answer.
+     *
+     * Inside a group the author link is /groups/<gid>/user/<uid>/; elsewhere
+     * it is /profile.php?id=<uid>. Taking the first match is safe now that
+     * comments are excluded from the container list — before that fix, the
+     * first profile anchor in a container could easily belong to a commenter.
+     */
+    const profileHref =
+      (authorElement && authorElement.getAttribute("href")) ||
+      (() => {
+        for (const a of container.querySelectorAll("a")) {
+          const h = a.getAttribute("href") || "";
+          if (/\/groups\/[^/]+\/user\/\d+/.test(h) || h.includes("/profile.php?id=")) return h;
+        }
+        return null;
+      })();
+
+    // Resolved to an absolute URL, unlike the original: Facebook's author
+    // anchors are relative ("/groups/.../user/123/?__cft__..."), which is a
+    // broken link once stored and clicked from anywhere but facebook.com.
+    const author_profile_url = (() => {
+      if (!profileHref) return null;
+      const abs = profileHref.startsWith("http") ? profileHref : window.location.origin + profileHref;
+      // profile.php is the one shape that carries its identity in the query
+      // string, so dropping the query — correct for every other shape, since
+      // it is all __cft__/__tn__ tracking — would leave a link to nobody.
+      const byId = abs.match(/profile\.php\?[^#]*\bid=(\d+)/);
+      if (byId) return `https://www.facebook.com/profile.php?id=${byId[1]}`;
+      return abs.split("?")[0];
+    })();
 
     if (!raw_text || raw_text.length <= 20) return;
 

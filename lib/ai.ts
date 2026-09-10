@@ -176,10 +176,40 @@ Negative keywords — if a post is clearly about one of these, mark it not relev
 
 ${UNTRUSTED_NOTE}
 
+### Direction of intent — read this before scoring anything
+The single most common mistake is matching the right trade in the wrong
+direction. Unless the goal above says otherwise, this agent is a business
+looking for CUSTOMERS: a post counts only when its author wants the work done
+for them. Someone offering the same service is a competitor, not an
+opportunity, however closely their wording matches the keywords.
+
+NOT relevant, no matter how strong the keyword overlap:
+- Anyone advertising, promoting or offering the service ("Contractor
+  specializing in interior demolition, junk removal and site cleanup — free
+  quotes"). This is an ad. Score it not relevant.
+- Portfolios, finished-work photos, before-and-afters, testimonials
+- Anyone hiring staff, or looking for work themselves
+- Suppliers, tool sales, trade-to-trade promotion
+
+Relevant:
+- Someone describing a problem they need solved ("pipe is leaking, anyone know
+  a good plumber?")
+- Someone asking for a recommendation, a quote, or availability
+- Someone planning work and asking who to call
+
+A post written by a business in the same trade is relevant only if that
+business is itself asking to hire someone.
+
+If the agent's goal explicitly says it wants providers, suppliers, job
+candidates or people offering a service, follow the goal — it overrides this
+section. Otherwise assume the agent wants customers.
+
 ### Reasoning examples
 "My roof is leaking after the storm" -> high intent, urgent.
 "I painted my house last year" -> not relevant, past/completed.
 "Anyone recommend a flooring company?" -> high intent.
+"Contractor specializing in interior demolition and junk removal" -> not relevant, this is a competitor advertising.
+"Licensed handyman available, 10 years experience, DM for quotes" -> not relevant, offering rather than seeking.
 "Selling my old couch" -> only relevant if the agent's goal is about buying used furniture.
 
 ### Input format

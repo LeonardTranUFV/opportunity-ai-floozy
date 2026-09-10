@@ -113,16 +113,37 @@ export async function evaluateAgentPosts(
   const postBudget = Math.max(1, Math.min(1000, Math.floor(maxPosts) || MAX_POSTS_PER_SCAN));
   const cutoffIso = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
 
-  // Posts with a parsed timestamp are filtered by that; posts where we couldn't
-  // parse a relative age from the page (posted_at is null) fall back to when we
-  // scraped them, so they aren't silently excluded from every range.
+  /**
+   * A post we cannot date cannot satisfy "posted in the last N days".
+   *
+   * This used to admit undated posts on `scraped_at` instead, so that they
+   * would not be excluded from every range. What that actually did was
+   * relabel them: a post written on 1 May, first seen seven minutes ago,
+   * passed a three-day filter and reached the card reading "seen 7m ago".
+   * The card was honest — postAge() deliberately says "seen" when it only
+   * knows the scrape time — while the filter that let it through was not, and
+   * the cost lands on somebody ringing a homeowner about a job they solved
+   * four months ago.
+   *
+   * The range is the customer's instruction about *the post*, so it is
+   * answered with the post's own date or not at all. Undated posts are
+   * counted and reported rather than silently dropped: this trades recall for
+   * truth, and they should be able to see how much recall it cost.
+   */
   const { data: allPosts } = await supabase
     .from("posts")
     .select("id, platform, author_name, author_profile_url, post_url, raw_text")
     .eq("user_id", userId)
-    .or(`posted_at.gte.${cutoffIso},and(posted_at.is.null,scraped_at.gte.${cutoffIso})`)
-    .order("scraped_at", { ascending: false })
+    .gte("posted_at", cutoffIso)
+    .order("posted_at", { ascending: false })
     .limit(postBudget);
+
+  const { count: undatedInWindow } = await supabase
+    .from("posts")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .is("posted_at", null)
+    .gte("scraped_at", cutoffIso);
 
   const candidates = (allPosts ?? []) as PostRow[];
 
@@ -168,13 +189,29 @@ export async function evaluateAgentPosts(
 
   const unevaluated = candidates.filter((p) => !evaluatedIds.has(p.id));
 
+  /**
+   * Said out loud wherever the scan reports back, because the alternative is
+   * a customer watching their results thin out with no idea why. It is also
+   * the most useful number on the page for deciding whether collection needs
+   * attention: these are posts we hold and cannot use.
+   */
+  const undatedNote =
+    undatedInWindow && undatedInWindow > 0
+      ? `${undatedInWindow} post${undatedInWindow === 1 ? "" : "s"} skipped — the platform didn't give us a date, so we can't tell if they're recent.`
+      : "";
+
   if (unevaluated.length === 0) {
     return {
       evaluated: 0,
       opportunitiesFound: 0,
       locallyFiltered: 0,
       aiCalls: 0,
-      message: `No new posts in the last ${rangeDays} day${rangeDays === 1 ? "" : "s"} to evaluate.`,
+      message: [
+        `No new posts in the last ${rangeDays} day${rangeDays === 1 ? "" : "s"} to evaluate.`,
+        undatedNote,
+      ]
+        .filter(Boolean)
+        .join(" "),
     };
   }
 
@@ -440,7 +477,7 @@ export async function evaluateAgentPosts(
     // duplicates that a single verdict answered for.
     locallyFiltered: locallyResolved.length + duplicateCount,
     aiCalls,
-    message: [filterNote, timeNote].filter(Boolean).join(" ") || undefined,
+    message: [filterNote, timeNote, undatedNote].filter(Boolean).join(" ") || undefined,
     remaining,
   };
 }
