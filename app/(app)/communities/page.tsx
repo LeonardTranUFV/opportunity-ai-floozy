@@ -1,19 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Compass, Search, Link2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { FindGroups } from "@/components/communities/find-groups"
 import { AddSourceForm } from "@/components/communities/add-source-form"
-import { GroupActiveToggle } from "@/components/communities/group-active-toggle"
-import { GroupName } from "@/components/communities/group-name"
-import { DeleteGroupButton } from "@/components/communities/delete-group-button"
 import { CheckSourcesButton } from "@/components/communities/check-sources-button"
 import { ResyncGroupsButton } from "@/components/communities/resync-groups-button"
 import { isHostedDeployment } from "@/lib/deployment"
 import { canRunSignedInBrowser } from "@/lib/remote-browser"
 import { getSourceCapacity, partitionByCap } from "@/lib/entitlement"
-import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
+import { SourceList } from "@/components/communities/source-list"
 
 export const dynamic = "force-dynamic"
 
@@ -68,19 +64,9 @@ export default async function CommunitiesPage() {
   )
   const overCapCount = overCapIds.size
 
-  const groupsByPlatform = new Map<string, typeof groups>()
-  for (const g of groups) {
-    const list = groupsByPlatform.get(g.platform) ?? []
-    list.push(g)
-    groupsByPlatform.set(g.platform, list)
-  }
-  // Reddit needs no browser and no login, so it's the one source type that
-  // collects even where a signed-in browser can't be opened at all.
+  // Reddit needs no browser and no login, so it is the one source type that
+  // collects even where a signed-in browser cannot be opened at all.
   const hasFetchableSource = groups.some((g) => g.platform === "reddit" && g.active)
-  const platformSections = [
-    ...PLATFORM_ORDER.filter((p) => groupsByPlatform.has(p)),
-    ...[...groupsByPlatform.keys()].filter((p) => !PLATFORM_ORDER.includes(p)),
-  ]
 
   return (
     <div className="flex flex-col gap-6">
@@ -210,69 +196,11 @@ export default async function CommunitiesPage() {
               description="Discover some above, or they'll be added automatically as agents scan."
             />
           ) : (
-            <div className="flex flex-col gap-5">
-              {platformSections.map((platform) => {
-                const meta = PLATFORM_META[platform]
-                const platformGroups = groupsByPlatform.get(platform)!
-                return (
-                  <div key={platform} className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      {meta ? (
-                        <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${meta.iconColor}`}>
-                          <meta.Icon className="h-3.5 w-3.5" />
-                        </div>
-                      ) : null}
-                      <span className="text-sm font-semibold capitalize">{meta?.label ?? platform}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {platformGroups.length} source{platformGroups.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    {platformGroups.map((g) => (
-                      <div
-                        key={g.id}
-                        className="flex items-center justify-between gap-4 rounded-lg border border-border p-3 transition-colors hover:border-brand/30 hover:bg-brand/[0.03]"
-                      >
-                        <div className="flex min-w-0 flex-col gap-1">
-                          <GroupName id={g.id} name={g.name} url={g.url} />
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <Badge variant={g.active ? "success" : "secondary"}>
-                              {g.active ? "Active" : "Paused"}
-                            </Badge>
-                            {/* Only when the crawler actually saw a join wall.
-                                needs_membership is null until a source has been
-                                visited, and "not checked yet" is honestly
-                                different from "you're a member" — guessing
-                                either way would put a warning on a source that
-                                is simply new. */}
-                            {g.active && overCapIds.has(g.id) && (
-                              <Badge
-                                variant="warning"
-                                title={`Your plan reads ${capacity.limit} sources at a time, oldest first. This one is outside that, so nothing is collected from it until you pause another.`}
-                              >
-                                Over limit — not being read
-                              </Badge>
-                            )}
-                            {g.needs_membership === true && (
-                              <Badge
-                                variant="warning"
-                                title="This group only shows its posts to members, so nothing can be collected until the connected account joins it."
-                              >
-                                Join this group to find opportunities
-                              </Badge>
-                            )}
-                            <span className="text-xs text-muted-foreground">{g.post_count} posts collected</span>
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <GroupActiveToggle id={g.id} active={!!g.active} />
-                          <DeleteGroupButton id={g.id} name={g.name} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
+            <SourceList
+              groups={groups.map((g) => ({ ...g, active: !!g.active }))}
+              overCapIds={[...overCapIds]}
+              capacityLimit={capacity.limit}
+            />
           )}
         </CardContent>
       </Card>

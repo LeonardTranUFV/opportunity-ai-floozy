@@ -54,7 +54,31 @@ export async function extractJoinedGroups(page: Page): Promise<DiscoveredGroup[]
 
     document.querySelectorAll("a").forEach((a) => {
       const href = a.getAttribute("href") || "";
-      const text = a.textContent ? a.textContent.trim() : "";
+
+      /**
+       * A sidebar entry is more than its name.
+       *
+       * Each link wraps the group name together with whatever Facebook
+       * decorates it with — an "Unread" badge, a "Last active 2 hours ago"
+       * line, an unread counter. `textContent` concatenates all of it with no
+       * separator, so names were stored as "Construction Jobs in
+       * VancouverLast active 2 hours ago" and read that way in every list,
+       * dropdown and confirmation dialog in the app.
+       *
+       * `innerText` respects the line breaks the layout implies, so the name
+       * is simply its first line. The replacements below handle the
+       * decorations that render inline rather than on a line of their own,
+       * and the length cap catches sidebar entries that are not groups at all
+       * (notification previews land here looking like very long names).
+       */
+      const label = a.innerText || a.textContent || "";
+      const text = label
+        .split("\n")[0]
+        .replace(/^unread\s*/i, "")
+        .replace(/\s*last active.*$/i, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 120);
 
       if (
         href.includes("/groups/") &&
