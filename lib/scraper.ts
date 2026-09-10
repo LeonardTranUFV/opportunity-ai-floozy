@@ -252,9 +252,24 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
     }
 
     const finalPostUrl = directUrl || groupUrl;
-    const uniquePostId = directUrl
-      ? `fb_${(directUrl as string).replace(/[^a-zA-Z0-9]/g, "_")}`
-      : `fb_txt_${hashText(textKey)}`;
+    /**
+     * Identity comes from the content, never from the permalink.
+     *
+     * This used to hash the permalink when one was found and the text when
+     * it wasn't — so the same post changed id depending on whether that
+     * particular pass happened to see its link. Facebook only exposes the
+     * permalink anchor while a post is mounted in its virtualised feed, so
+     * both branches fire for the same post across scans, and it lands as
+     * two rows instead of one updated row.
+     *
+     * The text is the post; the permalink is something we observe about it,
+     * sometimes. Keying on the stable thing is what lets a later pass
+     * *improve* a row — fill in the link, fill in the date — rather than
+     * fork it. The group is mixed into the hash so the same ask crossposted
+     * to two groups stays two rows, which is correct: they are two
+     * different places to reply.
+     */
+    const uniquePostId = `fb_${hashText(groupUrl + "|" + textKey)}`;
 
     results.push({
       post_id: uniquePostId,
@@ -321,7 +336,8 @@ function extractLinkedInPosts(groupUrl: string): RawExtractedPost[] {
     }
 
     results.push({
-      post_id: `li_${directUrl ? directUrl.replace(/[^a-zA-Z0-9]/g, "_") : "txt_" + hashText(textKey)}`,
+      // Content-keyed, for the reason spelled out in the Facebook extractor.
+      post_id: `li_${hashText(groupUrl + "|" + textKey)}`,
       post_url: directUrl || groupUrl,
       author_name,
       author_profile_url,
@@ -530,7 +546,8 @@ function extractXPosts(groupUrl: string): RawExtractedPost[] {
     }
 
     results.push({
-      post_id: directUrl ? `x_${directUrl.replace(/[^a-zA-Z0-9]/g, "_")}` : `x_txt_${hashText(textKey)}`,
+      // Content-keyed, for the reason spelled out in the Facebook extractor.
+      post_id: `x_${hashText(groupUrl + "|" + textKey)}`,
       post_url: directUrl || groupUrl,
       author_name,
       author_profile_url,

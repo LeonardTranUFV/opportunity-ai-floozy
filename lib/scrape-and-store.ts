@@ -3,6 +3,7 @@ import { scrapeActiveGroups } from "@/lib/scraper";
 import { sessionPlatform } from "@/lib/session-platform";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
 import { getSourceCapacity, partitionByCap } from "@/lib/entitlement";
+import { isExactPostUrl } from "@/lib/post-url";
 
 export interface ScrapeAndStoreResult {
   scraped: number;
@@ -191,64 +192,74 @@ export async function scrapeAndStorePosts(
     group_id: p.group_id,
     platform: p.platform,
     external_post_id: p.external_post_id,
-    post_url: p.post_url,
     author_name: p.author_name,
     author_profile_url: p.author_profile_url,
     raw_text: p.raw_text,
+    post_url: p.post_url,
     posted_at: p.posted_at,
   }));
 
   /**
-   * Two upserts, split on whether this pass actually read a date.
+   * Establish rows first, then improve them. Never downgrade.
    *
-   * This used to be one, writing every column including `posted_at`. Because
-   * the upsert resolves a conflict with DO UPDATE, re-scraping a post we
-   * already had **overwrote its date with null** whenever the second pass
-   * couldn't read one — and Facebook gives you a timestamp anchor only while
-   * the post is still mounted in its virtualised feed, so the second pass
-   * frequently can't.
+   * A single upsert writing every column looked obviously right and quietly
+   * destroyed data, because it resolves a conflict with DO UPDATE: re-reading
+   * a post we already had overwrote `posted_at` with null, and overwrote a
+   * real permalink with the group's feed URL, whenever that pass could not
+   * see them. Facebook exposes both only while a post is still mounted in its
+   * virtualised feed, so a later pass often cannot — and the Contractor agent
+   * scans every four hours, giving every row many chances to be blanked.
    *
-   * The Contractor agent scans every four hours, so a post that landed on
-   * Monday with a clean date had many chances to be re-read and blanked. That
-   * is why fixing the *parser* moved nothing: dates were being read correctly
-   * and then erased. Coverage was measuring erosion, not extraction.
+   * Measured over two days: permalinks 34% → 60% purely from no longer
+   * scraping comments as posts, while dates sat at 17% either side of a fixed
+   * parser. Both numbers were reporting erosion rather than extraction.
    *
-   * Splitting the batch is the whole fix. Rows that carry a date write it.
-   * Rows that don't omit the column entirely, so PostgREST leaves whatever is
-   * already stored — an insert still gets null, an update keeps the good
-   * value. A date, once learned, is never unlearned.
+   * So the write is split by intent:
+   *
+   *   1. DO NOTHING on conflict, carrying every column. New posts land whole,
+   *      fallback URL and all. Rows we already hold are not touched.
+   *   2. One narrow update per improvable column, sent only for the rows that
+   *      actually carry something better this time.
+   *
+   * Step 1 guarantees the row exists, so the narrow batches in step 2 only
+   * ever drive the UPDATE branch — they still carry the NOT NULL columns
+   * (platform, author_name, raw_text) so the proposed tuple stays valid, and
+   * those values are identity anyway, so rewriting them changes nothing.
+   *
+   * The result: a date or a permalink, once learned, is never unlearned.
    */
-  const dated = base.filter((r) => r.posted_at);
-  const undated = base
-    .filter((r) => !r.posted_at)
-    .map((r) => ({
-      user_id: r.user_id,
-      group_id: r.group_id,
-      platform: r.platform,
-      external_post_id: r.external_post_id,
-      post_url: r.post_url,
-      author_name: r.author_name,
-      author_profile_url: r.author_profile_url,
-      raw_text: r.raw_text,
-    }));
+  const identity = (r: (typeof base)[number]) => ({
+    user_id: r.user_id,
+    group_id: r.group_id,
+    platform: r.platform,
+    external_post_id: r.external_post_id,
+    author_name: r.author_name,
+    author_profile_url: r.author_profile_url,
+    raw_text: r.raw_text,
+  });
 
-  let upserted = 0;
+  const { error: seedError, count: seeded } = await supabase
+    .from("posts")
+    .upsert(base, { onConflict: "user_id,external_post_id", ignoreDuplicates: true, count: "exact" });
+  if (seedError) throw new Error(seedError.message);
 
+  const dated = base.filter((r) => r.posted_at).map((r) => ({ ...identity(r), posted_at: r.posted_at }));
   if (dated.length) {
-    const { error, count } = await supabase
+    const { error } = await supabase
       .from("posts")
-      .upsert(dated, { onConflict: "user_id,external_post_id", count: "exact" });
+      .upsert(dated, { onConflict: "user_id,external_post_id" });
     if (error) throw new Error(error.message);
-    upserted += count ?? dated.length;
   }
 
-  if (undated.length) {
-    const { error, count } = await supabase
+  const linked = base
+    .filter((r) => isExactPostUrl(r.post_url))
+    .map((r) => ({ ...identity(r), post_url: r.post_url }));
+  if (linked.length) {
+    const { error } = await supabase
       .from("posts")
-      .upsert(undated, { onConflict: "user_id,external_post_id", count: "exact" });
+      .upsert(linked, { onConflict: "user_id,external_post_id" });
     if (error) throw new Error(error.message);
-    upserted += count ?? undated.length;
   }
 
-  return { scraped: posts.length, inserted: upserted, log, brokenPlatforms };
+  return { scraped: posts.length, inserted: seeded ?? 0, log, brokenPlatforms };
 }
