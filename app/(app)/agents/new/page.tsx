@@ -117,7 +117,12 @@ export default function NewAgentPage() {
       audience === "customers"
         ? "Only include posts from people who want this work done for them. Posts from businesses advertising or offering this service are not opportunities."
         : "Only include posts from people offering or advertising this service, or looking for work in it."
-    return base.includes(note) ? base : `${base}\n\n${note}`
+    if (base.includes(note)) return base
+    // Close the sentence first. The goal is shown on the agent card as plain
+    // text, where the blank line collapses — without this it reads as
+    // "...looking for contracting job Only include posts from people who...".
+    const closed = /[.!?]$/.test(base) ? base : `${base}.`
+    return `${closed}\n\n${note}`
   }
 
   const handleSubmit = async () => {
