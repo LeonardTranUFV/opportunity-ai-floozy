@@ -30,6 +30,7 @@ export default function NewAgentPage() {
   const [locations, setLocations] = useState<string[]>([])
   const [keywords, setKeywords] = useState("")
   const [negativeKeywords, setNegativeKeywords] = useState("")
+  const [audience, setAudience] = useState<"customers" | "providers">("customers")
 
   const canContinueStep1 = name.trim().length > 0 && goal.trim().length >= 10
   const canContinueStep2 = locations.length > 0
@@ -98,6 +99,27 @@ export default function NewAgentPage() {
     }
   }
 
+  /**
+   * The direction of intent, written into the goal rather than stored beside it.
+   *
+   * The goal is what the scoring prompt actually reads, and the prompt treats
+   * an explicit statement there as overriding its default. Putting the answer
+   * in the same sentence needs no column, no migration and no second source of
+   * truth — and it stays editable afterwards, which a hidden flag would not be.
+   *
+   * It earns its place because the failure it prevents is the common one: an
+   * agent for a trade matches every post in that trade, including the ads from
+   * everybody else who does it.
+   */
+  const goalWithAudience = () => {
+    const base = goal.trim()
+    const note =
+      audience === "customers"
+        ? "Only include posts from people who want this work done for them. Posts from businesses advertising or offering this service are not opportunities."
+        : "Only include posts from people offering or advertising this service, or looking for work in it."
+    return base.includes(note) ? base : `${base}\n\n${note}`
+  }
+
   const handleSubmit = async () => {
     setIsSubmitting(true)
     try {
@@ -106,7 +128,7 @@ export default function NewAgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          goal,
+          goal: goalWithAudience(),
           location: locations.join(", "),
           keywords,
           negative_keywords: negativeKeywords,
@@ -172,6 +194,45 @@ export default function NewAgentPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Fills in a goal and a keyword set that is known to find leads. Change anything below.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Who should this agent find?</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        id: "customers",
+                        title: "People who need my service",
+                        hint: "Someone asking for a plumber, a quote, a recommendation.",
+                      },
+                      {
+                        id: "providers",
+                        title: "People who offer this service",
+                        hint: "Businesses advertising, or people looking for work in it.",
+                      },
+                    ] as const
+                  ).map((choice) => (
+                    <button
+                      key={choice.id}
+                      type="button"
+                      onClick={() => setAudience(choice.id)}
+                      aria-pressed={audience === choice.id}
+                      className={`flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors ${
+                        audience === choice.id
+                          ? "border-brand bg-brand/[0.06]"
+                          : "border-border hover:border-brand/40 hover:bg-brand/[0.03]"
+                      }`}
+                    >
+                      <span className="text-sm font-medium">{choice.title}</span>
+                      <span className="text-xs text-muted-foreground">{choice.hint}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Almost everyone wants the first one. Without this, an agent for your trade matches
+                  every post in that trade — including the ads from everyone else who does it.
                 </p>
               </div>
 
