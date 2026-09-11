@@ -4,6 +4,7 @@ import { isHostedDeployment } from "@/lib/deployment";
 import { attachFeedCapture } from "@/lib/feed-capture";
 import { DomainThrottle, fetchPaced } from "@/lib/fetchers";
 import { getRedditToken, toOAuthUrl, REDDIT_USER_AGENT, REDDIT_SETUP_HINT } from "@/lib/reddit-auth";
+import { isExactPostUrl } from "@/lib/post-url";
 import { sessionPlatform } from "@/lib/session-platform";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -822,6 +823,45 @@ const MAX_SCROLL_ROUNDS = 7;
 // — no reason to keep scrolling and waiting out the remaining rounds.
 const STALE_ROUNDS_TO_STOP = 2;
 
+/**
+ * Combine two sightings of the same post, keeping whichever round saw more.
+ *
+ * The scroll loop deliberately re-extracts after every step, because these
+ * feeds are virtualized and a post scrolled past is gone. But it kept the
+ * *first* sighting of each post and discarded every later one — and the first
+ * sighting is the worst one, because a post enters the DOM in pieces. Facebook
+ * paints the body text before it hydrates the timestamp anchor, so a round
+ * that catches a post mid-build records it with no date and, often, no
+ * permalink. That version was then locked in for the whole crawl.
+ *
+ * It also explains why this was so much better on a developer's machine than
+ * in production, which is how it was noticed: local Chrome hydrates in a few
+ * milliseconds, so the first extraction already has everything. A rented
+ * browser driven over CDP from another continent does not, so the first
+ * extraction usually does not — and the gap shows up as posts with text and
+ * no time.
+ *
+ * Upgrading field by field rather than replacing wholesale, because "more
+ * complete" is per field: a later round can gain the timestamp while a
+ * re-render truncates the body behind a "See more".
+ *
+ * This only works because post_id is derived from the content rather than the
+ * permalink. Keyed on the permalink, a post that gained its link between
+ * rounds would arrive as a stranger and there would be nothing to merge.
+ */
+function mergeSighting(prev: RawExtractedPost, next: RawExtractedPost): RawExtractedPost {
+  const betterUrl = !isExactPostUrl(prev.post_url) && isExactPostUrl(next.post_url);
+  const namedNow = prev.author_name === "Anonymous Member" && next.author_name !== "Anonymous Member";
+  return {
+    post_id: prev.post_id,
+    post_url: betterUrl ? next.post_url : prev.post_url,
+    author_name: namedNow ? next.author_name : prev.author_name,
+    author_profile_url: prev.author_profile_url ?? next.author_profile_url,
+    timestamp: prev.timestamp ?? next.timestamp,
+    raw_text: next.raw_text.length > prev.raw_text.length ? next.raw_text : prev.raw_text,
+  };
+}
+
 async function scrapeRedditPlatform(platformGroups: GroupToScrape[]): Promise<PlatformScrapeResult> {
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
@@ -1017,10 +1057,28 @@ async function scrapeBrowserPlatform(
             await page.waitForTimeout(randBetween(1400, 2400));
           }
           const sizeBefore = collected.size;
+          // A round that adds no new post can still be doing useful work —
+          // filling in a timestamp or a permalink that was not hydrated yet.
+          // Counting that as stale stopped the crawl at exactly the point it
+          // was starting to learn the dates.
+          let improved = false;
           try {
             const batch = await page.evaluate(extractor, group.url);
             for (const p of batch) {
-              if (!collected.has(p.post_id)) collected.set(p.post_id, p);
+              const prev = collected.get(p.post_id);
+              if (!prev) {
+                collected.set(p.post_id, p);
+                continue;
+              }
+              const merged = mergeSighting(prev, p);
+              if (
+                merged.timestamp !== prev.timestamp ||
+                merged.post_url !== prev.post_url ||
+                merged.author_profile_url !== prev.author_profile_url
+              ) {
+                improved = true;
+              }
+              collected.set(p.post_id, merged);
             }
           } catch (err) {
             // A single round failing still shouldn't abort the group — but it
@@ -1031,7 +1089,7 @@ async function scrapeBrowserPlatform(
           }
 
           if (round + 1 < MIN_SCROLL_ROUNDS) continue;
-          staleRounds = collected.size === sizeBefore ? staleRounds + 1 : 0;
+          staleRounds = collected.size === sizeBefore && !improved ? staleRounds + 1 : 0;
           if (staleRounds >= STALE_ROUNDS_TO_STOP) break;
         }
 
