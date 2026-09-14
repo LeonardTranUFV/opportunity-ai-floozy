@@ -1333,9 +1333,31 @@ async function scrapeBrowserPlatform(
                 const cands = Array.from(
                   document.querySelectorAll('div[role="feed"] > div, div[role="article"]')
                 );
+                /**
+                 * Pick posts the way the extractor does, not the way the DOM
+                 * orders them.
+                 *
+                 * The previous version took the first two containers with any
+                 * text and reported the topic filter bar and the page's own
+                 * chrome — "filter group feed by topic All topics",
+                 * "Facebook Facebook Facebook…". Both clear a 30-character
+                 * check and neither is a post, so the sample described
+                 * furniture while the seven real posts went unexamined.
+                 *
+                 * A post is a container with a message body: the longest
+                 * div[dir="auto"] in it, which is what getMessage reads.
+                 */
+                const bodyOf = (c: Element) => {
+                  let best = "";
+                  c.querySelectorAll('div[dir="auto"]').forEach((el) => {
+                    const t = (el.textContent || "").trim();
+                    if (t.length > best.length) best = t;
+                  });
+                  return best;
+                };
                 const posts = cands
                   .filter((c) => !cands.some((o) => o !== c && o.contains(c)))
-                  .filter((c) => (c.textContent || "").trim().length >= 30)
+                  .filter((c) => bodyOf(c).length > 40)
                   .slice(0, 2);
                 const out: string[] = [];
                 for (const c of posts) {
