@@ -119,7 +119,14 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
      */
     const parseLabel = (raw: string, anchored = true): string | null => {
       const label = raw.trim().replace(/\s+/g, " ");
-      if (!label || label.length > 40) return null;
+      /**
+       * The cap is a guard against reading a date out of body text, so it can
+       * be looser on elements that are known to be the timestamp. Facebook
+       * writes "2 days ago · Shared with Public group" — 37 characters before
+       * the audience name makes it longer — and at 40 the whole label was
+       * discarded before the pattern ever ran.
+       */
+      if (!label || label.length > (anchored ? 40 : 80)) return null;
       if (/^just now$/i.test(label)) return new Date(now).toISOString();
       if (/^yesterday/i.test(label)) return new Date(now - 86400e3).toISOString();
       /**
@@ -346,6 +353,116 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
       raw_text,
     });
   });
+
+  /**
+   * Comments, as leads in their own right.
+   *
+   * These were being scraped by accident, as if they were posts, and removing
+   * that was right — a comment stored as a post has no permalink and no date,
+   * which is most of how the date coverage got so bad. But the leads
+   * themselves were real. "anyone know a plumber in Burnaby?" is worth just
+   * as much under somebody else's post as it is in its own.
+   *
+   * And there is a payoff hiding here. Facebook labels every comment:
+   *
+   *     aria-label="Comment by Quinn Sabyan 4 days ago"
+   *
+   * The author and the age, on one attribute, on every single one. Comments
+   * are the best-dated thing on a Facebook page — far better than its posts,
+   * which is the exact problem this file keeps fighting. So a comment with no
+   * readable age is skipped rather than stored undated: the whole reason to
+   * take them is that they come dated, and one that doesn't is just the old
+   * pollution wearing a new hat.
+   *
+   * Bounded deliberately. Comments outnumber posts several times over and
+   * each one costs credits to score, so only substantial ones count and only
+   * the first few per post — a thread's later replies are conversation
+   * between people who already answered, not new asks.
+   */
+  const MAX_COMMENTS_PER_POST = 8;
+  const MIN_COMMENT_LENGTH = 40;
+
+  const ageFromAria = (label: string): string | null => {
+    const m = label.match(/(\d{1,3})\s*(minute|hour|day|week|month|year)s?\s+ago/i);
+    if (!m) return null;
+    const unitMs: Record<string, number> = {
+      minute: 60e3,
+      hour: 3600e3,
+      day: 86400e3,
+      week: 604800e3,
+      month: 2592000e3,
+      year: 31536000e3,
+    };
+    const ms = unitMs[m[2].toLowerCase()];
+    return ms ? new Date(Date.now() - parseInt(m[1], 10) * ms).toISOString() : null;
+  };
+
+  const permalinkOf = (el: Element): string | null => {
+    for (const a of el.querySelectorAll("a")) {
+      const href = a.getAttribute("href") || "";
+      if (
+        href.includes("/share/p/") ||
+        href.includes("/posts/") ||
+        href.includes("/permalink.php") ||
+        href.includes("/permalink/")
+      ) {
+        return (href.startsWith("http") ? href : window.location.origin + href).split("?")[0];
+      }
+    }
+    return null;
+  };
+
+  const commentsSeen = new Map<Element, number>();
+  for (const el of containerCandidates) {
+    // A comment is a candidate nested inside another candidate. That is the
+    // same test that excludes them from the post pass, read the other way up.
+    const parent = containerCandidates.find((o) => o !== el && o.contains(el));
+    if (!parent) continue;
+
+    const timestamp = ageFromAria(el.getAttribute("aria-label") || "");
+    if (!timestamp) continue;
+
+    const raw_text = getMessage(el).slice(0, 1500);
+    if (raw_text.length < MIN_COMMENT_LENGTH) continue;
+
+    const textKey = raw_text.slice(0, 160).toLowerCase().replace(/\s+/g, " ");
+    if (seenTexts.has(textKey)) continue;
+
+    const used = commentsSeen.get(parent) ?? 0;
+    if (used >= MAX_COMMENTS_PER_POST) continue;
+    commentsSeen.set(parent, used + 1);
+    seenTexts.add(textKey);
+
+    // The comment's own link where Facebook exposes one — it carries
+    // comment_id in the query string, so unlike every other URL here the
+    // query is the part worth keeping. Otherwise the parent post, which at
+    // least lands the reader on the right thread.
+    const ownAnchor = Array.from(el.querySelectorAll("a")).find((a) =>
+      (a.getAttribute("href") || "").includes("comment_id=")
+    );
+    const ownHref = ownAnchor?.getAttribute("href") ?? null;
+    const post_url = ownHref
+      ? ownHref.startsWith("http")
+        ? ownHref
+        : window.location.origin + ownHref
+      : permalinkOf(parent) || groupUrl;
+
+    const authorEl = el.querySelector('a[href*="/user/"], a[href*="/profile.php"], h3 a');
+    const authorHref = authorEl?.getAttribute("href") ?? null;
+
+    results.push({
+      // Prefixed so a comment is never confused with a post of the same text,
+      // and content-keyed for the same reason posts are.
+      post_id: `fbc_${hashText(groupUrl + "|c|" + textKey)}`,
+      post_url,
+      author_name: (authorEl?.textContent || "").trim() || "Anonymous Member",
+      author_profile_url: authorHref
+        ? (authorHref.startsWith("http") ? authorHref : window.location.origin + authorHref).split("?")[0]
+        : null,
+      timestamp,
+      raw_text,
+    });
+  }
 
   return results;
 }
