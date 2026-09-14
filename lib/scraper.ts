@@ -75,19 +75,45 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
    * measured in production: 2,423 Facebook rows, 34% with a real permalink,
    * 17% with a date. The missing majority were never posts.
    *
-   * Dropping any candidate that sits inside another candidate fixes it
-   * without a language-specific test. A comment is always nested inside its
-   * post, in every locale — whereas matching the string "Comment by" would
-   * work here and silently fail on the Vietnamese groups this same account
-   * scrapes. The role="article" arm stays, so a layout that really does
-   * expose posts as top-level articles keeps working.
+   * The rule is "an article inside another article", and getting that wrong
+   * cost more than the bug it fixed.
+   *
+   * The first version dropped any candidate nested inside any other, which
+   * reads as the same thing and is not. Facebook wraps each post in a feed
+   * child that also carries loading chrome:
+   *
+   *     div[role="feed"] > div        the wrapper
+   *         div[role="article"]       the post itself
+   *
+   * Both are candidates, so "nested inside another candidate" discarded the
+   * post and kept the wrapper. Everything downstream then read the wrapper:
+   * getMessage still found the post's text nested inside it, so rows looked
+   * fine, but parseRelativeAge searched a container whose header is skeleton
+   * placeholder rather than a post header, and found no date. Posts arrived
+   * with a body and no timestamp — which is precisely the symptom that was
+   * then chased through three parser fixes.
+   *
+   * The evidence was there and misread: a live sample returned six articles,
+   * four labelled "Comment by …" and two with no label. Those two were posts.
+   *
+   * A comment is an article inside an article. A post is an article that is
+   * not, however many plain divs wrap it. That is still language-agnostic —
+   * no "Comment by" string to fail on the Vietnamese groups here — and it
+   * keeps a feed child only when it holds no article, so layouts that never
+   * use role="article" still work.
    */
   const containerCandidates = Array.from(
     document.querySelectorAll('div[role="feed"] > div, div[role="article"]')
   );
-  const postContainers = containerCandidates.filter(
-    (c) => !containerCandidates.some((other) => other !== c && other.contains(c))
-  );
+  const isArticle = (el: Element) => el.getAttribute("role") === "article";
+  const postContainers = containerCandidates.filter((c) => {
+    if (isArticle(c)) {
+      // Keep it unless a different article contains it — that is a comment.
+      return !containerCandidates.some((o) => o !== c && isArticle(o) && o.contains(c));
+    }
+    // A feed child wrapping an article is a wrapper, not the post.
+    return !c.querySelector('div[role="article"]');
+  });
 
   /**
    * Runs in the page. Facebook writes a post's age in at least four shapes,
@@ -460,9 +486,12 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
 
   const commentsSeen = new Map<Element, number>();
   for (const el of containerCandidates) {
-    // A comment is a candidate nested inside another candidate. That is the
-    // same test that excludes them from the post pass, read the other way up.
-    const parent = containerCandidates.find((o) => o !== el && o.contains(el));
+    // A comment is an article inside another article — the same test the post
+    // pass uses, read the other way up. It has to be the same test: "nested
+    // inside any candidate" would treat every post as a comment, because a
+    // post is an article inside its feed-child wrapper.
+    if (!isArticle(el)) continue;
+    const parent = containerCandidates.find((o) => o !== el && isArticle(o) && o.contains(el));
     if (!parent) continue;
 
     const timestamp = ageFromAria(el.getAttribute("aria-label") || "");
