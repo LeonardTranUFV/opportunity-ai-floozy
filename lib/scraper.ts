@@ -109,12 +109,37 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
       if (!year && d.getTime() > now + 86400e3) d.setUTCFullYear(y - 1);
       return d.toISOString();
     };
-    const parseLabel = (raw: string): string | null => {
+    /**
+     * `anchored` is false only for elements that are known to *be* the
+     * timestamp — the aria-labelled anchor, the <abbr>, the permalink. There
+     * the age is the point of the element, so anything after it is
+     * decoration and can be ignored. For the bare a/span fallback passes it
+     * stays true, because those are ordinary page text and a loose match
+     * there would read "3 days left on this offer" as a post date.
+     */
+    const parseLabel = (raw: string, anchored = true): string | null => {
       const label = raw.trim().replace(/\s+/g, " ");
       if (!label || label.length > 40) return null;
       if (/^just now$/i.test(label)) return new Date(now).toISOString();
       if (/^yesterday/i.test(label)) return new Date(now - 86400e3).toISOString();
-      const rel = label.match(/^(\d{1,3})\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(?:\s+ago)?$/i);
+      /**
+       * The tail is optional, and that is the whole fix.
+       *
+       * Facebook's timestamp anchor does not contain only the age. It nests
+       * the age beside a separator and the audience, so `textContent` reads
+       * "4d · Shared with Public group". Anchored at both ends this matched
+       * nothing, the post was stored undated — and the permalink was still
+       * read off that same anchor, which is why production holds hundreds of
+       * posts that have a link and no date. Nextdoor, whose markup puts the
+       * age on its own, dates 100% of its posts; Facebook managed 18%.
+       */
+      const tail = anchored ? "$" : "\\b";
+      const rel = label.match(
+        new RegExp(
+          `^(\\d{1,3})\\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(?:\\s+ago)?${tail}`,
+          "i"
+        )
+      );
       if (rel) {
         const value = parseInt(rel[1], 10);
         const u = rel[2].toLowerCase();
@@ -172,12 +197,20 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
      * form ("15 May at 10:32"), the visible text the shortest ("15 May"). The
      * bare a/span passes stay last, as a fallback rather than a first guess.
      */
-    const passes = ["a[aria-label]", "abbr", "a[href*='/posts/']", "a[href*='/permalink']", "a", "span"];
-    for (const selector of passes) {
-      for (const el of container.querySelectorAll(selector)) {
+    const passes = [
+      { sel: "a[aria-label]", isTimestamp: true },
+      { sel: "abbr", isTimestamp: true },
+      { sel: "a[href*='/posts/']", isTimestamp: true },
+      { sel: "a[href*='/permalink']", isTimestamp: true },
+      // Ordinary page text. Strict matching only — see parseLabel.
+      { sel: "a", isTimestamp: false },
+      { sel: "span", isTimestamp: false },
+    ];
+    for (const pass of passes) {
+      for (const el of container.querySelectorAll(pass.sel)) {
         for (const label of [el.getAttribute("aria-label"), el.textContent]) {
           if (!label) continue;
-          const parsed = parseLabel(label);
+          const parsed = parseLabel(label, !pass.isTimestamp);
           if (parsed) return parsed;
         }
       }
