@@ -1310,6 +1310,52 @@ async function scrapeBrowserPlatform(
           if (staleRounds >= STALE_ROUNDS_TO_STOP) break;
         }
 
+        /**
+         * When most posts came back undated, say what the labels actually
+         * said.
+         *
+         * The date cause has now been inferred twice from the shape of the
+         * failure and been wrong twice, because the one thing never done was
+         * read a real label off a real crawl. A browser tab driven from here
+         * loses focus and Facebook will not render a hidden tab, so the
+         * observation has to come from inside the crawl itself.
+         *
+         * Cheap and self-limiting: one extra evaluate, only on Facebook, only
+         * when over half the posts are undated, only the first few posts, and
+         * only short strings. It surfaces in the scrape log, which is already
+         * returned to the caller and shown in the UI.
+         */
+        if (group.platform === "facebook" && collected.size > 0) {
+          const undatedCount = [...collected.values()].filter((p) => !p.timestamp).length;
+          if (undatedCount * 2 > collected.size) {
+            const samples: string[] = await page
+              .evaluate(() => {
+                const cands = Array.from(
+                  document.querySelectorAll('div[role="feed"] > div, div[role="article"]')
+                );
+                const posts = cands
+                  .filter((c) => !cands.some((o) => o !== c && o.contains(c)))
+                  .filter((c) => (c.textContent || "").trim().length >= 30)
+                  .slice(0, 3);
+                const out: string[] = [];
+                for (const c of posts) {
+                  for (const a of Array.from(c.querySelectorAll("a")).slice(0, 8)) {
+                    const txt = (a.textContent || "").trim().replace(/\s+/g, " ");
+                    const aria = (a.getAttribute("aria-label") || "").trim();
+                    // Anything short enough to plausibly be a timestamp.
+                    if (txt && txt.length <= 44) out.push(`t:${txt}`);
+                    if (aria && aria.length <= 60) out.push(`a:${aria}`);
+                  }
+                }
+                return out.slice(0, 18);
+              })
+              .catch(() => [] as string[]);
+            if (samples.length) {
+              log.push(`"${group.name}" undated ${undatedCount}/${collected.size} — labels seen: ${samples.join(" ‖ ")}`);
+            }
+          }
+        }
+
         // Count what the page actually offered, so an empty result can be
         // attributed to the outer selector, the inner ones, or a real lull.
         const containerSelector = CONTAINER_SELECTORS[group.platform];
