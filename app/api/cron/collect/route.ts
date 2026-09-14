@@ -48,7 +48,22 @@ import { canRunSignedInBrowser } from "@/lib/remote-browser";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+
+/**
+ * 800 seconds, where every other route here is capped at 300.
+ *
+ * The 300 elsewhere is not a platform limit — Vercel Pro allows 800 with
+ * fluid compute — it is a product decision: a person is watching a spinner,
+ * and a long idle HTTP/1.1 connection gets dropped before it finishes anyway.
+ *
+ * Neither is true of a cron. Nobody is waiting, and the only thing the
+ * ceiling decides is how many sources one tick can reach before it has to
+ * stop. At roughly 45 seconds a source, 260 seconds reaches about five of
+ * them; 760 reaches about seventeen. With 28 active sources on this account
+ * that is the difference between a full pass taking most of a day and taking
+ * a few hours.
+ */
+export const maxDuration = 800;
 
 /**
  * How much of each tick may be spent driving browsers.
@@ -56,8 +71,15 @@ export const maxDuration = 300;
  * Forty seconds short of the ceiling: openPlatformContext has to start and
  * attach to a rented browser before any of this budget is spent, and the
  * database writes and response come after it.
+ *
+ * Worth writing down what this costs, because it is the one number here that
+ * spends money on its own. Twelve ticks a day at 760 seconds is a ceiling of
+ * about 2.5 browser-hours a day, or ~76 a month — inside the 100 included on
+ * Browserbase Developer, with no proxy spend because crawls do not use it.
+ * Ticks also end early once nothing is stale, so that is a ceiling rather
+ * than a forecast.
  */
-const COLLECT_BUDGET_MS = 260_000;
+const COLLECT_BUDGET_MS = 760_000;
 
 /**
  * Don't revisit a source read within this window.
