@@ -99,7 +99,39 @@ export async function scrapeAndStorePosts(
   // switch-on check. See partitionByCap for why the page and the crawl must
   // agree on which sources are read.
   const capacity = await getSourceCapacity(supabase, userId);
-  const { read: activeGroups, overCap } = partitionByCap(runnableGroups, capacity);
+  const { read: cappedGroups, overCap } = partitionByCap(runnableGroups, capacity);
+
+  /**
+   * Least recently scraped first, so every source gets a turn.
+   *
+   * A rented browser gets a wall-clock budget of about 280 seconds, and a
+   * group takes 15-30 of them. With 25 active sources that is six to twelve
+   * minutes of work inside a four-and-a-half minute window, so the crawl
+   * stops part way — by design, because overrunning the invocation loses
+   * everything it has not written yet.
+   *
+   * What was not by design is *which* sources got dropped. The query had no
+   * ORDER BY, so Postgres returned them in the same order every run and the
+   * crawl always stopped in the same place. The tail of that list was never
+   * read at all — not "less often": never. Waiting did not help, because the
+   * next run started from the same end.
+   *
+   * Ordering by `last_scraped_at` turns a permanent cut into a rotation: the
+   * sources that missed out last time lead the next one. Nulls first, so a
+   * newly added source is read before ones that already have posts.
+   *
+   * partitionByCap sorts by created_at internally, so reordering after it
+   * cannot change *which* sources are inside the plan's limit — only the
+   * order the allowed ones are visited in.
+   */
+  const activeGroups = [...cappedGroups].sort((a, b) => {
+    const left = a.last_scraped_at ?? "";
+    const right = b.last_scraped_at ?? "";
+    if (left === right) return 0;
+    if (!left) return -1;
+    if (!right) return 1;
+    return left.localeCompare(right);
+  });
 
   const preamble: string[] = [];
   if (overCap.length > 0) {
