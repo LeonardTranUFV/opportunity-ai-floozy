@@ -991,6 +991,25 @@ async function scrapeRedditGroup(group: GroupToScrape, throttle: DomainThrottle)
 // scrolls before anything rendered.
 const MIN_SCROLL_ROUNDS = 3;
 const MAX_SCROLL_ROUNDS = 7;
+
+/**
+ * How deep to scroll a feed, given how it is ordered.
+ *
+ * Facebook is now opened with `sorting_setting=CHRONOLOGICAL`, so the newest
+ * posts are at the top and scrolling further only reaches older ones — which
+ * the date window then throws away. Seven rounds of that is about six seconds
+ * per group spent fetching posts we are going to discard, and with a 280
+ * second budget shared across 28 sources, seconds per group are sources per
+ * run.
+ *
+ * The other platforms keep the deeper crawl: their feeds are not ordered by
+ * time, so what is worth having can be anywhere in them. The stale-round
+ * early exit still applies on top of this, so a quiet group stops sooner than
+ * either number regardless.
+ */
+function maxScrollRoundsFor(platform: string): number {
+  return platform === "facebook" || platform === "marketplace" ? 4 : MAX_SCROLL_ROUNDS;
+}
 // Two consecutive rounds that surface nothing new means the feed's caught up
 // — no reason to keep scrolling and waiting out the remaining rounds.
 const STALE_ROUNDS_TO_STOP = 2;
@@ -1248,7 +1267,8 @@ async function scrapeBrowserPlatform(
         const collected = new Map<string, RawExtractedPost>();
         let staleRounds = 0;
 
-        for (let round = 0; round < MAX_SCROLL_ROUNDS; round++) {
+        const maxRounds = maxScrollRoundsFor(group.platform);
+        for (let round = 0; round < maxRounds; round++) {
           if (round > 0) {
             await page.mouse.wheel(0, randBetween(1100, 1700));
             await page.waitForTimeout(randBetween(1400, 2400));
@@ -1385,7 +1405,7 @@ async function scrapeBrowserPlatform(
       }
 
       // Polite randomized pause between groups — keeps the crawl human-paced.
-      await sleep(randBetween(2000, 5000));
+      await sleep(randBetween(1500, 3500));
 
       // Measured including the pause, because that is time the next group also
       // has to fit inside.
