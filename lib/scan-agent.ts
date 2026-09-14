@@ -198,26 +198,51 @@ export async function evaluateAgentPosts(
           .limit(postBudget)
       : { data: [] as PostRow[] };
 
+  /**
+   * Not truncated here, and that matters.
+   *
+   * This used to `.slice(0, postBudget)` a dated-first concatenation, which
+   * made tier 2 inert on exactly the accounts that collect the most: tier 1
+   * is fetched with the same limit, and dated and undated rows can never
+   * collide, so once the window held postBudget dated posts the slice kept
+   * precisely those and every tier-2 post was dropped.
+   *
+   * Worse, it truncated *before* the already-scored posts were filtered out
+   * below — so a budget full of posts this agent scored on its last run
+   * crowded out fresh ones, and the scan could report "nothing new to
+   * evaluate" while holding unevaluated tier-2 posts it had just discarded.
+   *
+   * The budget is applied after that filter instead, where it means what it
+   * says: how many posts this run may actually spend on.
+   */
   const merged = new Map<string, PostRow>();
   for (const p of [...(datedRows ?? []), ...(undatedRows ?? [])] as PostRow[]) merged.set(p.id, p);
-  const allPosts = [...merged.values()].slice(0, postBudget);
+  const candidates = [...merged.values()];
 
   /**
-   * What we still had to leave out: undated posts from groups too new to
-   * vouch for them. Counted only when they were excluded — included, they are
-   * simply part of the run, and reporting "0 skipped" every time is noise.
+   * How many undated posts we could not vouch for — by subtraction, not by a
+   * negated IN.
+   *
+   * The obvious query is `.not("group_id", "in", (...))`, and it is wrong:
+   * `posts.group_id` is nullable — the groups route sets it NULL on delete so
+   * a source can be removed without losing its history — and `NOT (NULL IN
+   * (...))` is NULL, not true. Posts orphaned by a deleted source would be
+   * neither read nor counted, which is the one number this message exists to
+   * report.
+   *
+   * Counting every undated post in the window and subtracting the ones tier 2
+   * admitted has no such hole, and needs no id list in a query string.
    */
-  const { count: undatedInWindow } = includeUndated
+  const { count: undatedTotal } = includeUndated
     ? { count: 0 }
     : await supabase
         .from("posts")
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
         .is("posted_at", null)
-        .gte("scraped_at", cutoffIso)
-        .not("group_id", "in", `(${established.length ? established.join(",") : "00000000-0000-0000-0000-000000000000"})`);
+        .gte("scraped_at", cutoffIso);
 
-  const candidates = (allPosts ?? []) as PostRow[];
+  const undatedInWindow = Math.max(0, (undatedTotal ?? 0) - (undatedRows ?? []).length);
 
   /**
    * Which of *these* posts this agent has already scored.
@@ -259,7 +284,15 @@ export async function evaluateAgentPosts(
   const evaluatedRows = evaluatedChunks.flatMap((r) => (r.data ?? []) as { source_post_id: string }[]);
   const evaluatedIds = new Set((evaluatedRows ?? []).map((r) => r.source_post_id));
 
-  const unevaluated = candidates.filter((p) => !evaluatedIds.has(p.id));
+  /**
+   * The budget lands here, on posts this run will actually spend on.
+   *
+   * Applied to the candidate list it meant "how many rows to read", and rows
+   * already scored on a previous run counted against it — so a scan could
+   * fill its budget with posts it had nothing left to do to, and report
+   * nothing new while fresher posts sat one place past the cut.
+   */
+  const unevaluated = candidates.filter((p) => !evaluatedIds.has(p.id)).slice(0, postBudget);
 
   /**
    * Said out loud wherever the scan reports back, because the alternative is

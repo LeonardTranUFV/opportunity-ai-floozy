@@ -277,6 +277,7 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
     ];
     for (const pass of passes) {
       for (const el of container.querySelectorAll(pass.sel)) {
+        if (!ownedBy(container, el)) continue;
         for (const label of [el.getAttribute("aria-label"), el.textContent]) {
           if (!label) continue;
           const parsed = parseLabel(label, !pass.isTimestamp);
@@ -295,11 +296,35 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
     return Math.abs(h).toString(36);
   };
 
+  /**
+   * Does this element belong to THIS post, or to a comment inside it?
+   *
+   * Every scan below walks `container.querySelectorAll(...)`, which reaches
+   * the whole subtree — and a post's subtree contains its comments. Once the
+   * post container became the post's own article rather than the feed-child
+   * wrapper, that stopped being harmless: getMessage keeps the LONGEST
+   * div[dir="auto"] anywhere beneath, so a comment longer than the post
+   * becomes the post's raw_text.
+   *
+   * That is worse than a wrong field. raw_text feeds textKey, textKey feeds
+   * external_post_id — so identity becomes "whichever body is longest among
+   * the post and whatever comments happen to be mounted right now". Facebook
+   * rotates which comment it shows as you scroll, so the same post can key
+   * differently between two rounds of one crawl and land as two rows.
+   *
+   * A container that is not an article owns everything under it (a layout
+   * with no role="article" at all). One that is an article owns only the
+   * elements whose nearest article ancestor is itself.
+   */
+  const ownedBy = (container: Element, el: Element): boolean =>
+    container.getAttribute("role") !== "article" || el.closest('div[role="article"]') === container;
+
   const getMessage = (container: Element): string => {
     const adPrev = container.querySelector('div[data-ad-preview="message"]');
     if (adPrev && (adPrev.textContent || "").trim().length > 20) return (adPrev.textContent || "").trim();
     let best = "";
     container.querySelectorAll('div[dir="auto"]').forEach((el) => {
+      if (!ownedBy(container, el)) return;
       const t = (el.textContent || "").trim();
       if (t.length > best.length) best = t;
     });
@@ -332,6 +357,7 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
       (authorElement && authorElement.getAttribute("href")) ||
       (() => {
         for (const a of container.querySelectorAll("a")) {
+          if (!ownedBy(container, a)) continue;
           const h = a.getAttribute("href") || "";
           if (/\/groups\/[^/]+\/user\/\d+/.test(h) || h.includes("/profile.php?id=")) return h;
         }
@@ -371,6 +397,7 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
      */
     let directUrl: string | null = null;
     for (const a of container.querySelectorAll("a")) {
+      if (!ownedBy(container, a)) continue;
       const href = a.getAttribute("href") || "";
       if (
         href.includes("/share/p/") ||

@@ -130,13 +130,29 @@ export async function openPlatformContext(
          * off at the platform's time limit. `release()` below is what ends the
          * rented session; if it never runs, a browser with nobody driving it
          * bills until it times out on its own. With keepAlive off the dropped
-         * connection ends the session by itself, and the short timeout is the
+         * connection ends the session by itself, and this timeout is the
          * backstop for anything that slips past even that.
+         *
+         * **`idleTimeoutSeconds` is a misnomer.** The provider takes it as
+         * `timeout`, and that is the session's TOTAL lifetime, not an idle
+         * period — this repo proved it twice already: the free tier "capped
+         * sessions at five minutes and rejected a larger timeout outright"
+         * (remote-browser-browserbase.ts), and a human actively driving a
+         * connect through 2FA still died "at 303, 307, 309 or 310 seconds —
+         * the cap, every time" (cloud-connect.tsx).
+         *
+         * So 120 was not a backstop, it was a ceiling. It was harmless while
+         * the crawl budget was 45 seconds and became the binding constraint
+         * the moment the collect cron went to a 760-second budget: the budget
+         * said seventeen sources a tick, the browser died after two. 900 puts
+         * it safely above the route's own 800-second maxDuration, so the
+         * invocation is what ends a crawl, which is the thing that was always
+         * meant to.
          *
          * Connect keeps the opposite settings for equally good reasons.
          */
         keepAlive: false,
-        idleTimeoutSeconds: 120,
+        idleTimeoutSeconds: 900,
 
         ...(process.env.CRAWL_USE_PROXY === "1" ? { proxyId: "residential" } : {}),
       });
