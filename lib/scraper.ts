@@ -29,6 +29,20 @@ export interface ScrapedPost {
 }
 
 interface RawExtractedPost {
+  /**
+   * Set only when a post was accepted with no readable date: the first
+   * hundred characters of its header, captured as it is extracted.
+   *
+   * It has to be captured here rather than sampled afterwards. These feeds
+   * are virtualized, so by the time the scroll loop ends the posts that were
+   * extracted have been unmounted and replaced by skeletons — sampling then
+   * describes the page furniture rather than the posts, which is exactly the
+   * wrong answer two attempts at this produced.
+   *
+   * Never stored: ScrapedPost has no such field, so it is dropped at the
+   * persistence boundary.
+   */
+  debugHead?: string;
   post_id: string;
   post_url: string | null;
   author_name: string;
@@ -346,6 +360,8 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
       }
     }
 
+    const postedAt = parseRelativeAge(container);
+
     const finalPostUrl = directUrl || groupUrl;
     /**
      * Identity comes from the content, never from the permalink.
@@ -371,8 +387,16 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
       post_url: finalPostUrl,
       author_name,
       author_profile_url,
-      timestamp: parseRelativeAge(container),
+      timestamp: postedAt,
       raw_text,
+      ...(postedAt
+        ? {}
+        : {
+            debugHead: ((container as HTMLElement).innerText || container.textContent || "")
+              .trim()
+              .replace(/s+/g, " ")
+              .slice(0, 100),
+          }),
     });
   });
 
@@ -1050,6 +1074,7 @@ function mergeSighting(prev: RawExtractedPost, next: RawExtractedPost): RawExtra
     author_profile_url: prev.author_profile_url ?? next.author_profile_url,
     timestamp: prev.timestamp ?? next.timestamp,
     raw_text: next.raw_text.length > prev.raw_text.length ? next.raw_text : prev.raw_text,
+    debugHead: prev.debugHead ?? next.debugHead,
   };
 }
 
@@ -1311,84 +1336,24 @@ async function scrapeBrowserPlatform(
         }
 
         /**
-         * When most posts came back undated, say what the labels actually
-         * said.
+         * When most of a group came back undated, say what those posts
+         * actually read as.
          *
-         * The date cause has now been inferred twice from the shape of the
-         * failure and been wrong twice, because the one thing never done was
-         * read a real label off a real crawl. A browser tab driven from here
-         * loses focus and Facebook will not render a hidden tab, so the
-         * observation has to come from inside the crawl itself.
-         *
-         * Cheap and self-limiting: one extra evaluate, only on Facebook, only
-         * when over half the posts are undated, only the first few posts, and
-         * only short strings. It surfaces in the scrape log, which is already
-         * returned to the caller and shown in the UI.
+         * Read from what extraction captured, not sampled from the page
+         * afterwards. Two earlier attempts sampled the DOM once the scroll
+         * loop had finished and both described page furniture — the topic
+         * filter bar, the loading skeleton — because these feeds unmount a
+         * post the moment it scrolls out of view. The header has to be taken
+         * as the post is read, which is what debugHead is for.
          */
         if (group.platform === "facebook" && collected.size > 0) {
-          const undatedCount = [...collected.values()].filter((p) => !p.timestamp).length;
-          if (undatedCount * 2 > collected.size) {
-            const samples: string[] = await page
-              .evaluate(() => {
-                const cands = Array.from(
-                  document.querySelectorAll('div[role="feed"] > div, div[role="article"]')
-                );
-                /**
-                 * Pick posts the way the extractor does, not the way the DOM
-                 * orders them.
-                 *
-                 * The previous version took the first two containers with any
-                 * text and reported the topic filter bar and the page's own
-                 * chrome — "filter group feed by topic All topics",
-                 * "Facebook Facebook Facebook…". Both clear a 30-character
-                 * check and neither is a post, so the sample described
-                 * furniture while the seven real posts went unexamined.
-                 *
-                 * A post is a container with a message body: the longest
-                 * div[dir="auto"] in it, which is what getMessage reads.
-                 */
-                const bodyOf = (c: Element) => {
-                  let best = "";
-                  c.querySelectorAll('div[dir="auto"]').forEach((el) => {
-                    const t = (el.textContent || "").trim();
-                    if (t.length > best.length) best = t;
-                  });
-                  return best;
-                };
-                const posts = cands
-                  .filter((c) => !cands.some((o) => o !== c && o.contains(c)))
-                  .filter((c) => bodyOf(c).length > 40)
-                  .slice(0, 2);
-                const out: string[] = [];
-                for (const c of posts) {
-                  // What the post header literally reads as on screen. The
-                  // age is in there if it is anywhere — the first attempt at
-                  // this sampled only <a> elements and came back with author
-                  // names and image alt text, which told us where the date is
-                  // NOT but never where it is.
-                  const head = (c as HTMLElement).innerText || c.textContent || "";
-                  out.push(`HEAD[${head.trim().replace(/\s+/g, " ").slice(0, 110)}]`);
-
-                  // Every leaf element whose text looks like an age, with the
-                  // tag it sits on — so we stop guessing which selector to use.
-                  const walker = document.createTreeWalker(c, NodeFilter.SHOW_ELEMENT);
-                  let n: Node | null;
-                  let found = 0;
-                  while ((n = walker.nextNode()) && found < 4) {
-                    const el = n as HTMLElement;
-                    if (el.children.length) continue;
-                    const t = (el.textContent || "").trim();
-                    if (!t || t.length > 30) continue;
-                    if (!/\d\s*(m|h|d|w|y|min|hour|day|week|year)/i.test(t)) continue;
-                    out.push(`<${el.tagName.toLowerCase()}>${t}`);
-                    found++;
-                  }
-                }
-                return out.slice(0, 14);
-              })
-              .catch(() => [] as string[]);
-            if (samples.length) {
-              log.push(`"${group.name}" undated ${undatedCount}/${collected.size} — labels seen: ${samples.join(" ‖ ")}`);
+          const undated = [...collected.values()].filter((p) => !p.timestamp);
+          if (undated.length * 2 > collected.size) {
+            const heads = undated.map((p) => p.debugHead).filter(Boolean).slice(0, 3);
+            if (heads.length) {
+              log.push(
+                `"${group.name}" undated ${undated.length}/${collected.size} — headers: ${heads.join(" ‖ ")}`
+              );
             }
           }
         }
