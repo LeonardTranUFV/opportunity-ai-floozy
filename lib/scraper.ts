@@ -1336,18 +1336,33 @@ async function scrapeBrowserPlatform(
                 const posts = cands
                   .filter((c) => !cands.some((o) => o !== c && o.contains(c)))
                   .filter((c) => (c.textContent || "").trim().length >= 30)
-                  .slice(0, 3);
+                  .slice(0, 2);
                 const out: string[] = [];
                 for (const c of posts) {
-                  for (const a of Array.from(c.querySelectorAll("a")).slice(0, 8)) {
-                    const txt = (a.textContent || "").trim().replace(/\s+/g, " ");
-                    const aria = (a.getAttribute("aria-label") || "").trim();
-                    // Anything short enough to plausibly be a timestamp.
-                    if (txt && txt.length <= 44) out.push(`t:${txt}`);
-                    if (aria && aria.length <= 60) out.push(`a:${aria}`);
+                  // What the post header literally reads as on screen. The
+                  // age is in there if it is anywhere — the first attempt at
+                  // this sampled only <a> elements and came back with author
+                  // names and image alt text, which told us where the date is
+                  // NOT but never where it is.
+                  const head = (c as HTMLElement).innerText || c.textContent || "";
+                  out.push(`HEAD[${head.trim().replace(/\s+/g, " ").slice(0, 110)}]`);
+
+                  // Every leaf element whose text looks like an age, with the
+                  // tag it sits on — so we stop guessing which selector to use.
+                  const walker = document.createTreeWalker(c, NodeFilter.SHOW_ELEMENT);
+                  let n: Node | null;
+                  let found = 0;
+                  while ((n = walker.nextNode()) && found < 4) {
+                    const el = n as HTMLElement;
+                    if (el.children.length) continue;
+                    const t = (el.textContent || "").trim();
+                    if (!t || t.length > 30) continue;
+                    if (!/\d\s*(m|h|d|w|y|min|hour|day|week|year)/i.test(t)) continue;
+                    out.push(`<${el.tagName.toLowerCase()}>${t}`);
+                    found++;
                   }
                 }
-                return out.slice(0, 18);
+                return out.slice(0, 14);
               })
               .catch(() => [] as string[]);
             if (samples.length) {
