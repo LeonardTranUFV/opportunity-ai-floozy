@@ -66,16 +66,45 @@ export async function extractJoinedGroups(page: Page): Promise<DiscoveredGroup[]
        * dropdown and confirmation dialog in the app.
        *
        * `innerText` respects the line breaks the layout implies, so the name
-       * is simply its first line. The replacements below handle the
+       * is *usually* its first line. The replacements below handle the
        * decorations that render inline rather than on a line of their own,
        * and the length cap catches sidebar entries that are not groups at all
        * (notification previews land here looking like very long names).
+       *
+       * "Usually", because two sidebar entries in this account came through
+       * wrong and stayed wrong. Facebook also renders the activity stamp in a
+       * compact form — a bare "22h" — and when it takes a line of its own it
+       * becomes the first line, so the group at /groups/HoiNguoiVietCanada was
+       * stored under the name "22h". The other entry led with the group's
+       * welcome banner and glued the same stamp to the end of it, giving
+       * "Welcome to Okanagans... and more.9m".
+       *
+       * Neither contains the words "Last active", so neither was touched. So:
+       * skip leading lines that are pure decoration rather than assuming the
+       * first one is the name, and strip a compact stamp glued to the tail.
+       * The tail pattern needs a unit letter after the digits, which is what
+       * keeps it away from names that legitimately end in a number.
+       *
+       * That fixes the bare stamp outright. The banner case it only improves
+       * — the trailing "9m" goes, but the first line really is banner prose
+       * rather than the group's name, and no rule distinguishes the two that
+       * isn't just a spelling of that one sentence. Left as is deliberately.
+       *
+       * This matters more than a cosmetic label, because syncJoinedGroups
+       * inserts with DO NOTHING — deliberately, so a weekly refresh cannot
+       * undo a customer's choices. A name that lands wrong is therefore never
+       * corrected by a later sync. It is wrong until somebody edits the row.
        */
+      const STAMP = /^\d+\s*[smhdw]$/i;
       const label = a.innerText || a.textContent || "";
-      const text = label
-        .split("\n")[0]
-        .replace(/^unread\s*/i, "")
+      const line =
+        label
+          .split("\n")
+          .map((l) => l.replace(/^unread\s*/i, "").trim())
+          .find((l) => l && !STAMP.test(l)) ?? "";
+      const text = line
         .replace(/\s*last active.*$/i, "")
+        .replace(/\s*\d+\s*[smhdw]$/i, "")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 120);
