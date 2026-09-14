@@ -20,6 +20,15 @@
 // refuses to act without an exact link), dedupe scoring, and the scan's
 // per-target grouping — where every no-permalink row collapses into one
 // shared slot, so distinct listings were being folded into a single card.
+// The Nextdoor entries are host-qualified where the rest are bare paths, and
+// deliberately so. "/p/" on its own is a Facebook *page* URL as often as a
+// Nextdoor post, and this predicate decides whether the comment route is
+// willing to act on a link — a false positive there points outreach at the
+// wrong page. They earn their place even though extractNextdoorPosts has
+// never yet found one: without a marker, a permalink it did find would still
+// be classed as a fallback, and the narrow upgrade write in scrape-and-store
+// filters on exactly this function, so the row would never take the better
+// URL it was just handed.
 const PERMALINK_MARKERS = [
   "/posts/",
   "/share/p/",
@@ -28,6 +37,8 @@ const PERMALINK_MARKERS = [
   "/comments/",
   "/feed/update/",
   "/marketplace/item/",
+  "nextdoor.com/p/",
+  "nextdoor.com/post/",
 ];
 
 export function isExactPostUrl(postUrl: string | null): boolean {

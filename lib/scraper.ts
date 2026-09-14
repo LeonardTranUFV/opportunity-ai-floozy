@@ -707,13 +707,66 @@ function extractNextdoorPosts(groupUrl: string): RawExtractedPost[] {
         : window.location.origin + author_profile_url
       : null;
 
+    /**
+     * Try for a real permalink before falling back to the feed URL.
+     *
+     * The note above says the feed view has none, and every one of the 424
+     * stored Nextdoor posts agrees — all of them hold
+     * `https://nextdoor.com/news_feed/`, one distinct URL between them. That
+     * is worse than storing nothing, because a non-null post_url reads as a
+     * working link to anything that only checks for null, and the customer
+     * clicks through to a feed rather than the post.
+     *
+     * But "there is no anchor" was established by reading the DOM once, in
+     * July, and a feed's markup is not a fixed thing. So: look, cheaply, in
+     * the two places a permalink would be if it existed — wrapped around the
+     * timestamp, which is where nearly every social feed puts it, or as a
+     * link into /p/ or /post/ somewhere in the container.
+     *
+     * Costs nothing when the answer is still no, and upgrades every future
+     * post the day Nextdoor starts rendering one. The href has to look like a
+     * Nextdoor post URL specifically — matching a bare "/p/" would happily
+     * accept a Facebook page link if this selector ever ran on the wrong DOM.
+     */
+    const permalink = (() => {
+      const wrapping = timestampEl ? timestampEl.closest("a") : null;
+      const candidates = [
+        wrapping,
+        ...container.querySelectorAll('a[href*="/p/"], a[href*="/post/"]'),
+      ];
+      for (const el of candidates) {
+        const href = el ? el.getAttribute("href") || "" : "";
+        if (!href || href.startsWith("#")) continue;
+        const abs = href.startsWith("http") ? href : window.location.origin + href;
+        if (/nextdoor\.[a-z.]+\/(p|post)\//i.test(abs)) return abs;
+      }
+      return null;
+    })();
+
     results.push({
       post_id: `nd_txt_${hashText(textKey)}`,
-      post_url: groupUrl,
+      post_url: permalink ?? groupUrl,
       author_name,
       author_profile_url: resolvedProfileUrl,
       timestamp,
       raw_text,
+      /**
+       * When there was no permalink, say what links the post did carry.
+       *
+       * Same reasoning as the Facebook header capture: taken here, as the
+       * post is read, because the feed unmounts it before anything could go
+       * back and look. Profile links are dropped — those are always present
+       * and never the answer, so including them would fill the line with the
+       * one shape already known about.
+       */
+      debugHead: permalink
+        ? undefined
+        : ([...container.querySelectorAll("a[href]")]
+            .map((a) => a.getAttribute("href") || "")
+            .filter((h) => h && !h.startsWith("#") && !h.includes("/profile/"))
+            .slice(0, 4)
+            .join(" ")
+            .slice(0, 160) || undefined),
     });
   });
 
@@ -1411,6 +1464,27 @@ async function scrapeBrowserPlatform(
                 `"${group.name}" undated ${undated.length}/${collected.size} — headers: ${heads.join(" ‖ ")}`
               );
             }
+          }
+        }
+
+        /**
+         * The same question asked of Nextdoor, about links rather than dates.
+         *
+         * Every stored Nextdoor post holds the feed URL, on the strength of a
+         * DOM reading from July. extractNextdoorPosts now attempts a real
+         * permalink; this reports what it saw when it failed, so the next
+         * crawl settles whether the anchor is missing or merely somewhere
+         * else. Two rounds of this and the answer is either a working
+         * selector or a confirmed no — at which point both this and the
+         * attempt above should go.
+         */
+        if (group.platform === "nextdoor" && collected.size > 0) {
+          const unlinked = [...collected.values()].filter((p) => p.debugHead);
+          if (unlinked.length) {
+            const shapes = [...new Set(unlinked.map((p) => p.debugHead))].slice(0, 3);
+            log.push(
+              `"${group.name}" no permalink on ${unlinked.length}/${collected.size} — links present: ${shapes.join(" ‖ ")}`
+            );
           }
         }
 
