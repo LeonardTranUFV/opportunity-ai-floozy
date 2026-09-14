@@ -1212,7 +1212,32 @@ async function scrapeBrowserPlatform(
       const capture = attachFeedCapture(page, group.platform);
 
       try {
-        await page.goto(group.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        /**
+         * Ask Facebook for the newest posts, not its favourite ones.
+         *
+         * A group feed opened at its plain URL is ordered by "Top posts" —
+         * Facebook's own relevance ranking, which happily leads with a
+         * well-engaged thread from two months ago. That is not a subtle
+         * effect: across 3,669 collected Facebook posts the median age is
+         * 28.6 days, and only 50 of them fall inside three days. We were
+         * filtering hard for recent posts out of a feed that was not
+         * offering any.
+         *
+         * It also explains a long-running puzzle about dates. A post from
+         * June is labelled "30 June"; one from this morning is labelled
+         * "8 hours ago". Chasing the relative-time parser mattered much less
+         * than the fact that most of what we collected was months old.
+         *
+         * `sorting_setting=CHRONOLOGICAL` is the switch behind the feed's own
+         * "New posts" option. Left alone if a URL already carries a sort, so
+         * a deliberately pinned one is not overridden.
+         */
+        const feedUrl =
+          group.platform === "facebook" && !group.url.includes("sorting_setting")
+            ? `${group.url}${group.url.includes("?") ? "&" : "?"}sorting_setting=CHRONOLOGICAL`
+            : group.url;
+
+        await page.goto(feedUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
         await page.waitForTimeout(4000);
 
         // A bounce to login/checkpoint explains an empty run completely, and
