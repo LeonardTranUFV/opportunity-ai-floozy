@@ -206,11 +206,12 @@ export function ScanAgentButton({ id }: { id: string }) {
           disabled={isPending}
         />
         <span>
-          Also include posts we couldn&apos;t date
+          Also include undated posts from new sources
           <span className="block text-[11px] opacity-80">
-            Some platforms don&apos;t give us a post date. These get read anyway, dated by when we
-            first saw them — the card will say &ldquo;seen&rdquo; instead of a post date, so you can
-            tell them apart.
+            When a platform gives us no post date we normally still read it, as long as we&apos;ve
+            been watching that source long enough to know it just appeared. Tick this to read them
+            from recently added sources too — those can sweep up older posts. Either way the card
+            says &ldquo;seen&rdquo; rather than a post date, so you can tell them apart.
           </span>
         </span>
       </label>

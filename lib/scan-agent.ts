@@ -142,20 +142,71 @@ export async function evaluateAgentPosts(
    * counted and reported rather than silently dropped: this trades recall for
    * truth, and they should be able to see how much recall it cost.
    */
-  const base = supabase
+  const COLS = "id, platform, author_name, author_profile_url, post_url, raw_text";
+  const sel = () => supabase.from("posts").select(COLS).eq("user_id", userId);
+
+  /**
+   * Which groups we were already watching before this window opened.
+   *
+   * This is what makes an undated post safe to read. On a group we have been
+   * crawling for weeks, a post that turns up for the first time today turned
+   * up today — the feed had already been walked past everything older, so
+   * "first seen" really does mean "newly posted". On a group added an hour
+   * ago it means nothing at all: the first crawl sweeps up whatever is in the
+   * feed, and half of it can be from May.
+   *
+   * Having posts older than the cutoff is the proof. `groups.last_scraped_at`
+   * looks like the right column and is not — it records the most recent
+   * visit, so a group added last week and first reached this morning still
+   * reads as long-established.
+   *
+   * Capped rather than paged: this only needs the set of group ids, and 2,000
+   * of the most recent older posts covers every group still collecting by a
+   * wide margin. A group that appears only below that cut is one we have not
+   * read from in a very long time, which is exactly the case where trusting
+   * "first seen" would be wrong anyway.
+   */
+  const { data: priorRows } = await supabase
     .from("posts")
-    .select("id, platform, author_name, author_profile_url, post_url, raw_text")
-    .eq("user_id", userId);
+    .select("group_id")
+    .eq("user_id", userId)
+    .lt("scraped_at", cutoffIso)
+    .order("scraped_at", { ascending: false })
+    .limit(2000);
+  const established = [...new Set((priorRows ?? []).map((r) => r.group_id).filter(Boolean))] as string[];
 
-  const { data: allPosts } = includeUndated
-    ? await base
-        .or(`posted_at.gte.${cutoffIso},and(posted_at.is.null,scraped_at.gte.${cutoffIso})`)
-        .order("scraped_at", { ascending: false })
-        .limit(postBudget)
-    : await base.gte("posted_at", cutoffIso).order("posted_at", { ascending: false }).limit(postBudget);
+  // Tier 1: dated inside the window. Always read, never in doubt.
+  const { data: datedRows } = await sel()
+    .gte("posted_at", cutoffIso)
+    .order("posted_at", { ascending: false })
+    .limit(postBudget);
 
-  // Only worth counting when they were left out — included, they are simply
-  // part of the run and saying "0 skipped" every time is noise.
+  /**
+   * Tier 2: undated, but it appeared in a group we were already watching.
+   *
+   * Tier 3 is the same thing without that restriction, and only the customer
+   * can ask for it — see `includeUndated`. The difference matters: tier 2 is
+   * an inference with a reason behind it, tier 3 is a shrug.
+   */
+  const undatedScope = sel().is("posted_at", null).gte("scraped_at", cutoffIso);
+  const { data: undatedRows } = includeUndated
+    ? await undatedScope.order("scraped_at", { ascending: false }).limit(postBudget)
+    : established.length
+      ? await undatedScope
+          .in("group_id", established)
+          .order("scraped_at", { ascending: false })
+          .limit(postBudget)
+      : { data: [] as PostRow[] };
+
+  const merged = new Map<string, PostRow>();
+  for (const p of [...(datedRows ?? []), ...(undatedRows ?? [])] as PostRow[]) merged.set(p.id, p);
+  const allPosts = [...merged.values()].slice(0, postBudget);
+
+  /**
+   * What we still had to leave out: undated posts from groups too new to
+   * vouch for them. Counted only when they were excluded — included, they are
+   * simply part of the run, and reporting "0 skipped" every time is noise.
+   */
   const { count: undatedInWindow } = includeUndated
     ? { count: 0 }
     : await supabase
@@ -163,7 +214,8 @@ export async function evaluateAgentPosts(
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
         .is("posted_at", null)
-        .gte("scraped_at", cutoffIso);
+        .gte("scraped_at", cutoffIso)
+        .not("group_id", "in", `(${established.length ? established.join(",") : "00000000-0000-0000-0000-000000000000"})`);
 
   const candidates = (allPosts ?? []) as PostRow[];
 
@@ -217,7 +269,7 @@ export async function evaluateAgentPosts(
    */
   const undatedNote =
     undatedInWindow && undatedInWindow > 0
-      ? `${undatedInWindow} post${undatedInWindow === 1 ? "" : "s"} skipped — no date from the platform, so we can't tell how old they are. Tick "include undated posts" to scan them anyway.`
+      ? `${undatedInWindow} undated post${undatedInWindow === 1 ? "" : "s"} skipped — from sources too new for us to tell whether they'd just been posted. Tick "include undated posts" to read them too.`
       : "";
 
   if (unevaluated.length === 0) {
