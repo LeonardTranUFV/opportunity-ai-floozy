@@ -140,10 +140,32 @@ function extractFacebookPosts(groupUrl: string): RawExtractedPost[] {
        * posts that have a link and no date. Nextdoor, whose markup puts the
        * age on its own, dates 100% of its posts; Facebook managed 18%.
        */
-      const tail = anchored ? "$" : "\\b";
+      /**
+       * After the age, allow only a separator and whatever follows it.
+       *
+       * The first attempt at this allowed any trailing text, on elements
+       * picked out by selector — the aria-labelled anchor, the permalink. It
+       * did not work, and the reason is worth keeping: Facebook leaves the
+       * timestamp link's href as "#" until you hover it, so that element is
+       * not `a[href*='/posts/']` at scrape time and never reached the loose
+       * rule. It is also why the permalink comes off a *different* anchor,
+       * which is what produced hundreds of posts holding a link and no date.
+       *
+       * Demanding a separator is both safer and less fussy about which
+       * element we are looking at, so it applies everywhere:
+       *
+       *     "2 days ago"                            reads
+       *     "2 days ago · "                         reads
+       *     "2 days ago · Shared with Public group" reads
+       *     "3 days left on this offer"             ignored, no separator
+       *     "10 years experience"                   ignored, no separator
+       *
+       * Facebook always puts a separator between the age and whatever sits
+       * next to it; prose does not.
+       */
       const rel = label.match(
         new RegExp(
-          `^(\\d{1,3})\\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(?:\\s+ago)?${tail}`,
+          `^(\\d{1,3})\\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(?:\\s+ago)?\\s*(?:[·•∙・|–—-].*)?$`,
           "i"
         )
       );
