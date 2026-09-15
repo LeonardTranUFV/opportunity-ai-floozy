@@ -187,16 +187,50 @@ export async function evaluateAgentPosts(
    * Tier 3 is the same thing without that restriction, and only the customer
    * can ask for it — see `includeUndated`. The difference matters: tier 2 is
    * an inference with a reason behind it, tier 3 is a shrug.
+   *
+   * Tier 3 is a *superset* of tier 2, and has to be assembled that way rather
+   * than queried that way. The obvious version — one query, the group filter
+   * dropped when the box is ticked — reads like a widening and is not one,
+   * because both sides are capped at postBudget. Ticking the box did not add
+   * the unvouched posts to the vouched ones; it swapped in a different
+   * thousand, ordered by scrape time across every source, and the posts it
+   * displaced were the established ones this agent had not scored yet.
+   *
+   * Measured on this account before changing it: a seven-day scan found 691
+   * posts to score with the box clear and 367 with it ticked. The control the
+   * customer reaches for when they want *more* results was halving them.
+   *
+   * So tier 2 is always fetched, and tier 3 tops it up. Each is capped, so a
+   * ticked box can add at most another budget's worth and can never subtract.
    */
-  const undatedScope = sel().is("posted_at", null).gte("scraped_at", cutoffIso);
-  const { data: undatedRows } = includeUndated
-    ? await undatedScope.order("scraped_at", { ascending: false }).limit(postBudget)
-    : established.length
-      ? await undatedScope
-          .in("group_id", established)
-          .order("scraped_at", { ascending: false })
-          .limit(postBudget)
-      : { data: [] as PostRow[] };
+  const undatedVouched = established.length
+    ? await sel()
+        .is("posted_at", null)
+        .gte("scraped_at", cutoffIso)
+        .in("group_id", established)
+        .order("scraped_at", { ascending: false })
+        .limit(postBudget)
+    : { data: [] as PostRow[] };
+
+  const undatedAny = includeUndated
+    ? await sel()
+        .is("posted_at", null)
+        .gte("scraped_at", cutoffIso)
+        .order("scraped_at", { ascending: false })
+        .limit(postBudget)
+    : { data: [] as PostRow[] };
+
+  // Deduped here rather than relying on the `merged` map below, because
+  // undatedInWindow subtracts this length from a COUNT to report how many
+  // undated posts tier 2 could not vouch for. The two queries overlap heavily
+  // — every vouched post also matches the unrestricted one — so a raw
+  // concatenation would double-count and report far fewer held back than
+  // really are.
+  const undatedRows = [
+    ...new Map(
+      [...(undatedVouched.data ?? []), ...(undatedAny.data ?? [])].map((p) => [(p as PostRow).id, p as PostRow])
+    ).values(),
+  ];
 
   /**
    * Not truncated here, and that matters.
