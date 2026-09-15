@@ -1497,27 +1497,58 @@ async function scrapeBrowserPlatform(
             .catch(() => -1);
         }
 
-        // Fold in anything the feed's own JSON carried that the DOM pass
-        // didn't produce. DOM results are inserted first and never overwritten,
-        // so this can only add. Two things make it worth the trouble: the
-        // feeds are virtualized, so a post scrolled past is gone from the DOM
-        // but still present in the payload that delivered it; and on the day a
-        // class name changes, this is the path that keeps returning posts.
+        /**
+         * Fold in what the feed's own JSON carried.
+         *
+         * Two things make this worth the trouble: the feeds are virtualized,
+         * so a post scrolled past is gone from the DOM but still present in
+         * the payload that delivered it; and on the day a class name changes,
+         * this is the path that keeps returning posts.
+         *
+         * This used to skip any post the DOM had already produced — "DOM
+         * results are inserted first and never overwritten, so this can only
+         * add". That is the right instinct about *posts* and the wrong rule
+         * for *fields*, and the difference was expensive.
+         *
+         * The captured record carries `creation_time` straight out of
+         * Facebook's own payload (see feed-capture.ts) — an exact timestamp,
+         * not a parsed "3d" label. The DOM record for the same post very
+         * often has no date at all: 82% of stored Facebook posts are undated
+         * against Nextdoor's 98% dated, and Nextdoor is the platform with no
+         * capture path, reading its dates from text. So for every post found
+         * both ways, we were holding an exact date in memory and discarding
+         * it in favour of nothing.
+         *
+         * mergeSighting is the rule that already exists for this, used
+         * between scroll rounds a few hundred lines up: upgrade field by
+         * field, never downgrade. A captured record is just another sighting
+         * of the same post, so it goes through the same merge rather than a
+         * bespoke one.
+         */
         await capture.settle();
         // Recorded before merging, so the canary can still tell that the DOM
         // path died even on a run where capture quietly covered for it.
         outcome.extracted = collected.size;
         let capturedOnly = 0;
+        let capturedUpgrades = 0;
         for (const captured of capture.drain()) {
-          if (collected.has(captured.post_id)) continue;
-          collected.set(captured.post_id, {
+          const sighting: RawExtractedPost = {
             post_id: captured.post_id,
             post_url: captured.post_url ?? group.url,
             author_name: captured.author_name,
             author_profile_url: captured.author_profile_url,
             timestamp: captured.timestamp,
             raw_text: captured.raw_text,
-          });
+          };
+          const prev = collected.get(captured.post_id);
+          if (prev) {
+            // Only worth counting when it actually gained something, so the
+            // log line stays a measurement rather than a count of merges.
+            if (!prev.timestamp && sighting.timestamp) capturedUpgrades++;
+            collected.set(captured.post_id, mergeSighting(prev, sighting));
+            continue;
+          }
+          collected.set(captured.post_id, sighting);
           capturedOnly++;
         }
         outcome.capturedOnly = capturedOnly;
@@ -1525,6 +1556,11 @@ async function scrapeBrowserPlatform(
           const { responses } = capture.stats();
           log.push(
             `"${group.name}": +${capturedOnly} post(s) recovered from ${responses} captured feed response(s) that the page markup didn't show.`
+          );
+        }
+        if (capturedUpgrades > 0) {
+          log.push(
+            `"${group.name}": ${capturedUpgrades} post(s) took a date from the feed payload that the markup didn't show.`
           );
         }
 
