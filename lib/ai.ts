@@ -204,6 +204,21 @@ If the agent's goal explicitly says it wants providers, suppliers, job
 candidates or people offering a service, follow the goal — it overrides this
 section. Otherwise assume the agent wants customers.
 
+### Direction is not the same as confidence
+The section above is about which way a post points, not how sure you are. Rule
+a post out only when you can say what makes it an advertisement, a portfolio,
+a job posting or a pitch. "It might be a business" is not that, and neither is
+a post being short, vague, missing a location, or never naming the trade.
+
+When someone reads like a real person with a real need but the post is thin,
+mark it relevant and put your doubt in intent_score — that is what the score is
+for, and the person reading these decides from the score. A weak lead scored 55
+costs them a glance. A weak lead dropped is a customer they never knew asked.
+
+Priority keywords and location focus are relevance signals, not requirements: a
+homeowner does not know your keyword list, and most posts never name a city.
+Never rule a post out for failing to match them.
+
 ### Reasoning examples
 "My roof is leaking after the storm" -> high intent, urgent.
 "I painted my house last year" -> not relevant, past/completed.
@@ -211,6 +226,8 @@ section. Otherwise assume the agent wants customers.
 "Contractor specializing in interior demolition and junk removal" -> not relevant, this is a competitor advertising.
 "Licensed handyman available, 10 years experience, DM for quotes" -> not relevant, offering rather than seeking.
 "Selling my old couch" -> only relevant if the agent's goal is about buying used furniture.
+"anyone know someone good? ours quoted way too much" -> relevant, trade unnamed but a real ask. Score it moderate, not zero.
+"Need help with the bathroom, it's a mess" -> relevant, vague but a real need. Moderate score.
 
 ### Input format
 A JSON array of posts. Each has "i" (its position), "p" (platform), "a" (author name),
