@@ -31,6 +31,7 @@ import { createClient } from "@supabase/supabase-js";
 import { scrapeActiveGroups, sessionPlatform, type GroupToScrape } from "@/lib/scraper";
 import { hasAuthSession } from "@/lib/auth-session";
 import { hasStoredSession } from "@/lib/session-store";
+import { isExactPostUrl } from "@/lib/post-url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -200,15 +201,76 @@ async function run() {
           raw_text: p.raw_text,
         }));
 
+        /**
+         * Establish rows first, then improve them. Never downgrade.
+         *
+         * This was a single upsert carrying every column, which resolves a
+         * conflict with DO UPDATE — so re-reading a post we already had
+         * overwrote `posted_at` with null and overwrote a real permalink with
+         * the group's feed URL whenever that pass could not see them. That is
+         * the same bug that was found and fixed in lib/scrape-and-store.ts;
+         * this file duplicates the persistence step (see the header comment)
+         * and the fix was never carried across, so the worker kept eroding
+         * what the hosted path had stopped eroding.
+         *
+         * It survived unnoticed because it only destroys data it happens to
+         * have: Facebook is 82% undated, so null-over-null is a no-op most of
+         * the time. Nextdoor is 98% dated, and every one of those is a real
+         * date this write would have thrown away on any run that read the
+         * feed without them.
+         *
+         * So the write is split by intent, exactly as it is there:
+         *
+         *   1. DO NOTHING on conflict, carrying every column. New posts land
+         *      whole, fallback URL and all. Rows we already hold are untouched.
+         *   2. One narrow update per improvable column, sent only for the rows
+         *      that actually carry something better this time.
+         */
+        const identity = (r: (typeof rows)[number]) => ({
+          user_id: r.user_id,
+          group_id: r.group_id,
+          platform: r.platform,
+          external_post_id: r.external_post_id,
+          author_name: r.author_name,
+          author_profile_url: r.author_profile_url,
+          raw_text: r.raw_text,
+        });
+
         const { error: insertError, count } = await supabase
           .from("posts")
-          .upsert(rows, { onConflict: "user_id,external_post_id", count: "exact" });
+          .upsert(rows, {
+            onConflict: "user_id,external_post_id",
+            ignoreDuplicates: true,
+            count: "exact",
+          });
 
         if (insertError) {
           console.error(`  [auto-scrape] insert failed for user ${userId}:`, insertError.message);
         } else {
+          const dated = rows.filter((r) => r.posted_at).map((r) => ({ ...identity(r), posted_at: r.posted_at }));
+          if (dated.length) {
+            const { error } = await supabase
+              .from("posts")
+              .upsert(dated, { onConflict: "user_id,external_post_id" });
+            if (error) console.error(`  [auto-scrape] date update failed for user ${userId}:`, error.message);
+          }
+
+          const linked = rows
+            .filter((r) => isExactPostUrl(r.post_url))
+            .map((r) => ({ ...identity(r), post_url: r.post_url }));
+          if (linked.length) {
+            const { error } = await supabase
+              .from("posts")
+              .upsert(linked, { onConflict: "user_id,external_post_id" });
+            if (error) console.error(`  [auto-scrape] link update failed for user ${userId}:`, error.message);
+          }
+
           totalScraped += result.posts.length;
-          totalInserted += count ?? result.posts.length;
+          // With DO NOTHING this is genuinely new rows. It used to count
+          // inserts and updates together, which read as ten times more
+          // collection than had actually happened — 361 reported against 26
+          // real on the run that turned this up.
+          totalInserted += count ?? 0;
         }
       }
     } catch (err) {
