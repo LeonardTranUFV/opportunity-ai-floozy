@@ -136,24 +136,91 @@ function parseJsonDocuments(body: string): unknown[] {
   return documents;
 }
 
+/**
+ * A node in the walk, linked to whatever held it.
+ *
+ * A reader sometimes needs to look *up* from the node it matched — see
+ * storyHeaderTime — and a parent link lets it climb without every visit
+ * copying its whole ancestor list.
+ */
+interface Frame {
+  node: Record<string, unknown>;
+  parent: Frame | null;
+}
+
 /** Walks a parsed document, handing every object to `visit`. Depth-bounded. */
-function walk(root: unknown, visit: (node: Record<string, unknown>) => void): void {
-  const stack: unknown[] = [root];
+function walk(root: unknown, visit: (frame: Frame) => void): void {
+  if (!isObject(root)) return;
+  const stack: Frame[] = [{ node: root, parent: null }];
   let seen = 0;
   while (stack.length > 0 && seen < MAX_NODES_WALKED) {
-    const node = stack.pop();
-    if (!isObject(node)) continue;
+    const frame = stack.pop()!;
     seen++;
 
-    if (!Array.isArray(node)) visit(node);
+    if (!Array.isArray(frame.node)) visit(frame);
 
-    for (const value of Object.values(node)) {
-      if (isObject(value)) stack.push(value);
+    for (const value of Object.values(frame.node)) {
+      if (isObject(value)) stack.push({ node: value, parent: frame });
     }
   }
 }
 
-type ShapeReader = (node: Record<string, unknown>) => CapturedPost | null;
+type ShapeReader = (node: Record<string, unknown>, frame: Frame) => CapturedPost | null;
+
+/** Reads a nested property path, or undefined the moment any step isn't an object. */
+function dig(root: unknown, ...keys: string[]): unknown {
+  let cur: unknown = root;
+  for (const key of keys) {
+    if (!isObject(cur)) return undefined;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return cur;
+}
+
+/** How far to climb looking for the enclosing story. Measured nesting: 3 to 13. */
+const MAX_STORY_CLIMB = 24;
+
+/**
+ * The post's own time, read from the header of the story that contains it.
+ *
+ * The node readFacebookStory matches — the one carrying `message.text` — is
+ * not the story. It sits inside the story's content branch, and the post's
+ * time sits in a *sibling* branch:
+ *
+ *     Story
+ *       comet_sections
+ *         content          > story > …           message.text is down here
+ *         context_layout   > story > comet_sections > metadata[] > story > creation_time
+ *
+ * A search downward from the message node cannot reach a sibling, which is why
+ * the capture path dated so little. Measured on a live group feed captured for
+ * this: 27 message nodes, 9 with any timestamp beneath them, 18 with theirs
+ * only in the sibling branch, and 0 with no timestamp at all. Every post had
+ * its time; two in three were simply looked for in the wrong place. The
+ * shipped reader returned 8 posts with 2 dated from that capture.
+ *
+ * So this climbs to the nearest enclosing object that has
+ * `comet_sections.context_layout` — on that feed a `Story` in all 27 cases,
+ * each carrying exactly one header `creation_time` — reads it, and stops. It
+ * never climbs past that story: a feed payload is a list of stories, and one
+ * level too far is a neighbour's date on this post. None of the 27 paths
+ * crossed a list of stories before reaching their own.
+ */
+function storyHeaderTime(frame: Frame): number | null {
+  let f: Frame | null = frame;
+  for (let i = 0; f && i <= MAX_STORY_CLIMB; i++, f = f.parent) {
+    if (Array.isArray(f.node) || !isObject(dig(f.node, "comet_sections", "context_layout"))) continue;
+    const metadata = dig(f.node, "comet_sections", "context_layout", "story", "comet_sections", "metadata");
+    if (Array.isArray(metadata)) {
+      for (const entry of metadata) {
+        const t = dig(entry, "story", "creation_time");
+        if (typeof t === "number" && t > 1e9 && t < 4e9) return t;
+      }
+    }
+    return null;
+  }
+  return null;
+}
 
 /**
  * Facebook / Marketplace comet story nodes.
@@ -164,14 +231,14 @@ type ShapeReader = (node: Record<string, unknown>) => CapturedPost | null;
  * scraped posts.
  */
 /**
- * The story's own timestamp, wherever Facebook put it.
+ * A timestamp somewhere beneath a node — the fallback when there is no
+ * enclosing story to read a header from (see storyHeaderTime, which is tried
+ * first).
  *
- * `creation_time` is rarely on the story node itself. It usually sits a few
- * levels down — under comet_sections → context_layout → story → metadata —
- * and moves between payload shapes. Reading only the top level left nine
- * Facebook posts in ten with no date, and the card then showed the day we
- * scraped them as if it were the day they were written. A bounded walk of the
- * story's subtree finds the first `creation_time` / `publish_time` number.
+ * `creation_time` is rarely on the matched node itself, and moves between
+ * payload shapes. A bounded walk of the subtree finds the first
+ * `creation_time` / `publish_time` number. It is the weaker answer: beneath a
+ * post there can be a shared post or an attachment with a time of its own.
  */
 function findCreationTime(root: Record<string, unknown>): number | null {
   const stack: Array<{ node: Record<string, unknown>; depth: number }> = [{ node: root, depth: 0 }];
@@ -192,7 +259,7 @@ function findCreationTime(root: Record<string, unknown>): number | null {
   return null;
 }
 
-const readFacebookStory: ShapeReader = (node) => {
+const readFacebookStory: ShapeReader = (node, frame) => {
   const message = node.message;
   const text = isObject(message) ? str(message.text) : null;
   if (!text || text.length < MIN_TEXT_LENGTH) return null;
@@ -215,7 +282,12 @@ const readFacebookStory: ShapeReader = (node) => {
    * feed used.
    */
   const postId = str(node.post_id) ?? canonicalStoryId(str(node.id));
-  const created = typeof node.creation_time === "number" ? node.creation_time : findCreationTime(node);
+  // The enclosing story's header first: it is this post's own time, and it is
+  // where the time actually is. The subtree walk is only a fallback, since
+  // beneath a post there can be a shared post with a time of its own.
+  const created =
+    storyHeaderTime(frame) ??
+    (typeof node.creation_time === "number" ? node.creation_time : findCreationTime(node));
 
   return {
     post_id: postId ? `fb_${postId}` : `fb_txt_${hashText(textKey(text))}`,
@@ -321,15 +393,20 @@ export function extractPostsFromBodies(
     }
     for (const doc of documents) {
       try {
-        walk(doc, (node) => {
+        walk(doc, (frame) => {
           for (const read of readers) {
             let post: CapturedPost | null = null;
             try {
-              post = read(node);
+              post = read(frame.node, frame);
             } catch {
               errors++;
             }
-            if (post && !found.has(post.post_id)) found.set(post.post_id, post);
+            if (!post) continue;
+            // One post reaches here from several nodes. The first used to win
+            // outright, so an undated sighting could shut out a dated one of
+            // the same post — upgrade instead, never downgrade.
+            const held = found.get(post.post_id);
+            if (!held || (!held.timestamp && post.timestamp)) found.set(post.post_id, post);
           }
         });
       } catch {
