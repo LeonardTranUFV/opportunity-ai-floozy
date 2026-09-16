@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
-import { usersCollectingLocally } from "@/lib/collection-mode";
+import { localCollectionModes, isCollectedLocally } from "@/lib/collection-mode";
 
 /**
  * Unattended collection — the thing that makes this a product rather than a
@@ -228,6 +228,7 @@ const MIN_SLICE_MS = 90_000;
 
 interface StaleSource {
   user_id: string;
+  platform: string;
   last_scraped_at: string | null;
 }
 
@@ -268,7 +269,7 @@ export async function GET(request: Request) {
    */
   const { data: staleSources, error } = await supabase
     .from("groups")
-    .select("user_id, last_scraped_at")
+    .select("user_id, platform, last_scraped_at")
     .eq("active", true)
     .or(`last_scraped_at.is.null,last_scraped_at.lt.${cutoff}`)
     .order("last_scraped_at", { ascending: true, nullsFirst: true })
@@ -279,24 +280,29 @@ export async function GET(request: Request) {
   }
 
   /**
-   * Accounts collected on the operator's PC are not this route's to crawl.
+   * Sources on a platform collected on the operator's PC are not this route's
+   * to crawl.
    *
-   * Skipped here, before a slot is spent, rather than left for
-   * scrapeAndStorePosts to decline — otherwise a local account whose sources
-   * the worker hasn't reached lately sits at the front of the stalest-first
-   * queue every tick, taking a place a cloud customer needed. Reported in the
-   * response so a run that crawled nobody still explains itself.
+   * Skipped row by row, before a slot is spent, rather than left for
+   * scrapeAndStorePosts to decline — otherwise a local source the worker hasn't
+   * reached lately sits at the front of the stalest-first queue every tick,
+   * taking a place a cloud customer needed.
+   *
+   * And skipped *before* the account is marked seen. The queue takes each
+   * account at its stalest source; if that source is a local Facebook group and
+   * marking came first, the account would be dropped here and its Nextdoor
+   * sources — which are the cloud's to read — would never be reached.
    */
-  const localOnly = await usersCollectingLocally(supabase);
+  const localModes = await localCollectionModes(supabase);
 
   // Distinct users, still in stalest-first order — the first time a user_id
   // appears is at their stalest source.
   const userOrder: string[] = [];
   const seen = new Set<string>();
   for (const row of (staleSources ?? []) as StaleSource[]) {
+    if (isCollectedLocally(localModes.get(row.user_id), row.platform)) continue;
     if (seen.has(row.user_id)) continue;
     seen.add(row.user_id);
-    if (localOnly.has(row.user_id)) continue;
     userOrder.push(row.user_id);
     if (userOrder.length >= MAX_USERS_PER_TICK) break;
   }
@@ -383,7 +389,7 @@ export async function GET(request: Request) {
     users: results.length,
     out_of_time: outOfTime,
     // Accounts crawled by the worker on the operator's PC instead.
-    collected_locally: localOnly.size,
+    collected_locally: localModes.size,
     results,
   });
 }

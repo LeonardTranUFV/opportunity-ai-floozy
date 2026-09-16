@@ -173,7 +173,7 @@ export async function openPlatformContext(
   platform: string
 ): Promise<PlatformContext | null> {
   /**
-   * An account marked to collect locally is never crawled from here.
+   * A platform an account collects locally is never crawled from here.
    *
    * Checked in this function because every hosted path that touches a
    * platform comes through it — scheduled collection, the scrape and scan
@@ -186,7 +186,7 @@ export async function openPlatformContext(
    * the worker running on the operator's PC is exactly where these accounts
    * are supposed to be crawled.
    */
-  if (isHostedDeployment() && (await collectsLocally(createAdminClient(), userId))) {
+  if (isHostedDeployment() && (await collectsLocally(createAdminClient(), userId, platform))) {
     return null;
   }
 

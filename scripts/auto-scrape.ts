@@ -32,7 +32,7 @@ import { scrapeActiveGroups, sessionPlatform, type GroupToScrape } from "@/lib/s
 import { hasAuthSession } from "@/lib/auth-session";
 import { hasStoredSession } from "@/lib/session-store";
 import { isExactPostUrl } from "@/lib/post-url";
-import { usersCollectingLocally } from "@/lib/collection-mode";
+import { localCollectionModes, isCollectedLocally, type LocalPlatforms } from "@/lib/collection-mode";
 import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-groups";
 import { evaluateAgentPosts } from "@/lib/scan-agent";
 import type { AgentProfile } from "@/lib/ai";
@@ -75,7 +75,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-async function collect(localAccounts: Set<string>, crawlEveryone: boolean) {
+async function collect(localModes: Map<string, LocalPlatforms>, crawlEveryone: boolean) {
   const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, user_id, platform, name, url, last_scraped_at")
@@ -86,7 +86,12 @@ async function collect(localAccounts: Set<string>, crawlEveryone: boolean) {
     process.exit(1);
   }
 
-  const groups = crawlEveryone ? allGroups : (allGroups ?? []).filter((g) => localAccounts.has(g.user_id));
+  // Only the platforms each account collects here. An account can keep some
+  // on the cloud — the operator's Nextdoor, which this PC cannot reach from
+  // Vietnam — and those are the cloud's to read, not this machine's to retry.
+  const groups = crawlEveryone
+    ? allGroups
+    : (allGroups ?? []).filter((g) => isCollectedLocally(localModes.get(g.user_id), g.platform));
 
   if (!groups || groups.length === 0) {
     console.log("[auto-scrape] no active groups for the accounts in scope, nothing to collect.");
@@ -406,9 +411,10 @@ async function run() {
    * customers are scored and refreshed by the hosted crons.
    */
   const crawlEveryone = process.argv.includes("--all");
-  const localAccounts = await usersCollectingLocally(supabase);
+  const localModes = await localCollectionModes(supabase);
+  const localAccounts = [...localModes.keys()];
 
-  if (!crawlEveryone && localAccounts.size === 0) {
+  if (!crawlEveryone && localAccounts.length === 0) {
     console.log(
       "[auto-scrape] no accounts are marked for local collection (settings.collection_mode = 'local'), so there is nothing for this machine to do. Run with --all to crawl every connected account."
     );
@@ -417,13 +423,16 @@ async function run() {
   console.log(
     crawlEveryone
       ? "[auto-scrape] --all: crawling every connected account."
-      : `[auto-scrape] crawling ${localAccounts.size} local-collection account(s).`
+      : `[auto-scrape] crawling ${localAccounts.length} local-collection account(s): ${localAccounts.map((id) => { const m = localModes.get(id); return `${id.slice(0, 8)} (${m === "all" ? "every platform" : [...(m ?? [])].join(", ")})`; }).join("; ")}.`
   );
 
-  await collect(localAccounts, crawlEveryone);
+  await collect(localModes, crawlEveryone);
 
   for (const userId of localAccounts) {
-    await refreshGroupsIfDue(userId);
+    // Only when Facebook is one of the platforms this PC collects: otherwise
+    // the hosted weekly refresh still does it, and doing it here too would read
+    // the same joined-groups page from two places.
+    if (isCollectedLocally(localModes.get(userId), "facebook")) await refreshGroupsIfDue(userId);
     await scoreAgents(userId);
   }
 

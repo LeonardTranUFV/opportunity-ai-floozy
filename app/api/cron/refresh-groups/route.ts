@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { canRunSignedInBrowser, redactProviderSecrets } from "@/lib/remote-browser";
 import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-groups";
 import { errorMessage } from "@/lib/errors";
-import { usersCollectingLocally } from "@/lib/collection-mode";
+import { localCollectionModes, isCollectedLocally } from "@/lib/collection-mode";
 
 /**
  * Re-read everyone's joined Facebook groups, weekly.
@@ -77,12 +77,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 
-  // Accounts collected on the operator's PC get their group list refreshed
-  // there too (scripts/auto-scrape.ts). Reading a joined-groups page is a
-  // Facebook request like any other, and the point of local collection is that
-  // none of those leave from a datacentre for these accounts.
-  const localOnly = await usersCollectingLocally(supabase);
-  const userIds = (sessions ?? []).map((s) => s.user_id as string).filter((id) => !localOnly.has(id));
+  // Accounts whose Facebook is collected on the operator's PC get their group
+  // list refreshed there too, by scripts/auto-scrape.ts. Reading a joined-groups
+  // page is a Facebook request like any other, and the point of local collection
+  // is that none of those leave from a datacentre for these accounts.
+  const localModes = await localCollectionModes(supabase);
+  const userIds = (sessions ?? [])
+    .map((s) => s.user_id as string)
+    .filter((id) => !isCollectedLocally(localModes.get(id), "facebook"));
   if (userIds.length === 0) {
     return NextResponse.json({ success: true, users: 0, results: [] });
   }

@@ -5,7 +5,7 @@ import { canRunSignedInBrowser } from "@/lib/remote-browser";
 import { getSourceCapacity, partitionByCap } from "@/lib/entitlement";
 import { isExactPostUrl } from "@/lib/post-url";
 import { isHostedDeployment } from "@/lib/deployment";
-import { collectsLocally } from "@/lib/collection-mode";
+import { localPlatformsFor, isCollectedLocally } from "@/lib/collection-mode";
 
 export interface ScrapeAndStoreResult {
   scraped: number;
@@ -60,30 +60,23 @@ export async function scrapeAndStorePosts(
   } = {}
 ): Promise<ScrapeAndStoreResult> {
   /**
-   * An account collected on the operator's PC is not crawled from the hosted
+   * Platforms collected on the operator's PC are not crawled from the hosted
    * site, even when someone presses a button there.
    *
    * Said out loud rather than left to openPlatformContext's null, because a
    * scan that quietly finds nothing reads as "my sources are empty" — the
    * exact misreading this whole setup exists to avoid. The scan still goes on
-   * to score what the worker has already collected; only the crawl is skipped.
+   * to score what the worker has already collected; only the crawl is skipped,
+   * and only for the local platforms — the rest of the account's sources are
+   * read here as normal.
    *
    * Hosted only. On the worker this function isn't the collection path, but a
    * local dev server calling it is the operator's own machine, which is
-   * precisely where these accounts should be crawled.
+   * precisely where these platforms should be crawled.
    */
-  if (isHostedDeployment() && (await collectsLocally(supabase, userId))) {
-    return {
-      scraped: 0,
-      inserted: 0,
-      log: [
-        "This account collects posts on your own PC (RUN-WORKER.bat), not on the hosted site — nothing was crawled here, to keep your Facebook account off datacentre IPs. Posts the worker has already collected are still scored.",
-      ],
-      brokenPlatforms: [],
-    };
-  }
+  const localMode = isHostedDeployment() ? await localPlatformsFor(supabase, userId) : null;
 
-  const { data: allGroups, error: groupsError } = await supabase
+  const { data: accountGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, platform, name, url, last_scraped_at, created_at")
     // Explicit, not left to RLS. Every caller so far passes a request-scoped
@@ -98,8 +91,19 @@ export async function scrapeAndStorePosts(
     throw new Error(groupsError.message);
   }
 
-  if (!allGroups || allGroups.length === 0) {
-    return { scraped: 0, inserted: 0, log: ["No active groups to scrape."], brokenPlatforms: [] };
+  const collectedOnPc = (accountGroups ?? []).filter((g) => isCollectedLocally(localMode, g.platform));
+  const allGroups = (accountGroups ?? []).filter((g) => !isCollectedLocally(localMode, g.platform));
+  const localNote = collectedOnPc.length
+    ? `${collectedOnPc.length} source(s) on ${[...new Set(collectedOnPc.map((g) => sessionPlatform(g.platform)))].join(", ")} are collected on your own PC (RUN-WORKER.bat), not here — to keep that login off datacentre IPs. Posts the worker has collected are still scored.`
+    : null;
+
+  if (allGroups.length === 0) {
+    return {
+      scraped: 0,
+      inserted: 0,
+      log: [localNote ?? "No active groups to scrape."],
+      brokenPlatforms: [],
+    };
   }
 
   // Facebook, LinkedIn, Nextdoor and X are read by driving a signed-in
@@ -160,6 +164,7 @@ export async function scrapeAndStorePosts(
   });
 
   const preamble: string[] = [];
+  if (localNote) preamble.push(localNote);
   if (overCap.length > 0) {
     preamble.push(
       `${overCap.length} source(s) are over your plan's limit of ${capacity.limit} and were not read — pause some sources to bring the rest back.`
