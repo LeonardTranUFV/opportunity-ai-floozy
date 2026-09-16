@@ -11,6 +11,7 @@ import { SetupChecklist } from "@/components/dashboard/setup-checklist"
 import { isPrivacyMode, maskName } from "@/lib/privacy-mode"
 import { listSessions } from "@/lib/session-store"
 import { dedupeOpportunities } from "@/lib/dedupe-opportunities"
+import { countPostsByGroup } from "@/lib/post-counts"
 
 export const dynamic = "force-dynamic"
 
@@ -47,13 +48,7 @@ export default async function Home() {
 
   // post counts per monitored group (small dataset, fine to do client-side)
   const groupIds = (allGroups ?? []).map((g) => g.id)
-  const { data: postsForGroups } = groupIds.length
-    ? await supabase.from("posts").select("group_id").in("group_id", groupIds)
-    : { data: [] as { group_id: string }[] }
-  const postCountByGroup = new Map<string, number>()
-  for (const p of postsForGroups ?? []) {
-    postCountByGroup.set(p.group_id, (postCountByGroup.get(p.group_id) ?? 0) + 1)
-  }
+  const postCountByGroup = await countPostsByGroup(supabase, groupIds)
   const monitoredGroups = (allGroups ?? []).map((g) => ({ ...g, post_count: postCountByGroup.get(g.id) ?? 0 }))
 
   const locationCounts = new Map<string, number>()

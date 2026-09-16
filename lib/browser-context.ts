@@ -61,8 +61,20 @@ export type PlatformContext = {
    * what the platform just handed us is what makes a connection last. A
    * persistent-context profile does this on disk by itself, which is why the
    * profile path skips it.
+   *
+   * Pass `{ signedOut: true }` when the crawl found itself logged out, and the
+   * write-back is skipped. The same mechanism that keeps a session alive
+   * destroys it here: a crawl that lands on the login wall ends holding the
+   * cookies of a logged-out browser, and saving those over a customer's stored
+   * session is how a recoverable interruption becomes a reconnect.
+   *
+   * Seen live: Facebook stopped collecting at 07:00, every later tick logged
+   * "signed out — reconnect the account in Settings", and each one wrote its
+   * empty state back over the last. If the block had been transient — a
+   * checkpoint, a rate limit, a redirect — the cookies that would have
+   * recovered it were gone after the first attempt.
    */
-  release: () => Promise<void>;
+  release: (opts?: { signedOut?: boolean }) => Promise<void>;
 };
 
 /**
@@ -208,16 +220,23 @@ export async function openPlatformContext(
       return {
         context,
         source: "stored",
-        release: async () => {
+        release: async (opts) => {
           // Capture before closing — a closed context cannot be asked for its
           // cookies. Failure to write back must not mask whatever the caller
           // was actually doing, so it is swallowed: the session simply keeps
           // its previous state and expires on its own schedule.
-          try {
-            const refreshed = await context.storageState();
-            await saveSession(userId, platform, refreshed);
-          } catch {
-            /* keep the older stored state */
+          //
+          // Skipped entirely when the caller saw a login wall. Keeping the
+          // stored session is strictly better there: either it is genuinely
+          // dead and the customer has to reconnect anyway, or the block was
+          // transient and the old cookies are the ones that still work.
+          if (!opts?.signedOut) {
+            try {
+              const refreshed = await context.storageState();
+              await saveSession(userId, platform, refreshed);
+            } catch {
+              /* keep the older stored state */
+            }
           }
           await context.close();
           await browser.close();

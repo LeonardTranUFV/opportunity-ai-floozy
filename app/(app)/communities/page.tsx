@@ -11,6 +11,7 @@ import { canRunSignedInBrowser } from "@/lib/remote-browser"
 import { getSourceCapacity, partitionByCap } from "@/lib/entitlement"
 import { SourceList } from "@/components/communities/source-list"
 import { listSessions } from "@/lib/session-store"
+import { countPostsByGroup } from "@/lib/post-counts"
 
 export const dynamic = "force-dynamic"
 
@@ -34,14 +35,7 @@ export default async function CommunitiesPage() {
     .order("created_at", { ascending: false })
 
   const groupIds = (allGroups ?? []).map((g) => g.id)
-  const { data: postsForGroups } = groupIds.length
-    ? await supabase.from("posts").select("group_id").in("group_id", groupIds)
-    : { data: [] as { group_id: string }[] }
-
-  const postCountByGroup = new Map<string, number>()
-  for (const p of postsForGroups ?? []) {
-    postCountByGroup.set(p.group_id, (postCountByGroup.get(p.group_id) ?? 0) + 1)
-  }
+  const postCountByGroup = await countPostsByGroup(supabase, groupIds)
   const groups = (allGroups ?? []).map((g) => ({ ...g, post_count: postCountByGroup.get(g.id) ?? 0 }))
 
   // What the plan allows, and what is being used. Shown rather than only

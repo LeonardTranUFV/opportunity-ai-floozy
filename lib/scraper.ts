@@ -1629,7 +1629,12 @@ async function scrapeBrowserPlatform(
     // release(), not context.close(): for a stored session this also writes
     // the refreshed cookies back, which is what keeps the connection alive
     // past the platform's rotation window.
-    await opened.release();
+    //
+    // Except when a group bounced to the login wall. The cookies this browser
+    // is holding are then a logged-out browser's, and writing them over the
+    // customer's stored session turns a possibly-transient block into a
+    // guaranteed reconnect. See PlatformContext.release.
+    await opened.release({ signedOut: outcomes.some((o) => o.loggedOut) });
   }
 
   if (stoppedEarly) {

@@ -12,6 +12,7 @@ import { PLAN_ALLOWANCES } from "@/lib/credits"
 import { platformMeta } from "@/lib/platform-meta"
 import { formatDate } from "@/lib/format-date"
 import { isAdmin } from "@/lib/admin"
+import { countPostsByGroup } from "@/lib/post-counts"
 
 export const dynamic = "force-dynamic"
 
@@ -94,13 +95,7 @@ export default async function SettingsPage() {
     .order("last_scraped_at", { ascending: false, nullsFirst: false })
 
   const groupIds = (groupRows ?? []).map((g) => g.id)
-  const { data: postsForGroups } = groupIds.length
-    ? await supabase.from("posts").select("group_id").in("group_id", groupIds)
-    : { data: [] as { group_id: string }[] }
-  const postCountByGroup = new Map<string, number>()
-  for (const p of postsForGroups ?? []) {
-    postCountByGroup.set(p.group_id, (postCountByGroup.get(p.group_id) ?? 0) + 1)
-  }
+  const postCountByGroup = await countPostsByGroup(supabase, groupIds)
   const scrapeActivity = (groupRows ?? []).map((g) => ({ ...g, post_count: postCountByGroup.get(g.id) ?? 0 }))
 
   return (
