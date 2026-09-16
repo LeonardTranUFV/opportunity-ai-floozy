@@ -122,17 +122,36 @@ const COLLECT_BUDGET_MS = 760_000;
  * every twelve ticks woke, found nothing old enough to touch, and went back to
  * sleep. The floor was doing the scheduling, and doing it badly.
  *
- * Four hours matches the cadence instead of fighting it — a source comes back
- * up two ticks after it was read. Against the sources on this deployment that
- * is roughly 63 browser-hours a month, inside the 100 the plan includes.
+ * It was briefly four hours, which fixed that and went too far the other way.
+ * Twelve is where it sits now, and the reason is no longer cost.
+ *
+ * ── What this number really controls ───────────────────────────────────────
+ *
+ * Not the bill. How often a customer's Facebook session is used, which is what
+ * Facebook scores when deciding whether an account is automated. With 25
+ * Facebook sources on this account:
+ *
+ *     20h  ->  ~30 feed loads a day
+ *      4h  -> ~150 feed loads a day
+ *     12h  ->  ~50 feed loads a day
+ *
+ * Four hours was set on a Monday and Facebook served
+ * "We suspect automated behaviour on your account" the same week, after the
+ * heaviest crawling day this deployment had ever done. That is not proof —
+ * the worker also ran twice by hand that day and several manual scans on top
+ * — but a five-fold increase in session use is not the thing to leave in
+ * place while finding out.
+ *
+ * Twelve keeps the two-hourly cron meaningful (a source comes back up after
+ * six ticks rather than ten) at a third of the exposure. Raise it back toward
+ * four only with CRAWL_USE_PROXY on and a quiet week behind you.
  *
  * Worth knowing that this number stops mattering as customers arrive. It caps
  * how *often* a source may be revisited; the tick budget caps how *much* is
- * read at all. Past roughly twenty customers the budget binds first — there is
- * always something staler than four hours waiting — and this floor is never
- * the reason anything is skipped. It is a fix for the scale we are at now.
+ * read at all. Past roughly twenty customers the budget binds first and this
+ * floor is never the reason anything is skipped.
  */
-const MIN_AGE_MS = 4 * 60 * 60 * 1000;
+const MIN_AGE_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Customers per tick. A cap on the worst case, not a target.
@@ -163,18 +182,30 @@ const MAX_USERS_PER_TICK = 24;
  * that. But this is the number to look at before onboarding, not after.
  *
  * What it buys is the only thing that actually fixes coverage: customers no
- * longer queue behind each other for a wall-clock budget that runs out. Four
- * at a time, a tick serves twenty-four accounts in six rounds where it used
- * to serve one and mark seven `out_of_time`.
+ * longer queue behind each other for a wall-clock budget that runs out. Two
+ * at a time, a tick still serves every account it has rather than serving one
+ * and marking the rest `out_of_time`, which was the bug this replaced.
  *
- * Four rather than more because of what sits underneath: scrapeActiveGroups
- * already runs a customer's platforms concurrently with a rented browser
- * each, and this account averages two, maximum three. Four customers is
- * therefore up to twelve live browsers against the provider's limit of
- * twenty-five. Eight would be twenty-four — inside the limit with no room for
- * a session that has not finished tearing down.
+ * ── Why two rather than four ───────────────────────────────────────────────
+ *
+ * The provider's limit is not what binds. scrapeActiveGroups already runs a
+ * customer's platforms concurrently with a rented browser each, so four
+ * customers is up to twelve live browsers against a limit of twenty-five —
+ * comfortable.
+ *
+ * What binds is how it looks from the other side. Every one of those browsers
+ * leaves from the same datacentre range unless CRAWL_USE_PROXY is on, so four
+ * customers in flight is four accounts browsing Facebook from neighbouring IPs
+ * at the same instant. The note on StartSessionOptions.proxyId says it
+ * plainly: platforms score IP reputation far more heavily than page
+ * behaviour, and correlated accounts are how a whole fleet gets flagged at
+ * once rather than one at a time.
+ *
+ * Two is the compromise while the proxy is off: the starvation fix keeps
+ * working, and half as many accounts are visibly in step. Put it back to four
+ * once CRAWL_USE_PROXY=1 gives each customer their own egress IP.
  */
-const USER_CONCURRENCY = 4;
+const USER_CONCURRENCY = 2;
 
 /**
  * The smallest slice worth opening a browser for.
