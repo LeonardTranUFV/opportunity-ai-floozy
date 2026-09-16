@@ -26,17 +26,68 @@ interface Status {
   twitterSince?: string | null
 }
 
+/**
+ * Disconnecting is a two-step control, deliberately.
+ *
+ * It deletes a login the customer spent a 2FA detour capturing, and the
+ * nearest thing to it on this row is a refresh button. A single click that
+ * silently destroyed the connection would be the wrong shape for what it does
+ * — so the first click only arms it, and the state is local to the row so
+ * arming one platform never arms another.
+ */
+function DisconnectButton({ platform, label, onDone }: { platform: string; label: string; onDone: () => void }) {
+  const [armed, setArmed] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  // Disarm on its own, so a row left armed by accident does not sit there
+  // waiting to catch the next click that lands near it.
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 5000)
+    return () => clearTimeout(t)
+  }, [armed])
+
+  const run = async () => {
+    setBusy(true)
+    try {
+      await fetch("/api/accounts/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform }),
+      })
+      onDone()
+    } finally {
+      setBusy(false)
+      setArmed(false)
+    }
+  }
+
+  return armed ? (
+    <Button variant="destructive" size="sm" disabled={busy} onClick={run} className="h-7 text-xs">
+      {busy ? "Disconnecting…" : `Delete ${label} login?`}
+    </Button>
+  ) : (
+    <Button variant="ghost" size="sm" onClick={() => setArmed(true)} className="h-7 text-xs text-muted-foreground">
+      Disconnect
+    </Button>
+  )
+}
+
 function PlatformRow({
   icon,
   label,
+  platform,
   loggedIn,
   name,
   error,
   since,
   iconColor,
+  onDisconnected,
 }: {
   icon: React.ReactNode
   label: string
+  platform: string
+  onDisconnected: () => void
   loggedIn: boolean
   name: string | null
   error: string | null
@@ -69,9 +120,12 @@ function PlatformRow({
             )}
           </div>
         </div>
-        <Badge variant={loggedIn ? "success" : error ? "warning" : "secondary"}>
-          {loggedIn ? "Connected" : error ? "Check failed" : "Not logged in"}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          {loggedIn && <DisconnectButton platform={platform} label={label} onDone={onDisconnected} />}
+          <Badge variant={loggedIn ? "success" : error ? "warning" : "secondary"}>
+            {loggedIn ? "Connected" : error ? "Check failed" : "Not logged in"}
+          </Badge>
+        </div>
       </div>
       {error && (
         <p className="pl-12 text-xs text-amber-600 dark:text-amber-400">
@@ -170,6 +224,8 @@ export function SessionStatus({ autoLoad = false }: { autoLoad?: boolean }) {
           <PlatformRow
             icon={<FacebookIcon className="h-4.5 w-4.5" />}
             label="Facebook"
+            platform="facebook"
+            onDisconnected={handleCheck}
             loggedIn={status.facebook}
             name={status.facebookName}
             error={status.facebookError}
@@ -179,6 +235,8 @@ export function SessionStatus({ autoLoad = false }: { autoLoad?: boolean }) {
           <PlatformRow
             icon={<LinkedInIcon className="h-4.5 w-4.5" />}
             label="LinkedIn"
+            platform="linkedin"
+            onDisconnected={handleCheck}
             loggedIn={status.linkedin}
             name={status.linkedinName}
             error={status.linkedinError}
@@ -188,6 +246,8 @@ export function SessionStatus({ autoLoad = false }: { autoLoad?: boolean }) {
           <PlatformRow
             icon={<NextdoorIcon className="h-4.5 w-4.5" />}
             label="Nextdoor"
+            platform="nextdoor"
+            onDisconnected={handleCheck}
             loggedIn={status.nextdoor}
             name={status.nextdoorName}
             error={status.nextdoorError}
@@ -197,6 +257,8 @@ export function SessionStatus({ autoLoad = false }: { autoLoad?: boolean }) {
           <PlatformRow
             icon={<XIcon className="h-4.5 w-4.5" />}
             label="X"
+            platform="twitter"
+            onDisconnected={handleCheck}
             loggedIn={status.twitter}
             name={status.twitterName}
             error={status.twitterError}
