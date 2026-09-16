@@ -43,8 +43,89 @@ type StorageStateObject = Extract<
 
 const VIEWPORT = { width: 1280, height: 900 } as const;
 
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+/**
+ * How a Chrome launched on this machine presents itself to the platforms.
+ *
+ * Two things gave every local crawl away, and neither had anything to do with
+ * pacing. Measured on the operator's PC against about:blank, with Chrome 153
+ * installed:
+ *
+ *   - `navigator.webdriver` was **true**. Playwright launches Chrome with
+ *     --enable-automation, which sets the one property every automated
+ *     browser has and no real one does. Any page reads it in a line of script.
+ *   - The user agent was hardcoded to Chrome/**120** — there to hide the
+ *     "HeadlessChrome" that headless Chrome otherwise announces, which is fair,
+ *     but frozen at a version from late 2023. Chrome also sends client hints
+ *     (sec-ch-ua) carrying its real version, so every request claimed 120 in
+ *     one header and 153 in the next. A mismatch between those is among the
+ *     first things bot detection compares.
+ *
+ * So: drop --enable-automation and the AutomationControlled blink feature,
+ * which is what makes navigator.webdriver false again; and build the user
+ * agent from the version actually installed, in the reduced MAJOR.0.0.0 form
+ * real Chrome has sent since 110, so the two headers agree.
+ *
+ * The rented cloud browser is deliberately untouched — it is attached over CDP
+ * with the provider's own consistent fingerprint, and overriding its user
+ * agent would reintroduce exactly this mismatch from the other side.
+ */
+const LOCAL_LAUNCH: { channel: "chrome"; ignoreDefaultArgs: string[]; args: string[] } = {
+  channel: "chrome",
+  ignoreDefaultArgs: ["--enable-automation"],
+  args: ["--disable-blink-features=AutomationControlled"],
+};
+
+function osToken(): string {
+  if (process.platform === "darwin") return "Macintosh; Intel Mac OS X 10_15_7";
+  if (process.platform === "linux") return "X11; Linux x86_64";
+  return "Windows NT 10.0; Win64; x64";
+}
+
+function userAgentFor(chromeVersion: string): string {
+  const major = chromeVersion.split(".")[0];
+  return `Mozilla/5.0 (${osToken()}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+}
+
+type Chromium = Awaited<ReturnType<typeof getChromium>>;
+let installedChromeVersion: Promise<string> | null = null;
+
+/**
+ * The installed Chrome's version, probed once per process.
+ *
+ * A persistent-context launch takes its user agent before any browser exists
+ * to ask, so this starts one throwaway instance up front — about a second, and
+ * once, not per crawl. Chrome updates itself, which is exactly why the answer
+ * is read rather than written down. A failed probe is not cached, so the next
+ * caller tries again instead of inheriting a rejection.
+ */
+function probeChromeVersion(chromium: Chromium): Promise<string> {
+  installedChromeVersion ??= (async () => {
+    const browser = await chromium.launch({ headless: true, ...LOCAL_LAUNCH });
+    try {
+      return browser.version();
+    } finally {
+      await browser.close();
+    }
+  })().catch((err) => {
+    installedChromeVersion = null;
+    throw err;
+  });
+  return installedChromeVersion;
+}
+
+/**
+ * Launch options for a persistent Chrome profile on this machine — the crawl's
+ * and the login's, which must match: a session captured by one fingerprint and
+ * replayed by another is its own kind of inconsistency.
+ */
+export async function localProfileLaunchOptions(chromium: Chromium, headless = true) {
+  return {
+    headless,
+    ...LOCAL_LAUNCH,
+    viewport: VIEWPORT,
+    userAgent: userAgentFor(await probeChromeVersion(chromium)),
+  };
+}
 
 export type SessionSource = "stored" | "profile" | "cloud";
 
@@ -207,14 +288,16 @@ export async function openPlatformContext(
     }
 
     if (storageState) {
-      const browser = await chromium.launch({ headless: true, channel: "chrome" });
+      const browser = await chromium.launch({ headless: true, ...LOCAL_LAUNCH });
       const context = await browser.newContext({
         // Cast because the blob crosses the encryption boundary as `unknown`.
         // It is whatever `context.storageState()` produced when the session
         // was captured, so the shape is Playwright's own.
         storageState: storageState as StorageStateObject,
         viewport: VIEWPORT,
-        userAgent: USER_AGENT,
+        // The browser already exists here, so its version is read directly
+        // rather than probed. See LOCAL_LAUNCH.
+        userAgent: userAgentFor(browser.version()),
       });
 
       return {
@@ -254,7 +337,7 @@ export async function openPlatformContext(
 
   const context = await chromium.launchPersistentContext(
     getAuthSessionPath(userId, platform),
-    { headless: true, channel: "chrome", viewport: VIEWPORT, userAgent: USER_AGENT }
+    await localProfileLaunchOptions(chromium)
   );
 
   return {
@@ -288,12 +371,10 @@ export async function migrateProfileToStore(
   const chromium = await getChromium();
   let context;
   try {
-    context = await chromium.launchPersistentContext(getAuthSessionPath(userId, platform), {
-      headless: true,
-      channel: "chrome",
-      viewport: VIEWPORT,
-      userAgent: USER_AGENT,
-    });
+    context = await chromium.launchPersistentContext(
+      getAuthSessionPath(userId, platform),
+      await localProfileLaunchOptions(chromium)
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     return { migrated: false, reason: formatAuthLaunchError(message, platform) };
