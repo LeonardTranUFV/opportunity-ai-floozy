@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { ListFilter, X, ArrowDownWideNarrow, RefreshCw, Search, ChevronDown, Check } from "lucide-react"
+import { ListFilter, X, ArrowDownWideNarrow, RefreshCw, Search, ChevronDown } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
@@ -14,6 +14,24 @@ export type SortOption = "relevance" | "newest" | "oldest" | "urgency" | "platfo
 const PLATFORM_OPTIONS = [
   { value: "", label: "All Platforms" },
   ...PLATFORM_ORDER.map((p) => ({ value: p, label: PLATFORM_META[p].label })),
+]
+
+/**
+ * Whether the platform gave us the post's own date.
+ *
+ * Was a single "Has post date" checkbox, which could only hide undated leads —
+ * never show them on their own. That is the wrong way round for how they get
+ * worked: an undated lead is not a worse lead, its card just says "seen"
+ * instead of "posted", and some of the hottest asks land there. Going through
+ * them deliberately needs a view of only them.
+ *
+ * Values stay on the existing `dated` param so old links keep their meaning:
+ * "1" has a date, as before; "0" has none; absent is either.
+ */
+const DATE_OPTIONS = [
+  { value: "", label: "Any post date" },
+  { value: "1", label: "Has post date" },
+  { value: "0", label: "No post date" },
 ]
 
 const URGENCY_OPTIONS = [
@@ -73,7 +91,8 @@ export function FilterBar({
   platform: string
   sort: SortOption
   q?: string
-  dated: boolean
+  /** "" either, "1" has a post date, "0" has none. */
+  dated: string
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -87,7 +106,7 @@ export function FilterBar({
     platform?: string
     sort?: SortOption
     q?: string
-    dated?: boolean
+    dated?: string
   }) => {
     const merged = {
       agent: next.agent ?? agentId,
@@ -105,7 +124,7 @@ export function FilterBar({
     if (merged.platform) search.set("platform", merged.platform)
     if (merged.sort !== "relevance") search.set("sort", merged.sort)
     if (merged.q.trim()) search.set("q", merged.q.trim())
-    if (merged.dated) search.set("dated", "1")
+    if (merged.dated) search.set("dated", merged.dated)
     const qs = search.toString()
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
@@ -117,7 +136,7 @@ export function FilterBar({
     urgency,
     status,
     platform,
-    dated ? "1" : "",
+    dated,
     sort !== "relevance" ? "1" : "",
   ].filter(Boolean).length
   const hasActiveFilters = activeCount > 0 || !!q
@@ -250,30 +269,25 @@ export function FilterBar({
         {/* Most posts arrive without their own date - the platform only showed
             "15 May" and the parser could not read it - so the card falls back to
             "seen 5d ago", which is when we found it, not when it was written.
-            This drops those rows, leaving only leads whose real age is known. */}
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={dated}
-          onClick={() => navigate({ dated: !dated })}
-          title="Show only leads whose original post date is known. Leads labelled 'seen 5d ago' are hidden - that is when we found the post, not when it was written."
-          className={cn(
-            "flex h-8 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
-            dated
-              ? "border-brand/40 bg-brand/10 text-foreground"
-              : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-input/30 dark:hover:bg-input/50"
-          )}
-        >
-          <span
-            className={cn(
-              "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
-              dated ? "border-brand bg-brand text-brand-foreground" : "border-muted-foreground/50"
-            )}
+            "Has post date" keeps only leads whose real age is known; "No post
+            date" is the other half, for going through those deliberately. */}
+        <Select value={dated} onValueChange={(v) => navigate({ dated: v ?? "" })}>
+          <SelectTrigger
+            className="min-w-[9.5rem]"
+            title="Leads with no post date show when we first saw them ('seen 5h ago'), not when they were written."
           >
-            {dated && <Check className="h-2.5 w-2.5" strokeWidth={3.5} />}
-          </span>
-          Has post date
-        </button>
+            <SelectValue>
+              {(v: string) => DATE_OPTIONS.find((o) => o.value === v)?.label ?? "Any post date"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {DATE_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
 
@@ -305,7 +319,7 @@ export function FilterBar({
                 platform: "",
                 sort: "relevance",
                 q: "",
-                dated: false,
+                dated: "",
               })
             }
           >

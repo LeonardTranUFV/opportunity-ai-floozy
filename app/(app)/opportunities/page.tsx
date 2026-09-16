@@ -15,7 +15,7 @@ import { PostAgeLabel } from "@/components/opportunities/post-age"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { isExactPostUrl } from "@/lib/post-url"
 import { isPrivacyMode, maskName, maskPhone } from "@/lib/privacy-mode"
-import { dedupeOpportunities } from "@/lib/dedupe-opportunities"
+import { dedupeOpportunities, opportunityKey } from "@/lib/dedupe-opportunities"
 
 export const dynamic = "force-dynamic"
 
@@ -102,7 +102,8 @@ export default async function OpportunitiesPage({
     params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency" || params.sort === "platform"
       ? params.sort
       : "relevance"
-  const datedOnly = params.dated === "1"
+  // "1" has a post date, "0" has none, anything else is either.
+  const dateFilter = params.dated === "1" || params.dated === "0" ? params.dated : ""
   const supabase = await createClient()
 
   const { data: agents } = await supabase.from("agents").select("id, name").order("name")
@@ -120,8 +121,11 @@ export default async function OpportunitiesPage({
     .order("intent_score", { ascending: false })
     .order("created_at", { ascending: false })
     // Three times what is shown: duplicates are collapsed after the fetch,
-    // and a top-100 taken before collapsing would come up short.
-    .limit(300)
+    // and a top-100 taken before collapsing would come up short. A date
+    // filter is applied after the fetch too, and cuts much deeper — most
+    // leads have no post date, so "has date" can leave a fraction of three
+    // hundred. It reads the most PostgREST will return in one request instead.
+    .limit(dateFilter ? 1000 : 300)
 
   // A deep link from the dashboard's Recent Alerts — show just that one
   // opportunity regardless of status/agent/urgency, since the point is to
@@ -165,13 +169,27 @@ export default async function OpportunitiesPage({
   }
 
   const { data: rawOpportunities } = await query
-  // "Has post date": drop the rows the platform never gave a post date for.
-  // Applied before the dedupe so a group of duplicates keeps its dated copy
-  // rather than collapsing onto an undated twin and disappearing entirely.
+  // Filtered by post date before the dedupe, and by *ask* rather than by row.
   // A deep link to one row is exempt - the point there is that specific lead.
+  //
+  // "Has post date" drops rows the platform never gave a date for. Doing it
+  // before the dedupe keeps a group of duplicates on its dated copy instead of
+  // collapsing onto an undated twin and disappearing entirely.
+  //
+  // "No post date" cannot simply keep the undated rows, because the dedupe does
+  // not prefer the dated copy of an ask (keepScore weighs status, author and
+  // link, never the date). An ask posted in two groups, dated in one, would
+  // then show here as undated — a lead whose age we actually know, filed under
+  // the ones we don't. So it removes every ask with a dated copy anywhere.
+  const askHasDate =
+    rawOpportunities && dateFilter === "0"
+      ? new Set(rawOpportunities.filter((opp) => hasPostDate(opp.posts)).map((opp) => opportunityKey(opp)))
+      : null
   const datedRows =
-    rawOpportunities && datedOnly && !params.id
-      ? rawOpportunities.filter((opp) => hasPostDate(opp.posts))
+    rawOpportunities && dateFilter && !params.id
+      ? rawOpportunities.filter((opp) =>
+          dateFilter === "1" ? hasPostDate(opp.posts) : !askHasDate?.has(opportunityKey(opp))
+        )
       : rawOpportunities
   // One card per ask. See lib/dedupe-opportunities.ts for why, and for
   // which copy is kept. A deep link to a single row passes straight through.
@@ -190,7 +208,7 @@ export default async function OpportunitiesPage({
     if (params.status) search.set("status", params.status)
     if (params.platform) search.set("platform", params.platform)
     if (params.sort && params.sort !== "relevance") search.set("sort", params.sort)
-    if (datedOnly) search.set("dated", "1")
+    if (dateFilter) search.set("dated", dateFilter)
     const highIntent = "highIntent" in overrides ? overrides.highIntent : params.highIntent
     const location = "location" in overrides ? overrides.location : params.location
     if (highIntent === "1") search.set("highIntent", "1")
@@ -247,7 +265,7 @@ export default async function OpportunitiesPage({
             platform={params.platform || ""}
             sort={sort}
             q={params.q || ""}
-            dated={datedOnly}
+            dated={dateFilter}
           />
         </div>
       )}
