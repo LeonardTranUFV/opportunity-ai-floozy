@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
+import { usersCollectingLocally } from "@/lib/collection-mode";
 
 /**
  * Unattended collection — the thing that makes this a product rather than a
@@ -277,6 +278,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 
+  /**
+   * Accounts collected on the operator's PC are not this route's to crawl.
+   *
+   * Skipped here, before a slot is spent, rather than left for
+   * scrapeAndStorePosts to decline — otherwise a local account whose sources
+   * the worker hasn't reached lately sits at the front of the stalest-first
+   * queue every tick, taking a place a cloud customer needed. Reported in the
+   * response so a run that crawled nobody still explains itself.
+   */
+  const localOnly = await usersCollectingLocally(supabase);
+
   // Distinct users, still in stalest-first order — the first time a user_id
   // appears is at their stalest source.
   const userOrder: string[] = [];
@@ -284,6 +296,7 @@ export async function GET(request: Request) {
   for (const row of (staleSources ?? []) as StaleSource[]) {
     if (seen.has(row.user_id)) continue;
     seen.add(row.user_id);
+    if (localOnly.has(row.user_id)) continue;
     userOrder.push(row.user_id);
     if (userOrder.length >= MAX_USERS_PER_TICK) break;
   }
@@ -369,6 +382,8 @@ export async function GET(request: Request) {
     success: true,
     users: results.length,
     out_of_time: outOfTime,
+    // Accounts crawled by the worker on the operator's PC instead.
+    collected_locally: localOnly.size,
     results,
   });
 }

@@ -3,6 +3,8 @@ import { getAuthSessionPath, hasAuthSession, formatAuthLaunchError } from "@/lib
 import { loadSession, saveSession, isSessionPlatform } from "@/lib/session-store";
 import { isHostedDeployment } from "@/lib/deployment";
 import { getRemoteBrowserProvider } from "@/lib/remote-browser";
+import { collectsLocally } from "@/lib/collection-mode";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { BrowserContext, BrowserContextOptions } from "playwright";
 
 /**
@@ -170,6 +172,24 @@ export async function openPlatformContext(
   userId: string,
   platform: string
 ): Promise<PlatformContext | null> {
+  /**
+   * An account marked to collect locally is never crawled from here.
+   *
+   * Checked in this function because every hosted path that touches a
+   * platform comes through it — scheduled collection, the scrape and scan
+   * buttons, the weekly group refresh, group discovery. The callers that walk
+   * customers skip these accounts before they get here and say why; this is
+   * the backstop for whichever path gets added next and forgets to.
+   *
+   * Returning null is the existing "nothing to open" answer, which every
+   * caller already handles by skipping the customer. Only on the hosted side:
+   * the worker running on the operator's PC is exactly where these accounts
+   * are supposed to be crawled.
+   */
+  if (isHostedDeployment() && (await collectsLocally(createAdminClient(), userId))) {
+    return null;
+  }
+
   const chromium = await getChromium();
 
   if (isSessionPlatform(platform)) {

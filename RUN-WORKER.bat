@@ -8,11 +8,19 @@ REM  signed-in Chrome profile on a real machine, and a serverless
 REM  function has no screen, no browser and no disk that survives the
 REM  request. This script is the half that runs here instead.
 REM
-REM  It scrapes every connected customer's sources with the Chrome
-REM  profiles stored on this PC and writes the posts straight into the
-REM  production database. The hosted cron
-REM  (/api/cron/auto-scan, hourly) then scores whatever it finds - it
-REM  never scrapes. So: this machine collects, Vercel judges.
+REM  By default it works only for accounts marked for local collection
+REM  (settings.collection_mode = local), so the hosted site never opens a
+REM  browser for them and every platform request leaves from this PC.
+REM  For those accounts it:
+REM    1. collects posts from their sources, using the Chrome profile
+REM       signed in with LOCAL-LOGIN.bat (or a stored website login),
+REM    2. re-reads their joined Facebook groups once a week,
+REM    3. scores new posts for every agent with auto-scan switched on,
+REM       7 days back, undated included, with no time limit - this needs
+REM       GEMINI_API_KEY in .env.worker, and is skipped without it.
+REM  Client accounts stay on the hosted site and are not touched here.
+REM  To crawl every connected account instead, run by hand:
+REM    npx tsx scripts/auto-scrape.ts --env .env.worker --all
 REM
 REM  Run it on a timer. Task Scheduler, every 4 hours:
 REM

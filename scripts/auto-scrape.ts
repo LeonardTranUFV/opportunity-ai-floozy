@@ -32,6 +32,10 @@ import { scrapeActiveGroups, sessionPlatform, type GroupToScrape } from "@/lib/s
 import { hasAuthSession } from "@/lib/auth-session";
 import { hasStoredSession } from "@/lib/session-store";
 import { isExactPostUrl } from "@/lib/post-url";
+import { usersCollectingLocally } from "@/lib/collection-mode";
+import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-groups";
+import { evaluateAgentPosts } from "@/lib/scan-agent";
+import type { AgentProfile } from "@/lib/ai";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -71,11 +75,8 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-async function run() {
-  const startedAt = new Date().toISOString();
-  console.log(`[auto-scrape] starting at ${startedAt}`);
-
-  const { data: groups, error: groupsError } = await supabase
+async function collect(localAccounts: Set<string>, crawlEveryone: boolean) {
+  const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, user_id, platform, name, url, last_scraped_at")
     .eq("active", true);
@@ -85,8 +86,10 @@ async function run() {
     process.exit(1);
   }
 
+  const groups = crawlEveryone ? allGroups : (allGroups ?? []).filter((g) => localAccounts.has(g.user_id));
+
   if (!groups || groups.length === 0) {
-    console.log("[auto-scrape] no active groups for any user, nothing to do.");
+    console.log("[auto-scrape] no active groups for the accounts in scope, nothing to collect.");
     return;
   }
 
@@ -278,7 +281,153 @@ async function run() {
     }
   }
 
-  console.log(`[auto-scrape] done. scraped ${totalScraped} post(s), upserted ${totalInserted}.`);
+  console.log(`[auto-scrape] collected: scraped ${totalScraped} post(s), ${totalInserted} new.`);
+}
+
+/**
+ * The weekly re-read of which Facebook groups an account has joined.
+ *
+ * The hosted cron does this for cloud customers and skips local accounts
+ * (app/api/cron/refresh-groups), because reading the joined-groups page is a
+ * Facebook request like any other. So it happens here instead, on the same
+ * weekly clock and recorded under the same settings key, or a local account
+ * would silently stop picking up groups it joins.
+ */
+const GROUP_REFRESH_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function refreshGroupsIfDue(userId: string) {
+  const { data: mark } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("user_id", userId)
+    .eq("key", GROUPS_REFRESHED_AT_KEY)
+    .maybeSingle();
+  const last = mark?.value ? Date.parse(mark.value as string) : 0;
+  if (!Number.isNaN(last) && Date.now() - last < GROUP_REFRESH_EVERY_MS) return;
+
+  console.log(`[auto-scrape] user ${userId}: weekly group refresh...`);
+  try {
+    const result = await refreshJoinedGroups(supabase, userId);
+    if (result.signedOut) {
+      // Not recorded as done — nothing was read, and marking it would push the
+      // next attempt a week out on the strength of a failed read.
+      console.log(`  group refresh read nothing — the Facebook session looks signed out.`);
+      return;
+    }
+    await supabase
+      .from("settings")
+      .upsert({ user_id: userId, key: GROUPS_REFRESHED_AT_KEY, value: new Date().toISOString() }, { onConflict: "user_id,key" });
+    console.log(`  found ${result.found} joined group(s), ${result.synced} synced (new ones arrive paused).`);
+  } catch (err) {
+    console.error(`  group refresh failed:`, err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * Scoring, run here instead of waiting on the hosted cron.
+ *
+ * The hosted scan is fenced in by a serverless invocation — five minutes, and
+ * at most a thousand posts a pass — which is why a backlog outlives it. Here
+ * neither limit exists: deadline is null, and the loop keeps asking for another
+ * pass until one comes back with nothing left to score. evaluated_posts is
+ * what makes that safe to repeat; a post scored once is never scored again, by
+ * this loop or by the hosted auto-scan that may also be running.
+ *
+ * Only agents with auto-scan switched on. That dropdown is the operator's
+ * existing answer to "which agents should run without me clicking", and each
+ * agent spends credits independently — scoring every agent would quietly bill
+ * for ones like "Eminant" that have never produced a lead.
+ *
+ * Seven days and undated posts included: the widest scan the app offers, which
+ * is what the operator asked for when choosing to run this locally.
+ */
+const LOCAL_SCAN_RANGE_DAYS = 7;
+const MAX_SCORING_PASSES = 10;
+
+async function scoreAgents(userId: string) {
+  if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+    console.log(
+      `[auto-scrape] user ${userId}: scoring skipped — add GEMINI_API_KEY to .env.worker to score here. The hosted auto-scan still scores agents that have it switched on.`
+    );
+    return;
+  }
+
+  const { data: agents } = await supabase
+    .from("agents")
+    .select("id, name, goal, location, keywords, negative_keywords")
+    .eq("user_id", userId)
+    .not("auto_scan_interval_hours", "is", null);
+
+  if (!agents?.length) {
+    console.log(
+      `[auto-scrape] user ${userId}: no agents have auto-scan switched on, so nothing is scored here. Turn it on for the agents you want run on the Agents page.`
+    );
+    return;
+  }
+
+  for (const agent of agents as AgentProfile[]) {
+    let evaluated = 0;
+    let found = 0;
+    try {
+      for (let pass = 1; pass <= MAX_SCORING_PASSES; pass++) {
+        const r = await evaluateAgentPosts(supabase, agent, userId, LOCAL_SCAN_RANGE_DAYS, null, 1000, true);
+        evaluated += r.evaluated;
+        found += r.opportunitiesFound;
+        // A pass that scored nothing means the backlog is empty — or that it
+        // stopped short for a reason another pass won't fix (credits, quota).
+        // Either way, looping again would only repeat it.
+        if (r.evaluated === 0) {
+          if (r.message && pass === 1) console.log(`  "${agent.name}": ${r.message}`);
+          break;
+        }
+      }
+      console.log(`[auto-scrape] "${agent.name}": scored ${evaluated} post(s), ${found} new lead(s).`);
+    } catch (err) {
+      console.error(`  "${agent.name}" scoring stopped:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+async function run() {
+  console.log(`[auto-scrape] starting at ${new Date().toISOString()}`);
+
+  /**
+   * Whose accounts this machine is responsible for.
+   *
+   * By default, only accounts marked collection_mode=local (lib/collection-mode).
+   * This used to crawl every connected customer from whatever PC ran it, which
+   * was fine when every crawl came from here. With clients now collected by
+   * the cloud and the operator's own account collected locally, running both
+   * paths over everyone would read each client twice, from two very different
+   * IPs, on two unrelated schedules — the pattern most likely to get noticed.
+   *
+   * `--all` restores the old behaviour for the day it is wanted deliberately.
+   * Scoring and group refresh stay limited to local accounts either way: cloud
+   * customers are scored and refreshed by the hosted crons.
+   */
+  const crawlEveryone = process.argv.includes("--all");
+  const localAccounts = await usersCollectingLocally(supabase);
+
+  if (!crawlEveryone && localAccounts.size === 0) {
+    console.log(
+      "[auto-scrape] no accounts are marked for local collection (settings.collection_mode = 'local'), so there is nothing for this machine to do. Run with --all to crawl every connected account."
+    );
+    return;
+  }
+  console.log(
+    crawlEveryone
+      ? "[auto-scrape] --all: crawling every connected account."
+      : `[auto-scrape] crawling ${localAccounts.size} local-collection account(s).`
+  );
+
+  await collect(localAccounts, crawlEveryone);
+
+  for (const userId of localAccounts) {
+    await refreshGroupsIfDue(userId);
+    await scoreAgents(userId);
+  }
+
+  console.log("[auto-scrape] done.");
 }
 
 run()

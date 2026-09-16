@@ -4,6 +4,8 @@ import { sessionPlatform } from "@/lib/session-platform";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
 import { getSourceCapacity, partitionByCap } from "@/lib/entitlement";
 import { isExactPostUrl } from "@/lib/post-url";
+import { isHostedDeployment } from "@/lib/deployment";
+import { collectsLocally } from "@/lib/collection-mode";
 
 export interface ScrapeAndStoreResult {
   scraped: number;
@@ -57,6 +59,30 @@ export async function scrapeAndStorePosts(
     minAgeMs?: number;
   } = {}
 ): Promise<ScrapeAndStoreResult> {
+  /**
+   * An account collected on the operator's PC is not crawled from the hosted
+   * site, even when someone presses a button there.
+   *
+   * Said out loud rather than left to openPlatformContext's null, because a
+   * scan that quietly finds nothing reads as "my sources are empty" — the
+   * exact misreading this whole setup exists to avoid. The scan still goes on
+   * to score what the worker has already collected; only the crawl is skipped.
+   *
+   * Hosted only. On the worker this function isn't the collection path, but a
+   * local dev server calling it is the operator's own machine, which is
+   * precisely where these accounts should be crawled.
+   */
+  if (isHostedDeployment() && (await collectsLocally(supabase, userId))) {
+    return {
+      scraped: 0,
+      inserted: 0,
+      log: [
+        "This account collects posts on your own PC (RUN-WORKER.bat), not on the hosted site — nothing was crawled here, to keep your Facebook account off datacentre IPs. Posts the worker has already collected are still scored.",
+      ],
+      brokenPlatforms: [],
+    };
+  }
+
   const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, platform, name, url, last_scraped_at, created_at")
