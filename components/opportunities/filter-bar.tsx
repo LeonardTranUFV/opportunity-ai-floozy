@@ -9,7 +9,9 @@ import { PLATFORM_META, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { CleanupOldButton } from "@/components/opportunities/cleanup-old-button"
 import { cn } from "@/lib/utils"
 
-export type SortOption = "relevance" | "newest" | "oldest" | "urgency" | "platform"
+import { DEFAULT_SORT, type SortOption } from "@/lib/opportunity-sort"
+
+export type { SortOption }
 
 const PLATFORM_OPTIONS = [
   { value: "", label: "All Platforms" },
@@ -122,7 +124,7 @@ export function FilterBar({
     if (merged.urgency) search.set("urgency", merged.urgency)
     if (merged.status) search.set("status", merged.status)
     if (merged.platform) search.set("platform", merged.platform)
-    if (merged.sort !== "relevance") search.set("sort", merged.sort)
+    if (merged.sort !== DEFAULT_SORT) search.set("sort", merged.sort)
     if (merged.q.trim()) search.set("q", merged.q.trim())
     if (merged.dated) search.set("dated", merged.dated)
     const qs = search.toString()
@@ -137,7 +139,7 @@ export function FilterBar({
     status,
     platform,
     dated,
-    sort !== "relevance" ? "1" : "",
+    sort !== DEFAULT_SORT ? "1" : "",
   ].filter(Boolean).length
   const hasActiveFilters = activeCount > 0 || !!q
 
@@ -317,7 +319,7 @@ export function FilterBar({
                 urgency: "",
                 status: "",
                 platform: "",
-                sort: "relevance",
+                sort: DEFAULT_SORT,
                 q: "",
                 dated: "",
               })

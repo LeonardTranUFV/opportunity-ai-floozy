@@ -9,7 +9,8 @@ import { GenerateReplyButton } from "@/components/opportunities/generate-reply-b
 import { ApproveRejectButtons } from "@/components/opportunities/approve-reject-buttons"
 import { SendOutreachButtons } from "@/components/opportunities/send-outreach-buttons"
 import { DeleteOpportunityButton } from "@/components/opportunities/delete-opportunity-button"
-import { FilterBar, type SortOption } from "@/components/opportunities/filter-bar"
+import { FilterBar } from "@/components/opportunities/filter-bar"
+import { DEFAULT_SORT, type SortOption } from "@/lib/opportunity-sort"
 import { postAge } from "@/lib/post-age"
 import { PostAgeLabel } from "@/components/opportunities/post-age"
 import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
@@ -99,9 +100,9 @@ export default async function OpportunitiesPage({
 }) {
   const params = await searchParams
   const sort: SortOption =
-    params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency" || params.sort === "platform"
+    params.sort === "relevance" || params.sort === "newest" || params.sort === "oldest" || params.sort === "urgency" || params.sort === "platform"
       ? params.sort
-      : "relevance"
+      : DEFAULT_SORT
   // "1" has a post date, "0" has none, anything else is either.
   const dateFilter = params.dated === "1" || params.dated === "0" ? params.dated : ""
   const supabase = await createClient()
@@ -115,17 +116,36 @@ export default async function OpportunitiesPage({
   const ghlEnabled = ghlSetting?.value === "true"
   const privacyMode = await isPrivacyMode(supabase)
 
+  /**
+   * Read in the order the customer asked for, not always by score.
+   *
+   * The fetch was always `intent_score` descending and capped, so every sort
+   * was a sort of the top rows by score: with 500 leads on the board, "Newest
+   * First" could not show a lead scored 45 that came in this morning, because
+   * it was never fetched. The client sort below still decides the final order —
+   * it reads the post's own date, which lives on the joined row — but it can
+   * only order what arrived.
+   *
+   * Urgency and platform have no column to order by here (urgency is a word,
+   * not a rank), so they take the newest rows, which is the honest superset.
+   */
+  const readOrder: { column: string; ascending: boolean } =
+    sort === "newest" || sort === "urgency" || sort === "platform"
+      ? { column: "created_at", ascending: false }
+      : sort === "oldest"
+        ? { column: "created_at", ascending: true }
+        : { column: "intent_score", ascending: false }
+
   let query = supabase
     .from("opportunities")
     .select("*, agents(name), posts:source_post_id(posted_at, scraped_at)")
-    .order("intent_score", { ascending: false })
+    .order(readOrder.column, { ascending: readOrder.ascending })
     .order("created_at", { ascending: false })
-    // Three times what is shown: duplicates are collapsed after the fetch,
-    // and a top-100 taken before collapsing would come up short. A date
-    // filter is applied after the fetch too, and cuts much deeper — most
-    // leads have no post date, so "has date" can leave a fraction of three
-    // hundred. It reads the most PostgREST will return in one request instead.
-    .limit(dateFilter ? 1000 : 300)
+    // PostgREST's own maximum for one request. Well above the hundred shown,
+    // because duplicates are collapsed after the fetch and a date filter cuts
+    // much deeper still — most leads have no post date, so "has date" can leave
+    // a fraction of what was read.
+    .limit(1000)
 
   // A deep link from the dashboard's Recent Alerts — show just that one
   // opportunity regardless of status/agent/urgency, since the point is to
@@ -207,7 +227,7 @@ export default async function OpportunitiesPage({
     if (params.urgency) search.set("urgency", params.urgency)
     if (params.status) search.set("status", params.status)
     if (params.platform) search.set("platform", params.platform)
-    if (params.sort && params.sort !== "relevance") search.set("sort", params.sort)
+    if (params.sort && params.sort !== DEFAULT_SORT) search.set("sort", params.sort)
     if (dateFilter) search.set("dated", dateFilter)
     const highIntent = "highIntent" in overrides ? overrides.highIntent : params.highIntent
     const location = "location" in overrides ? overrides.location : params.location
@@ -222,7 +242,7 @@ export default async function OpportunitiesPage({
       <div className="flex flex-col gap-2">
         <h2 className="text-3xl font-bold tracking-tight">Opportunities</h2>
         <p className="text-muted-foreground">
-          Everything your AI agents have found, ranked by intent score.
+          Everything your AI agents have found, newest first.
         </p>
       </div>
 
