@@ -25,3 +25,7 @@ paths.local.cmd
 # Production credentials for the crawler worker (see .env.worker.example)
 .env.worker
 logs/
+
+# Contractor emails and the CSVs sent to them (scripts/send-daily-leads.ts)
+lead-recipients.json
+exports/

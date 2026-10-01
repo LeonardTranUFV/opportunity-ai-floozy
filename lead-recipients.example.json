@@ -1,0 +1,10 @@
+{
+  "ownerEmail": "you@example.com",
+  "contractors": [
+    {
+      "name": "Example Roofing",
+      "email": "owner@exampleroofing.com",
+      "agents": ["Roofing Scout"]
+    }
+  ]
+}
