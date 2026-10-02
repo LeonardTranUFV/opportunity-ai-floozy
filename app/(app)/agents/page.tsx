@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { buttonVariants } from "@/components/ui/button"
-import { Plus, MapPin, Target, Bot } from "lucide-react"
+import { Plus, MapPin, Target, Bot, Pencil } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button"
 import { ScanAgentButton } from "@/components/agents/scan-agent-button"
@@ -97,6 +97,17 @@ export default async function AgentsPage() {
                     <Bot className="h-4 w-4" />
                   </div>
                   <CardTitle>{agent.name}</CardTitle>
+                  {/* Beside the name rather than down with the destructive
+                      action: editing is the ordinary thing to do to an agent
+                      that isn't finding enough. */}
+                  <Link
+                    href={`/agents/${agent.id}/edit`}
+                    aria-label={`Edit ${agent.name}`}
+                    title="Edit this agent"
+                    className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Link>
                 </div>
                 <CardDescription>{agent.goal}</CardDescription>
               </CardHeader>

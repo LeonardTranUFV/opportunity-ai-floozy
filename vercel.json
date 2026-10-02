@@ -9,6 +9,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/cron/send-leads",
+      "schedule": "5 * * * *"
+    },
+    {
       "path": "/api/cron/refresh-groups",
       "schedule": "20 4 * * 1"
     }

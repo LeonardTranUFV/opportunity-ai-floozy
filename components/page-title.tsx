@@ -13,11 +13,15 @@ const TITLES: Record<string, string> = {
   "/tools": "Tools",
   "/settings": "Settings",
   "/billing": "Plan & Credits",
+  "/delivery": "Lead Delivery",
 }
 
 export function PageTitle() {
   const pathname = usePathname()
-  const title = TITLES[pathname] ?? "Floozy Opportunity AI"
+  // The agent edit page carries an id, so it can never be a key here.
+  const title =
+    TITLES[pathname] ??
+    (/^\/agents\/[^/]+\/edit$/.test(pathname) ? "Edit Agent" : "Floozy Opportunity AI")
   // truncate + min-w-0: the header's right-hand cluster grew a plan badge, and
   // on a 375px screen "Connect Accounts" beside it has to give way, not wrap
   // onto a second line or shove the bell off the edge.
