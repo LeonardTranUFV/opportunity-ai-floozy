@@ -1,3 +1,5 @@
+import { scoreLead } from "@/lib/lead-score";
+
 // Two models, split by what the call is actually for.
 //
 // Measured 2026-08-12 against this project's key: the free tier allows about
@@ -153,6 +155,44 @@ async function callGemini(
 }
 
 /**
+ * Scoring prompt version. Bump it with a line below whenever the prompt text
+ * changes, and run `npx tsx scripts/eval-scoring.ts --env .env.worker` before
+ * and after — the golden set is what tells you whether the change helped.
+ *
+ * v1   (Aug 2026) model returned intent_score 0-100 and urgency directly.
+ * v2   (2026-10-12) model rates need / fit / urgency / detail 1-5 against
+ *      written anchors; lib/lead-score.ts turns them into intent_score and
+ *      urgency. Added the trap list (recommendations given, pitches aimed at
+ *      contractors, tools for sale, a different trade) and the rule that
+ *      estimated_value is "Unknown" unless the job's scope is stated.
+ * v2.1 (2026-10-12) TRIED AND REVERTED. Spelled out that cleaning, hauling,
+ *      appliance repair and furniture assembly are "not building trades".
+ *      On the golden set false leads fell 26 → 14 of 150, but that set is
+ *      where the rule came from; on the held-out set it was no better than v1
+ *      (6/123), it dropped 3 real leads (once a backed-up basement drain) and
+ *      8 posts flipped between runs. A dropped customer costs more than a
+ *      weak lead, so v2 stays. Off-trade jobs for a broadly worded agent
+ *      ("general contractor looking for contracting job") are better fixed
+ *      in the agent's own goal and keywords than in this prompt.
+ */
+export const SCORING_PROMPT_VERSION = "v2";
+
+/** What the scoring model returns per post, before lib/lead-score.ts. */
+interface RawPostVerdict {
+  index: number;
+  relevant: boolean;
+  need: number;
+  fit: number;
+  urgency: number;
+  detail: number;
+  estimated_value: string;
+  ai_summary: string;
+  category: string;
+  location_mentioned: string | null;
+  phone_number: string | null;
+}
+
+/**
  * Evaluate a batch of raw posts against one agent's goal/keywords using AI reasoning
  * (not keyword matching) — mirrors the PRD's "AI Understanding" requirement.
  */
@@ -211,23 +251,61 @@ a job posting or a pitch. "It might be a business" is not that, and neither is
 a post being short, vague, missing a location, or never naming the trade.
 
 When someone reads like a real person with a real need but the post is thin,
-mark it relevant and put your doubt in intent_score — that is what the score is
-for, and the person reading these decides from the score. A weak lead scored 55
-costs them a glance. A weak lead dropped is a customer they never knew asked.
+mark it relevant and put your doubt in the ratings below — that is what they
+are for. A weak lead rated low costs the owner a glance. A weak lead dropped is
+a customer they never knew asked.
 
 Priority keywords and location focus are relevance signals, not requirements: a
 homeowner does not know your keyword list, and most posts never name a city.
 Never rule a post out for failing to match them.
 
+### Traps — these look like leads and are not
+- Someone GIVING a recommendation ("used Dave's Plumbing last month, highly recommend")
+  is not asking for work. Relevant = false.
+- A pitch aimed at contractors ("seeking contractors to join our referral
+  network", lead-gen or marketing offers, supplier promos) contains words like
+  "looking for contractors" and is still an ad. Relevant = false.
+- Buying, selling or borrowing a tool, material or item ("selling my tile saw",
+  "anyone have leftover bricks?") is not a job. need = 1.
+- A story, complaint or warning with no ask (a break-in, storm photos, a review
+  of a company) is not a job until it asks someone to fix something. need = 1.
+- Someone who says they want to do it themselves is asking for advice, not a
+  contractor. need = 2 at most.
+- A real job in a different trade from this agent's goal (say, a dishwasher
+  repair or a house cleaner when the agent is a general contractor) is
+  a real need but not this agent's customer. fit = 1 if clearly different,
+  2 if only loosely related.
+
+### How to rate (1-5 each, use the anchors; 2 and 4 sit between them)
+need — is the author asking for work to be done for them?
+  5 = explicitly asks to hire, book, get a quote or a recommendation for a described job
+  3 = a real problem with an indirect or thin ask ("anyone know someone good?")
+  1 = no request for work at all
+fit — is that job this agent's own trade or goal (read the Goal above)?
+  5 = squarely the agent's trade or goal
+  3 = adjacent, or the trade isn't named but plausibly theirs
+  1 = clearly a different trade or service
+urgency — how soon is the work needed?
+  5 = an emergency happening now: active leak, flooding, no heat, collapse, "today", "ASAP"
+  4 = damage already done or a need within days ("since the windstorm", "this week")
+  3 = a normal ask with no deadline
+  2 = someday, just pricing it out, planning for next season
+  1 = no timing at all
+detail — could the owner act on it?
+  5 = scope plus place or size ("replace 20 ft of deck railing, house in Langley")
+  3 = scope is clear, no place or size
+  1 = one vague line
+
+Rate each post on its own text. Do not raise a rating because the post matches
+the keywords, and do not lower one because it is short.
+
 ### Reasoning examples
-"My roof is leaking after the storm" -> high intent, urgent.
-"I painted my house last year" -> not relevant, past/completed.
-"Anyone recommend a flooring company?" -> high intent.
-"Contractor specializing in interior demolition and junk removal" -> not relevant, this is a competitor advertising.
-"Licensed handyman available, 10 years experience, DM for quotes" -> not relevant, offering rather than seeking.
-"Selling my old couch" -> only relevant if the agent's goal is about buying used furniture.
-"anyone know someone good? ours quoted way too much" -> relevant, trade unnamed but a real ask. Score it moderate, not zero.
-"Need help with the bathroom, it's a mess" -> relevant, vague but a real need. Moderate score.
+"My roof is leaking after the storm, need a roofer" (roofer) -> relevant, need 5, fit 5, urgency 5, detail 3.
+"Anyone recommend a flooring company?" (flooring) -> relevant, need 5, fit 5, urgency 3, detail 1.
+"anyone know someone good? ours quoted way too much" (any trade) -> relevant, need 3, fit 3, urgency 3, detail 1.
+"I painted my house last year" -> relevant false, need 1.
+"Licensed handyman available, 10 years experience, DM for quotes" -> relevant false, an ad.
+"Our dishwasher won't drain, who fixes these?" (general contractor) -> relevant true, need 5, fit 1.
 
 ### Input format
 A JSON array of posts. Each has "i" (its position), "p" (platform), "a" (author name),
@@ -238,10 +316,12 @@ Respond with a JSON array with exactly one object per input post, in the same or
 this schema exactly:
 {
   "index": number (the "i" value of the post this verdict is for),
-  "relevant": boolean,
-  "intent_score": number (0-100, how strongly this matches the agent's goal),
-  "urgency": "low" | "medium" | "high" | "asap",
-  "estimated_value": string (short human-readable estimate like "$2,000-5,000", or "Unknown"),
+  "relevant": boolean (direction: true when the author wants work done for them, false for ads, offers, hiring, chatter),
+  "need": number (1-5),
+  "fit": number (1-5),
+  "urgency": number (1-5),
+  "detail": number (1-5),
+  "estimated_value": string (a typical price range for the job exactly as described, e.g. "$500-1,500"; "Unknown" when the post doesn't say what the job is or how big it is — never guess a scope),
   "ai_summary": string (one sentence, written for a busy business owner deciding whether to act),
   "category": string (short category label, e.g. "roofing", "flooring", "used car"),
   "location_mentioned": string or null (city/neighborhood extracted from the post text, or null),
@@ -275,12 +355,30 @@ Always include every input post, even if relevant is false.
   // writing model to rule it out without a deploy.
   const text = await callGemini(systemInstruction, userText, SCORING_MODEL);
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [];
+    parsed = JSON.parse(text);
   } catch {
     throw new Error(`Gemini returned unparseable JSON: ${text.slice(0, 200)}`);
   }
+  if (!Array.isArray(parsed)) return [];
+
+  // The model rates; lib/lead-score.ts does the arithmetic. Callers keep
+  // getting the same OpportunityEvaluation shape they always did.
+  return (parsed as RawPostVerdict[]).map((v) => {
+    const { relevant, intent_score, urgency } = scoreLead(Boolean(v?.relevant), v ?? {});
+    return {
+      index: v?.index,
+      relevant,
+      intent_score,
+      urgency,
+      estimated_value: v?.estimated_value || "Unknown",
+      ai_summary: v?.ai_summary ?? "",
+      category: v?.category ?? "",
+      location_mentioned: v?.location_mentioned ?? null,
+      phone_number: v?.phone_number ?? null,
+    };
+  });
 }
 
 export interface AgentEnhancement {

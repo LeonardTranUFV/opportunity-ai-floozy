@@ -53,7 +53,13 @@ export default async function CommunitiesPage() {
   // design — RLS filters rows, not columns, and a readable row would hand the
   // browser its own ciphertext — so this goes through the admin client here,
   // server-side, and only a platform name ever reaches the page.
-  const connectedPlatforms = user ? (await listSessions(user.id)).map((session) => session.platform) : []
+  // Active only. `listSessions` returns revoked and expired rows too, so a
+  // customer who had disconnected Facebook — or whose login had died — was
+  // still shown as connected here, with nothing on the page explaining why
+  // those sources had stopped collecting. The dashboard already filters this way.
+  const connectedPlatforms = user
+    ? (await listSessions(user.id)).filter((session) => session.status === "active").map((session) => session.platform)
+    : []
 
   // The same split the collector makes, so a source flagged here is exactly
   // one that is not being read. An account can be over its cap without ever

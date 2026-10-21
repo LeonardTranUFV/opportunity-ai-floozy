@@ -77,6 +77,57 @@ function verify(rawBody: string, header: string | null, secret: string): boolean
   return signatures.some((candidate) => safeEqual(candidate, expected));
 }
 
+/**
+ * When the current period ends, from whichever shape the event carries.
+ *
+ * Stripe moved `current_period_end` off the subscription and onto its items;
+ * older API versions still answer with it on the root. Reading only the root
+ * wrote null on every event, and null is the one value that breaks renewals:
+ * `ensurePlanCredits` puts the period end in the transaction's reason string,
+ * so with it missing the reason never changes, the grant looks like one that
+ * already happened, and the customer is never topped up again.
+ */
+function periodEndOf(subscription: Record<string, unknown>): string | null {
+  const root = subscription.current_period_end;
+  const items = (subscription.items as { data?: Array<Record<string, unknown>> } | undefined)?.data;
+  const item = items?.[0]?.current_period_end;
+  const seconds = typeof root === "number" ? root : typeof item === "number" ? item : null;
+  return seconds ? new Date(seconds * 1000).toISOString() : null;
+}
+
+/**
+ * Asks Stripe what a subscription currently says.
+ *
+ * Stripe does not order its events, so `customer.subscription.created` — the
+ * only one carrying the billing interval — can arrive before the checkout that
+ * tells us whose it is. That event then matched no row and was logged and
+ * dropped, leaving a paying customer on a row with no plan, which
+ * `ensurePlanCredits` refuses to grant against: they had paid and would wait
+ * until Stripe next touched the subscription, which for a new signup is when
+ * the trial ends. Reading it back at link time closes that window.
+ *
+ * Returns null without a key, or on any failure: the row is still written, and
+ * the next subscription event fills it in as before.
+ */
+async function fetchSubscription(id: string): Promise<Record<string, unknown> | null> {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      console.error(`[stripe] could not read subscription ${id}: ${res.status}`);
+      return null;
+    }
+    return (await res.json()) as Record<string, unknown>;
+  } catch (error) {
+    console.error(`[stripe] could not read subscription ${id}: ${error instanceof Error ? error.message : "unknown"}`);
+    return null;
+  }
+}
+
 /** Reads the billing interval off whichever shape the event carries. */
 function planFrom(subscription: Record<string, unknown>): string | null {
   const items = (subscription.items as { data?: Array<Record<string, unknown>> } | undefined)?.data;
@@ -149,11 +200,24 @@ export async function POST(request: Request) {
         if (existing && existing.length > 0) {
           return NextResponse.json({ received: true, duplicate: true });
         }
-        await grantCredits(admin, userId, credits, "top_up_purchase", {
-          session_id: sessionId,
-          amount_total: object.amount_total ?? null,
-          currency: object.currency ?? null,
-        });
+        try {
+          await grantCredits(admin, userId, credits, "top_up_purchase", {
+            session_id: sessionId,
+            amount_total: object.amount_total ?? null,
+            currency: object.currency ?? null,
+          });
+        } catch (error) {
+          // Migration 0018 makes one session grantable once, which is what
+          // stops two simultaneous deliveries of the same event both paying
+          // out. Losing that race means the credits are already there, so it is
+          // a success — answering 500 would have Stripe retry it for a day.
+          const message = error instanceof Error ? error.message : "";
+          if (/duplicate key/i.test(message)) {
+            console.log(`[stripe] session ${sessionId} was already credited`);
+            return NextResponse.json({ received: true, duplicate: true });
+          }
+          throw error;
+        }
         console.log(`[stripe] granted ${credits} credits to user ${userId} for session ${sessionId}`);
         return NextResponse.json({ received: true, credited: credits });
       }
@@ -168,18 +232,28 @@ export async function POST(request: Request) {
         return NextResponse.json({ received: true, linked: false });
       }
 
+      const subscriptionId = (object.subscription as string) ?? null;
+
+      // Read back what the subscription says, so the plan and the period end
+      // land with the link rather than waiting for an event that may already
+      // have arrived and been dropped. See fetchSubscription.
+      const live = subscriptionId ? await fetchSubscription(subscriptionId) : null;
+
       await admin.from("subscriptions").upsert(
         {
           user_id: userId,
           stripe_customer_id: (object.customer as string) ?? null,
-          stripe_subscription_id: (object.subscription as string) ?? null,
-          status: "trialing",
+          stripe_subscription_id: subscriptionId,
+          status: (live?.status as string) ?? "trialing",
+          ...(live ? { plan: planFrom(live), current_period_end: periodEndOf(live) } : {}),
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" }
       );
 
-      console.log(`[stripe] linked subscription for user ${userId}`);
+      console.log(
+        `[stripe] linked subscription for user ${userId}${live ? ` (${planFrom(live) ?? "plan unknown"})` : " — plan pending"}`
+      );
       return NextResponse.json({ received: true, linked: true });
     }
 
@@ -198,23 +272,31 @@ export async function POST(request: Request) {
       const subscriptionId = object.id as string | undefined;
       if (!subscriptionId) return NextResponse.json({ received: true });
 
-      const periodEnd = object.current_period_end as number | undefined;
+      const fields = {
+        status:
+          event.type === "customer.subscription.deleted"
+            ? "canceled"
+            : ((object.status as string) ?? "unknown"),
+        plan: planFrom(object),
+        current_period_end: periodEndOf(object),
+        updated_at: new Date().toISOString(),
+      };
 
-      const { count } = await admin
+      let { count } = await admin
         .from("subscriptions")
-        .update(
-          {
-            status:
-              event.type === "customer.subscription.deleted"
-                ? "canceled"
-                : ((object.status as string) ?? "unknown"),
-            plan: planFrom(object),
-            current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
-            updated_at: new Date().toISOString(),
-          },
-          { count: "exact" }
-        )
+        .update(fields, { count: "exact" })
         .eq("stripe_subscription_id", subscriptionId);
+
+      // Second chance on the customer id. A row linked by checkout before
+      // Stripe issued this subscription id — or relinked by hand — carries the
+      // customer but not this id, and matching on one column only meant the
+      // plan never landed on it.
+      if (!count && typeof object.customer === "string") {
+        ({ count } = await admin
+          .from("subscriptions")
+          .update({ ...fields, stripe_subscription_id: subscriptionId }, { count: "exact" })
+          .eq("stripe_customer_id", object.customer));
+      }
 
       // Nothing matched. Stripe does not guarantee the order of these against
       // checkout.session.completed, which is the only event carrying our user

@@ -56,6 +56,12 @@ export interface PlainFetchResult {
   /** Round-trip time, fed back into the throttle. */
   elapsedMs: number;
   error: string | null;
+  /**
+   * Where the request actually ended up, after the redirects below were
+   * followed and checked. A caller that judges the destination — "is this site
+   * on https?" — has to ask about the last hop, not the first.
+   */
+  finalUrl: string;
 }
 
 /**
@@ -114,6 +120,7 @@ export async function fetchPlain(
     contentType: "",
     elapsedMs: Date.now() - started,
     error,
+    finalUrl: url,
   });
 
   const firstHop = checkTarget(url);
@@ -167,6 +174,7 @@ export async function fetchPlain(
       contentType,
       elapsedMs: Date.now() - started,
       error: null,
+      finalUrl: current.toString(),
     };
   } catch (err) {
     const aborted = err instanceof Error && err.name === "AbortError";
@@ -177,6 +185,7 @@ export async function fetchPlain(
       contentType: "",
       elapsedMs: Date.now() - started,
       error: aborted ? `Timed out after ${options.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms` : String(err),
+      finalUrl: url,
     };
   } finally {
     // Without this the abort timer stays armed for the full timeout after a

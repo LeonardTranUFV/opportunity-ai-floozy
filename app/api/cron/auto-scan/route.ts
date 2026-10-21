@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { evaluateAgentPosts, type AgentProfile } from "@/lib/scan-agent";
+import { getPlan, scanPostLimitFor } from "@/lib/entitlement";
 
 // Cron only evaluates posts already sitting in Supabase — it never scrapes.
 //
@@ -93,11 +94,34 @@ export async function GET(request: Request) {
       continue;
     }
     try {
-      const result = await evaluateAgentPosts(supabase, agent, agent.user_id, EVAL_RANGE_DAYS, deadline);
-      await supabase
-        .from("agents")
-        .update({ last_auto_scan_at: new Date().toISOString() })
-        .eq("id", agent.id);
+      // The plan's own budget, as the button uses. Without it every automatic
+      // scan read the 500-post default, so a monthly customer's 1,000 applied
+      // only when somebody clicked.
+      const budget = scanPostLimitFor(await getPlan(supabase, agent.user_id));
+      const result = await evaluateAgentPosts(
+        supabase,
+        agent,
+        agent.user_id,
+        EVAL_RANGE_DAYS,
+        deadline,
+        budget
+      );
+      /**
+       * Stamped only when the agent actually finished.
+       *
+       * Stamping regardless meant a run that stopped on time — or on credits —
+       * counted as done, and the agent then waited out its whole interval. With
+       * a one-day evaluation window and a twelve-hour interval, the posts it
+       * had not reached aged out of the window before its next turn and were
+       * never scored by anything. An unstamped agent is first in line next tick,
+       * which is the behaviour the deadline skip above already relies on.
+       */
+      if (!result.remaining) {
+        await supabase
+          .from("agents")
+          .update({ last_auto_scan_at: new Date().toISOString() })
+          .eq("id", agent.id);
+      }
       results.push({ agent_id: agent.id, name: agent.name, ...result });
     } catch (err) {
       results.push({

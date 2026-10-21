@@ -18,6 +18,7 @@ import { diagnosePlatform, type GroupOutcome } from "../lib/scraper";
 import { extractPostsFromBodies } from "../lib/feed-capture";
 import { DomainThrottle, classifyResponse, checkTarget } from "../lib/fetchers";
 import { redactProviderSecrets } from "../lib/remote-browser";
+import { scoreLead, WEAK_CAP } from "../lib/lead-score";
 
 let failures = 0;
 let checks = 0;
@@ -300,6 +301,54 @@ section("lib/remote-browser — redactProviderSecrets");
     "ordinary text is left alone",
     redactProviderSecrets("That browser session has expired.") ===
       "That browser session has expired."
+  );
+}
+
+// ---------------------------------------------------------------- lead score
+section("lib/lead-score — scoreLead");
+{
+  const all = (n: number) => ({ need: n, fit: n, urgency: n, detail: n });
+
+  check("straight 5s score 100", scoreLead(true, all(5)).intent_score === 100);
+  check("straight 3s score 60, exactly the email line", scoreLead(true, all(3)).intent_score === 60);
+  check(
+    "a clear ask with a few days' urgency is HOT",
+    scoreLead(true, { need: 5, fit: 5, urgency: 4, detail: 4 }).intent_score === 93
+  );
+  check(
+    "a clear ask with normal timing is a lead, not HOT",
+    scoreLead(true, { need: 5, fit: 5, urgency: 3, detail: 4 }).intent_score === 89
+  );
+  check(
+    "rounds half up in integer arithmetic",
+    // 5·35 + 4·30 + 3·20 + 2·15 = 385 → 77.0; 5·35 + 4·30 + 3·20 + 3·15 = 400 → 80
+    scoreLead(true, { need: 5, fit: 4, urgency: 3, detail: 2 }).intent_score === 77 &&
+      scoreLead(true, { need: 5, fit: 4, urgency: 3, detail: 3 }).intent_score === 80
+  );
+  check(
+    "wrong trade is capped below the email line however clear the ask",
+    scoreLead(true, { need: 5, fit: 2, urgency: 5, detail: 5 }).intent_score === WEAK_CAP
+  );
+  check(
+    "a faint ask is capped below the email line",
+    scoreLead(true, { need: 2, fit: 5, urgency: 3, detail: 3 }).intent_score === WEAK_CAP
+  );
+  check(
+    "need 1 or fit 1 overrides the model's relevant=true",
+    !scoreLead(true, { need: 1, fit: 5, urgency: 5, detail: 5 }).relevant &&
+      !scoreLead(true, { need: 5, fit: 1, urgency: 5, detail: 5 }).relevant
+  );
+  check("relevant=false always scores 0", scoreLead(false, all(5)).intent_score === 0);
+  check(
+    "urgency labels map 5/4/3/2 → asap/high/medium/low",
+    [5, 4, 3, 2].map((u) => scoreLead(true, { ...all(4), urgency: u }).urgency).join() ===
+      "asap,high,medium,low"
+  );
+  check(
+    "garbage ratings are clamped, not trusted",
+    // 9 → 5, "4" → 4, -3 → 1, NaN → 1: 5·35 + 4·30 + 1·20 + 1·15 = 330 → 66
+    scoreLead(true, { need: 9, fit: "4" as unknown as number, urgency: -3, detail: Number.NaN })
+      .intent_score === 66
   );
 }
 

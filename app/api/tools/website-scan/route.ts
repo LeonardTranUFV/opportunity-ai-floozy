@@ -3,6 +3,7 @@ import { generateWebsiteReport, type WebsiteCheck } from "@/lib/ai";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 import { readJsonBody, httpUrl, validationErrorResponse } from "@/lib/validate";
+import { fetchPlain } from "@/lib/fetchers";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -35,22 +36,29 @@ export async function POST(request: Request) {
     throw err;
   }
 
-  const startTime = Date.now();
-  let response: Response;
-  try {
-    response = await fetch(targetUrl, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(10000),
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; OpportunityAI-Scanner/1.0)" },
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not reach the site";
-    return NextResponse.json({ success: false, error: message }, { status: 502 });
-  }
-  const loadTimeMs = Date.now() - startTime;
+  /**
+   * Fetched through `fetchPlain`, which re-checks every redirect hop.
+   *
+   * This used to be a bare `fetch` with `redirect: "follow"`. `httpUrl` above
+   * refuses private and link-local hosts, but only for the address typed in —
+   * so any site could 302 the request onward to 169.254.169.254 or a host on
+   * the deployment's own network, and the title and AI report would come back
+   * carrying whatever it found. That is the standard way past an SSRF check
+   * that reads the first URL only. `fetchPlain` also caps how much body it
+   * reads, which a bare `response.text()` did not.
+   */
+  const fetched = await fetchPlain(targetUrl, {
+    timeoutMs: 10_000,
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; OpportunityAI-Scanner/1.0)" },
+  });
 
-  const html = await response.text();
-  const finalUrl = response.url || targetUrl;
+  if (fetched.error) {
+    return NextResponse.json({ success: false, error: fetched.error }, { status: 502 });
+  }
+
+  const loadTimeMs = fetched.elapsedMs;
+  const html = fetched.body;
+  const finalUrl = fetched.finalUrl || targetUrl;
   const isHttps = finalUrl.startsWith("https://");
   const hasViewportMeta = /<meta[^>]+name=["']viewport["']/i.test(html);
   const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
@@ -120,7 +128,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     success: true,
     url: finalUrl,
-    statusCode: response.status,
+    statusCode: fetched.status,
     loadTimeMs,
     score,
     checks,

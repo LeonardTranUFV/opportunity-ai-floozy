@@ -101,7 +101,13 @@ function normaliseCity(raw: string): string | null {
   if (!cleaned) return null;
   // PostgREST reads , ( ) * as operators inside a filter value — the same
   // escaping bug already fixed on Opportunities search and on the pool.
-  return cleaned.replace(/[,()*]/g, "").slice(0, 60);
+  //
+  // % and _ go with them: this value is interpolated into an `ilike` pattern
+  // below, where they are the wildcards. A city of "%" matched every row and
+  // handed a stranger the highest-scoring leads in the whole corpus, whatever
+  // city they were in — and wrote `city = "%"` rows on the fill path, which
+  // then answered later lookups for real cities.
+  return cleaned.replace(/[,()*%_]/g, "").slice(0, 60);
 }
 
 /** First entry of x-forwarded-for is the client; the rest are proxies. */

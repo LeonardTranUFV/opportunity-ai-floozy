@@ -1,11 +1,12 @@
 import { formatAuthLaunchError } from "@/lib/auth-session";
 import { openPlatformContext } from "@/lib/browser-context";
 import { isHostedDeployment } from "@/lib/deployment";
-import { attachFeedCapture } from "@/lib/feed-capture";
+import { attachFeedCapture, facebookContentId } from "@/lib/feed-capture";
 import { DomainThrottle, fetchPaced } from "@/lib/fetchers";
 import { getRedditToken, toOAuthUrl, REDDIT_USER_AGENT, REDDIT_SETUP_HINT } from "@/lib/reddit-auth";
 import { isExactPostUrl } from "@/lib/post-url";
 import { sessionPlatform } from "@/lib/session-platform";
+import { markSessionExpired } from "@/lib/session-store";
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const randBetween = (min: number, max: number) => min + Math.floor(Math.random() * (max - min));
@@ -1532,23 +1533,45 @@ async function scrapeBrowserPlatform(
         let capturedOnly = 0;
         let capturedUpgrades = 0;
         for (const captured of capture.drain()) {
+          /**
+           * Re-keyed to the identity the markup path uses.
+           *
+           * The two paths were minting different ids for the same post — the
+           * capture keys on Facebook's story id, the extractor on the content —
+           * so the lookup below searched a map that could never hold it. Every
+           * post read both ways was stored twice and scored as two leads.
+           *
+           * Measured on the live database before this: 879 texts held more than
+           * one row inside a single source, 1,117 extra rows, a quarter of the
+           * Facebook corpus. It also cost the very thing the capture is here
+           * for — in 135 of those the captured copy carried the date and the
+           * markup copy, the one scored as its own lead, did not, and in 691 one
+           * copy had the real permalink and the other only the feed URL.
+           *
+           * Facebook only: Marketplace and Nextdoor identify posts by their own
+           * ids, not by content, so there is nothing here to reconcile them to.
+           */
+          const postId =
+            group.platform === "facebook"
+              ? facebookContentId(group.url, captured.raw_text)
+              : captured.post_id;
           const sighting: RawExtractedPost = {
-            post_id: captured.post_id,
+            post_id: postId,
             post_url: captured.post_url ?? group.url,
             author_name: captured.author_name,
             author_profile_url: captured.author_profile_url,
             timestamp: captured.timestamp,
             raw_text: captured.raw_text,
           };
-          const prev = collected.get(captured.post_id);
+          const prev = collected.get(postId);
           if (prev) {
             // Only worth counting when it actually gained something, so the
             // log line stays a measurement rather than a count of merges.
             if (!prev.timestamp && sighting.timestamp) capturedUpgrades++;
-            collected.set(captured.post_id, mergeSighting(prev, sighting));
+            collected.set(postId, mergeSighting(prev, sighting));
             continue;
           }
-          collected.set(captured.post_id, sighting);
+          collected.set(postId, sighting);
           capturedOnly++;
         }
         outcome.capturedOnly = capturedOnly;
@@ -1634,7 +1657,24 @@ async function scrapeBrowserPlatform(
     // is holding are then a logged-out browser's, and writing them over the
     // customer's stored session turns a possibly-transient block into a
     // guaranteed reconnect. See PlatformContext.release.
-    await opened.release({ signedOut: outcomes.some((o) => o.loggedOut) });
+    const signedOut = outcomes.some((o) => o.loggedOut);
+    await opened.release({ signedOut });
+
+    /**
+     * And record that the login is dead, which nothing did.
+     *
+     * `markSessionExpired` has existed since sessions were first stored and had
+     * no callers, so a session the platform had rejected kept its `active` row
+     * and its green "Connected" badge for ever. The customer was never told to
+     * reconnect, and their sources quietly collected nothing.
+     *
+     * Only for a session that came from the database. A profile directory on
+     * this machine has no row to mark, and marking one would describe the wrong
+     * login.
+     */
+    if (signedOut && opened.source !== "profile") {
+      await markSessionExpired(userId, sessionPlatform(platform)).catch(() => {});
+    }
   }
 
   if (stoppedEarly) {

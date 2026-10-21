@@ -29,3 +29,9 @@ logs/
 # Contractor emails and the CSVs sent to them (scripts/send-daily-leads.ts)
 lead-recipients.json
 exports/
+
+# Golden sets for the scoring eval (scripts/eval-scoring.ts). They hold real
+# posts by members of the public, so they stay on this machine — the repository
+# is public. The runner and the label format are committed; the data is not.
+evals/*.local.json
+evals/runs/

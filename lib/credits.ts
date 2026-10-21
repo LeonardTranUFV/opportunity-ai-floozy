@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { FREE_PLAN, getPlan } from "@/lib/entitlement";
+import { FREE_TRIAL_DAYS, TRIAL_GRANT_REASON, getFreeTrial, hasBoughtCredits } from "@/lib/free-trial";
+import { hasPoolAccess } from "@/lib/privileges";
 
 /**
  * Every balance change goes through the service role, never the caller's own
@@ -61,10 +64,49 @@ export const PLAN_ALLOWANCES: Record<string, number> = {
 };
 
 export class InsufficientCreditsError extends Error {
-  constructor() {
-    super("Out of credits — upgrade your plan or wait for your next billing cycle.");
+  constructor(message = "Out of credits — upgrade your plan or wait for your next billing cycle.") {
+    super(message);
     this.name = "InsufficientCreditsError";
   }
+}
+
+/**
+ * The free trial is over and nothing else entitles this account to spend.
+ *
+ * A subclass rather than a new error, so every caller that already turns
+ * InsufficientCreditsError into a 402 keeps doing so — with a message that
+ * says what actually happened instead of "wait for your next billing cycle"
+ * to someone who has no billing cycle.
+ */
+export class TrialEndedError extends InsufficientCreditsError {
+  constructor() {
+    super(`Your ${FREE_TRIAL_DAYS}-day free trial has ended — pick a plan to keep finding leads.`);
+    this.name = "TrialEndedError";
+  }
+}
+
+/**
+ * True when the free trial has ended and nothing else lets this account keep
+ * spending: no paid plan (trialing, active or past_due), no admin / pool
+ * access, and no credit pack bought. Fails open like everything it calls.
+ */
+export async function freeTrialBlocksSpending(supabase: SupabaseClient, userId: string): Promise<boolean> {
+  if ((await getPlan(supabase, userId)) !== FREE_PLAN) return false;
+  const trial = await getFreeTrial(supabase, userId);
+  if (!trial.ended) return false;
+  if (await hasPoolAccess(supabase, userId)) return false;
+  if (await hasBoughtCredits(supabase, userId)) return false;
+  return true;
+}
+
+/** The right "you can't do that" error for an account that can't spend. */
+export async function outOfCreditsError(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<InsufficientCreditsError> {
+  return (await freeTrialBlocksSpending(supabase, userId))
+    ? new TrialEndedError()
+    : new InsufficientCreditsError();
 }
 
 // PostgREST error codes (NOT raw Postgres SQLSTATE codes — confirmed by
@@ -103,6 +145,11 @@ export async function spendCredits(
   reason: string,
   metadata: Record<string, unknown> = {}
 ): Promise<number> {
+  // Admin deductions are corrections, not the customer using the product.
+  if (!reason.startsWith("admin_") && (await freeTrialBlocksSpending(supabase, userId))) {
+    throw new TrialEndedError();
+  }
+
   const { data, error } = await creditWriter().rpc("adjust_credits", {
     p_user_id: userId,
     p_amount: -Math.abs(amount),
@@ -139,9 +186,6 @@ export async function grantCredits(
   if (error) throw new Error(error.message);
   return data as number;
 }
-
-/** Reason string for the one-time welcome grant, also used to detect it. */
-const TRIAL_GRANT_REASON = "trial_grant";
 
 /**
  * Stripe statuses that entitle a customer to their plan's credits.
@@ -304,7 +348,14 @@ export async function getCreditBalance(supabase: SupabaseClient, userId: string)
   return data?.balance ?? 0;
 }
 
+/**
+ * Whether an AI action can go ahead. False once the free trial has ended for
+ * an account with nothing else entitling it, whatever its balance says —
+ * callers check this before the AI call, so a blocked account never costs us
+ * one. Pair a false with outOfCreditsError() for the message.
+ */
 export async function hasCredits(supabase: SupabaseClient, userId: string, amount: number): Promise<boolean> {
+  if (await freeTrialBlocksSpending(supabase, userId)) return false;
   const balance = await getCreditBalance(supabase, userId);
   return balance >= amount;
 }

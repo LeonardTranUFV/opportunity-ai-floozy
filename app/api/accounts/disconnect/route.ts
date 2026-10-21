@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { revokeSession, isSessionPlatform, SESSION_PLATFORMS } from "@/lib/session-store";
+import { getAuthSessionPath } from "@/lib/auth-session";
+import { rm } from "node:fs/promises";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 /**
@@ -59,6 +61,33 @@ export async function POST(request: Request) {
   }
 
   await revokeSession(user.id, platform);
+
+  /**
+   * The profile on disk too, not just the row.
+   *
+   * On a machine that collects locally — which is how this account's Facebook
+   * runs — the login lives in a Chrome profile directory, and
+   * `openPlatformContext` falls back to it whenever the database has no
+   * session. So "disconnect" revoked the row and the crawler carried straight
+   * on as that account, while the status check kept reporting Connected. The
+   * cookies also stayed readable on disk, which the message below promises
+   * they do not.
+   *
+   * Nothing to delete on a hosted deployment, where the directory never
+   * existed: `force` makes that a no-op rather than an error.
+   */
+  try {
+    await rm(getAuthSessionPath(user.id, platform), { recursive: true, force: true });
+  } catch (error) {
+    // A profile that will not delete must not fail the disconnect — the
+    // credential in the database is already gone, which is the part that stops
+    // the hosted crawl. Said out loud so it can be cleaned up by hand.
+    console.error(
+      `[accounts] revoked ${platform} for ${user.id} but could not remove its local profile: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`
+    );
+  }
 
   return NextResponse.json({
     success: true,

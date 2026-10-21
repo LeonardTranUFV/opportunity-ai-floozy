@@ -170,7 +170,7 @@ export default function WelcomePage() {
               </Link>
             </Reveal>
             <Reveal as="p" delay={280} className="mt-4 text-sm text-muted-foreground">
-              Free to look, no card. Paid plans start at $49 a week after a 3-day trial.
+              Free to look, no card. Then 7 days of the full app free, no card — $49 a week after that.
             </Reveal>
           </div>
 

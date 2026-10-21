@@ -9,6 +9,7 @@ import { PLAN_ALLOWANCES, CREDIT_COSTS } from "@/lib/credits"
 import { packRateFor, packsEnabled, planCentsPerCredit, formatCad } from "@/lib/credit-packs"
 import { BuyCredits } from "@/components/billing/buy-credits"
 import { formatDate } from "@/lib/format-date"
+import { FREE_TRIAL_DAYS } from "@/lib/free-trial"
 
 export const dynamic = "force-dynamic"
 
@@ -36,9 +37,9 @@ const PLANS = [
     key: "trial",
     name: "Free trial",
     price: "$0",
-    period: "once",
+    period: `for ${FREE_TRIAL_DAYS} days`,
     credits: `${PLAN_ALLOWANCES.trial} credits to start`,
-    features: ["Everything switched on so you can judge it", "Scans and drafts until the credits run out", "Buy a pack any time to keep going"],
+    features: [`${FREE_TRIAL_DAYS} days, no card needed`, "Everything switched on so you can judge it", "Add a card any time to keep going"],
   },
   {
     key: "weekly",
@@ -46,7 +47,7 @@ const PLANS = [
     price: "$49",
     period: "/week",
     credits: `${PLAN_ALLOWANCES.weekly} credits a week`,
-    features: ["3 days free, then $49 a week — cancel any time", "Connect Facebook, LinkedIn, Nextdoor or X", "AI-drafted first messages"],
+    features: ["$49 a week — cancel any time", "Connect Facebook, LinkedIn, Nextdoor or X", "AI-drafted first messages"],
     href: "/api/checkout?plan=weekly",
   },
   {
@@ -116,7 +117,11 @@ export default async function BillingPage(props: { searchParams: Promise<{ purch
             </CardTitle>
             <CardDescription>
               {subscription.state === "free" &&
-                "You're on the free trial. Pick a plan below when you want credits every period and the groups that come with it."}
+                (subscription.freeTrial?.ended
+                  ? `Your ${FREE_TRIAL_DAYS}-day free trial has ended, so scanning and drafting are paused. Pick a plan below to pick up where you left off — everything you found is still here.`
+                  : subscription.freeTrial
+                    ? `You're on the free trial until ${formatDate(subscription.freeTrial.endsAt)}. No card needed until then — pick a plan below whenever you're ready to keep going after it.`
+                    : "You're on the free plan. Pick a plan below when you want credits every period and the groups that come with it.")}
               {subscription.state === "trialing" &&
                 `Your ${planName.toLowerCase()} plan starts billing ${
                   subscription.periodEnd ? `on ${formatDate(subscription.periodEnd)}` : "when the trial ends"
@@ -217,7 +222,7 @@ export default async function BillingPage(props: { searchParams: Promise<{ purch
         <CardHeader>
           <CardTitle>Compare plans</CardTitle>
           <CardDescription>
-            Prices in CAD. Both paid plans start with a 3-day free trial.
+            Prices in CAD. Paid plans include a 3-day trial from the day you add your card.
             {paying && " To switch plans, cancel the current one from Stripe's email first — starting a second checkout would create a second subscription."}
           </CardDescription>
         </CardHeader>
@@ -281,7 +286,7 @@ export default async function BillingPage(props: { searchParams: Promise<{ purch
                         nativeButton={false}
                         render={<Link href={p.href} />}
                       >
-                        Start 3-day trial
+                        Choose {p.name.toLowerCase()}
                       </Button>
                     ) : current ? (
                       <div className="text-center text-xs text-muted-foreground">Current plan</div>

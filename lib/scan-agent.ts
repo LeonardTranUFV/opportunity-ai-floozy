@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePostsForAgent, type AgentProfile, type RawPostInput } from "@/lib/ai";
-import { CREDIT_COSTS, hasCredits, spendCredits, InsufficientCreditsError } from "@/lib/credits";
+import { CREDIT_COSTS, hasCredits, spendCredits, outOfCreditsError } from "@/lib/credits";
 import { filterPostsForAgent, describeFilter } from "@/lib/post-filter";
 import { isExactPostUrl } from "@/lib/post-url";
 
@@ -391,6 +391,7 @@ export async function evaluateAgentPosts(
   let totalOpportunities = 0;
   let aiCalls = 0;
   let remaining = 0;
+  let outOfCredits = false;
 
   /**
    * What one more batch costs, so the loop can stop *before* starting one it
@@ -422,8 +423,22 @@ export async function evaluateAgentPosts(
     // (below), same "only charge for what actually worked" principle as the
     // rest of this function's error handling.
     if (!(await hasCredits(supabase, userId, CREDIT_COSTS.scanBatch))) {
-      if (totalEvaluated > 0) break; // keep whatever was already found this run
-      throw new InsufficientCreditsError();
+      /**
+       * Keep whatever was already found this run — but say so.
+       *
+       * Breaking silently left `remaining` at 0, so the run returned no note
+       * and the button reported "Scanned 12 posts, found 0 opportunities" in
+       * its success tone to somebody who had simply run out of credits. Worse,
+       * `totalEvaluated` starts at the locally-filtered count, so an account
+       * with no credits at all took this branch the moment one post was
+       * rejected for free, and never saw the 402 either.
+       */
+      if (totalEvaluated > 0) {
+        outOfCredits = true;
+        remaining = toEvaluate.length - i;
+        break;
+      }
+      throw await outOfCreditsError(supabase, userId);
     }
 
     const postsForAI: RawPostInput[] = batch.map((p) => ({
@@ -563,13 +578,36 @@ export async function evaluateAgentPosts(
       if (error) throw new Error(error.message);
     }
 
+    /**
+     * 23505 is the unique index from migration 0017: this post is already an
+     * opportunity for this agent. With the truncated-lookup bug fixed that
+     * should not happen, but if it ever does, the right outcome is "already
+     * recorded", not a failed scan.
+     *
+     * Swallowing it on the batch was not that. Postgres aborts the whole
+     * statement on one conflicting row, so a single duplicate threw away every
+     * other lead in the batch — while `evaluated_posts` above had already
+     * marked all of those posts scored, so they could never be found again, and
+     * the batch was charged for below regardless. The retry writes the batch one
+     * row at a time and skips only the rows that really are already there.
+     *
+     * Rare by construction: candidates are filtered against `evaluated_posts`
+     * first, so this fires only when two scans of one agent overlap — the
+     * hourly cron against somebody pressing Scan.
+     */
+    let saved = opportunitiesToInsert.length;
     if (opportunitiesToInsert.length > 0) {
       const { error } = await supabase.from("opportunities").insert(opportunitiesToInsert);
-      // 23505 is the unique index from migration 0017: this post is already an
-      // opportunity for this agent. With the truncated-lookup bug fixed that
-      // should not happen, but if it ever does, the right outcome is "already
-      // recorded", not a failed scan.
-      if (error && error.code !== "23505") throw new Error(error.message);
+      if (error?.code === "23505") {
+        saved = 0;
+        for (const row of opportunitiesToInsert) {
+          const single = await supabase.from("opportunities").insert(row);
+          if (!single.error) saved++;
+          else if (single.error.code !== "23505") throw new Error(single.error.message);
+        }
+      } else if (error) {
+        throw new Error(error.message);
+      }
     }
 
     /**
@@ -591,14 +629,14 @@ export async function evaluateAgentPosts(
     await spendCredits(supabase, userId, CREDIT_COSTS.scanBatch, "scan_batch", {
       agent_id: agent.id,
       batch_size: batch.length,
-      opportunities_saved: opportunitiesToInsert.length,
+      opportunities_saved: saved,
     });
 
     // Count what was actually resolved, not the batch size — this includes the
     // duplicate posts that rode along on a verdict, and excludes any slot the
     // model failed to answer for.
     totalEvaluated += evaluatedToInsert.length;
-    totalOpportunities += opportunitiesToInsert.length;
+    totalOpportunities += saved;
     slowestBatchMs = Math.max(slowestBatchMs, Date.now() - batchStartedAt);
   }
 
@@ -606,7 +644,9 @@ export async function evaluateAgentPosts(
   // scan decided those 400 weren't worth reading.
   const timeNote =
     remaining > 0
-      ? `Stopped with ${remaining} post${remaining === 1 ? "" : "s"} still to check — scan again to carry on from here.`
+      ? outOfCredits
+        ? `Out of credits with ${remaining} post${remaining === 1 ? "" : "s"} still to check — top up, then scan again to carry on from here.`
+        : `Stopped with ${remaining} post${remaining === 1 ? "" : "s"} still to check — scan again to carry on from here.`
       : null;
 
   return {

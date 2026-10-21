@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateOutreachDrafts, type AgentProfile, type BusinessProfile, type OutreachDrafts } from "@/lib/ai";
-import { CREDIT_COSTS, hasCredits, spendCredits, InsufficientCreditsError } from "@/lib/credits";
+import { CREDIT_COSTS, hasCredits, spendCredits, outOfCreditsError } from "@/lib/credits";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -59,7 +59,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   if (!(await hasCredits(supabase, user.id, CREDIT_COSTS.draftGeneration))) {
     return NextResponse.json(
-      { success: false, error: new InsufficientCreditsError().message },
+      { success: false, error: (await outOfCreditsError(supabase, user.id)).message },
       { status: 402 }
     );
   }

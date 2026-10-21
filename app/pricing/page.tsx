@@ -20,7 +20,7 @@ import { DepthField } from "@/components/marketing/depth-field"
 export const metadata = {
   title: "Pricing",
   description:
-    "See who near you has been asking for your trade in the last 90 days — free, no card, no account to connect. Then $49 a week or $149 a month, after a 3-day trial. Less than one shared lead from Angi or HomeStars.",
+    "See who near you has been asking for your trade in the last 90 days — free, no card, no account to connect. Then try the whole app free for 7 days with no card, and $49 a week or $149 a month after that. Less than one shared lead from Angi or HomeStars.",
   alternates: { canonical: "/pricing" },
 }
 
@@ -52,8 +52,12 @@ export const metadata = {
  * drew attention away from the numbers would work against it. Everything is
  * readable at rest and switches off under reduced motion.
  */
-const WEEKLY_LINK = "/api/checkout?plan=weekly"
-const MONTHLY_LINK = "/api/checkout?plan=monthly"
+/**
+ * The paid tiers lead with the no-card trial (lib/free-trial.ts): an account
+ * first, a card whenever they choose. Checkout (/api/checkout, as above) is
+ * one click away on /billing, which is where everyone signed in is sent.
+ */
+const SIGNUP_LINK = "/signup"
 
 /**
  * Three columns, and the first one is the whole pitch.
@@ -85,12 +89,12 @@ const TIERS = [
     price: "$49",
     period: "/week",
     tagline: "Less than one shared lead from Angi or HomeStars.",
-    cta: "Start 3-day trial",
-    href: WEEKLY_LINK,
+    cta: "Try 7 days free",
+    href: SIGNUP_LINK,
     variant: "outline" as const,
     features: [
       "New matches every day, emailed each morning",
-      "3 days free, then $49 a week — cancel any time",
+      "7 days free, no card — then $49 a week, cancel any time",
       "Connect Facebook, LinkedIn, Nextdoor or X for several times the volume",
       "AI-drafted first messages",
     ],
@@ -100,8 +104,8 @@ const TIERS = [
     price: "$149",
     period: "/month",
     tagline: "About two shared leads — except these are yours alone.",
-    cta: "Start 3-day trial",
-    href: MONTHLY_LINK,
+    cta: "Try 7 days free",
+    href: SIGNUP_LINK,
     variant: "brand" as const,
     highlighted: true,
     features: [

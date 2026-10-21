@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sessionPlatform } from "@/lib/session-platform";
 import { hasPoolAccess } from "@/lib/privileges";
+import { getFreeTrial, hasBoughtCredits } from "@/lib/free-trial";
 
 /**
  * What a customer's subscription entitles them to.
@@ -216,6 +217,11 @@ export interface SubscriptionSummary {
   periodEnd: Date | null;
   /** Whole days until periodEnd, never negative. Null when there is no period. */
   daysLeft: number | null;
+  /**
+   * The no-card free trial, for an account that is not paying. Null when it
+   * does not apply: paying, admin / pool access, or not started yet.
+   */
+  freeTrial: { endsAt: Date; daysLeft: number; ended: boolean } | null;
 }
 
 /**
@@ -233,14 +239,22 @@ export async function getSubscriptionSummary(
   supabase: SupabaseClient,
   userId: string
 ): Promise<SubscriptionSummary> {
-  const free: SubscriptionSummary = { state: "free", plan: null, periodEnd: null, daysLeft: null };
+  const free: SubscriptionSummary = { state: "free", plan: null, periodEnd: null, daysLeft: null, freeTrial: null };
+  const freeWithTrial = async (): Promise<SubscriptionSummary> => {
+    if (await hasPoolAccess(supabase, userId)) return free;
+    const trial = await getFreeTrial(supabase, userId);
+    if (!trial.endsAt || trial.daysLeft === null) return free;
+    // Bought a pack: still spending on their own credits, so "trial ended" would be wrong.
+    if (trial.ended && (await hasBoughtCredits(supabase, userId))) return free;
+    return { ...free, freeTrial: { endsAt: trial.endsAt, daysLeft: trial.daysLeft, ended: trial.ended } };
+  };
   try {
     const { data } = await supabase
       .from("subscriptions")
       .select("plan, status, current_period_end")
       .eq("user_id", userId)
       .maybeSingle();
-    if (!data) return free;
+    if (!data) return await freeWithTrial();
 
     const status = data.status as string;
     const plan = (data.plan as string | null) ?? null;
@@ -250,10 +264,10 @@ export async function getSubscriptionSummary(
         ? Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / 86_400_000))
         : null;
 
-    if (status === "trialing") return { state: "trialing", plan, periodEnd, daysLeft };
-    if (status === "active") return { state: "active", plan, periodEnd, daysLeft };
-    if (status === "past_due") return { state: "past_due", plan, periodEnd, daysLeft };
-    return free;
+    if (status === "trialing") return { state: "trialing", plan, periodEnd, daysLeft, freeTrial: null };
+    if (status === "active") return { state: "active", plan, periodEnd, daysLeft, freeTrial: null };
+    if (status === "past_due") return { state: "past_due", plan, periodEnd, daysLeft, freeTrial: null };
+    return await freeWithTrial();
   } catch {
     return free;
   }

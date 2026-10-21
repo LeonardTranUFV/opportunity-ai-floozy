@@ -83,6 +83,20 @@ function hashText(str: string): string {
 }
 
 /**
+ * The identity the markup extractor gives a Facebook post: the group it was
+ * read in, plus the first 160 characters of its text.
+ *
+ * Exported because the capture side has to derive the same one and cannot do it
+ * here — a reader only ever sees the payload, and this id has to carry the
+ * group. Keep it in step with `extractFacebookPosts` in lib/scraper.ts, which
+ * holds its own copy: that function is shipped into the page by `page.evaluate`
+ * and can import nothing.
+ */
+export function facebookContentId(groupUrl: string, text: string): string {
+  return `fb_${hashText(groupUrl + "|" + textKey(text))}`;
+}
+
+/**
  * Pull the numeric story id out of Facebook's encoded form, or return the
  * value unchanged when it is not that shape.
  */

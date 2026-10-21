@@ -289,15 +289,24 @@ export async function openPlatformContext(
       return {
         context,
         source: "cloud",
-        release: async () => {
+        release: async (opts) => {
           // Same write-back as the stored path: platforms rotate session
           // cookies as you browse, and persisting what they just handed us is
           // what keeps a connection alive for months rather than days.
-          try {
-            const refreshed = await context.storageState();
-            await saveSession(userId, platform, refreshed);
-          } catch {
-            /* keep the older stored state */
+          //
+          // And the same refusal when the crawl saw a login wall, which this
+          // path was missing. The guard landed on `stored` only, while every
+          // hosted crawl comes through here — so a Facebook checkpoint ended
+          // with a signed-out browser's cookies sealed over the customer's real
+          // session and stamped `active`. A block that would have passed became
+          // a permanent disconnect that looked healthy on the Connect page.
+          if (!opts?.signedOut) {
+            try {
+              const refreshed = await context.storageState();
+              await saveSession(userId, platform, refreshed);
+            } catch {
+              /* keep the older stored state */
+            }
           }
           await browser.close().catch(() => {});
           // Always, on every path — a rented browser nobody released bills

@@ -80,19 +80,64 @@ export async function POST(request: Request) {
       : null;
 
   const admin = createAdminClient();
-  const { error } = await admin.from("scan_requests").upsert(
-    {
-      email,
-      phone,
-      trade,
-      city,
-      results_found: typeof body.results === "number" ? body.results : 0,
-      // Recorded, never assumed. Having someone's address is not consent to
-      // market to them, and CASL does not treat it as one.
-      consented_at: body.consent === true ? new Date().toISOString() : null,
-    },
-    { onConflict: "email,trade,city" }
-  );
+
+  const row = {
+    email,
+    phone,
+    trade,
+    city,
+    results_found: typeof body.results === "number" ? body.results : 0,
+    // Recorded, never assumed. Having someone's address is not consent to
+    // market to them, and CASL does not treat it as one.
+    consented_at: body.consent === true ? new Date().toISOString() : null,
+  };
+
+  /**
+   * Read, then write — not an upsert.
+   *
+   * The one-row-per-prospect rule is an *expression* index: 0014 creates it on
+   * `(lower(email), trade, city)`. Postgres cannot match a column list to an
+   * expression, so `onConflict: "email,trade,city"` raised 42P10 on every
+   * single submission and the route answered "Could not save that." Nobody saw
+   * it, because the only person who reads that message is a stranger who then
+   * leaves. Measured before fixing: `scan_requests` held no rows at all — every
+   * prospect the free scan had ever captured was lost.
+   *
+   * The address is lowercased above, so it is the same key the index holds.
+   */
+  const { data: existing, error: lookupError } = await admin
+    .from("scan_requests")
+    .select("id")
+    .eq("email", email)
+    .eq("trade", trade)
+    .eq("city", city)
+    .limit(1)
+    .maybeSingle();
+
+  let error = lookupError ?? null;
+
+  if (!error && existing) {
+    ({ error } = await admin.from("scan_requests").update(row).eq("id", existing.id));
+  } else if (!error) {
+    const inserted = await admin.from("scan_requests").insert(row);
+    if (inserted.error?.code === "23505") {
+      // The same address twice in one breath, or a row written between the read
+      // above and this insert. Updating it is what the upsert was there for.
+      const { data: raced } = await admin
+        .from("scan_requests")
+        .select("id")
+        .eq("email", email)
+        .eq("trade", trade)
+        .eq("city", city)
+        .limit(1)
+        .maybeSingle();
+      ({ error } = raced
+        ? await admin.from("scan_requests").update(row).eq("id", raced.id)
+        : inserted);
+    } else {
+      error = inserted.error;
+    }
+  }
 
   if (error) {
     const missing = /scan_requests/.test(error.message);

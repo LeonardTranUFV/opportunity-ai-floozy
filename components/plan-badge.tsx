@@ -31,13 +31,53 @@ export function PlanBadge({
   state,
   plan,
   daysLeft,
+  freeTrial,
 }: {
   state: State
   plan: string | null
   daysLeft: number | null
+  /** The no-card free trial, when it applies (see lib/free-trial.ts). */
+  freeTrial: { daysLeft: number; ended: boolean } | null
 }) {
   const base =
     "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors"
+
+  // Free, on the no-card trial: the days left, linked to billing so adding a
+  // card is one click away. Amber on the last day and once it has ended —
+  // that is the moment the AI stops, and it should not come as a surprise.
+  if (state === "free" && freeTrial) {
+    const urgent = freeTrial.ended || freeTrial.daysLeft <= 1
+    const label = freeTrial.ended
+      ? "Trial ended · Pick a plan"
+      : freeTrial.daysLeft === 0
+        ? "Free trial ends today"
+        : `Free trial · ${freeTrial.daysLeft} day${freeTrial.daysLeft === 1 ? "" : "s"} left`
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Link
+              href="/billing"
+              className={cn(
+                base,
+                urgent
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-400"
+                  : "border-brand/30 bg-brand/10 text-brand hover:bg-brand/15 dark:border-brand/40"
+              )}
+            />
+          }
+        >
+          {urgent ? <TriangleAlert className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+          {label}
+        </TooltipTrigger>
+        <TooltipContent>
+          {freeTrial.ended
+            ? "Your free trial has ended. Pick a plan to keep scanning and drafting replies."
+            : "No card needed during your trial. Add one any time to keep going after it ends."}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
 
   if (state === "free") {
     return (
@@ -56,7 +96,7 @@ export function PlanBadge({
           <Sparkles className="h-3.5 w-3.5" />
           Upgrade
         </TooltipTrigger>
-        <TooltipContent>3-day free trial, then $49 a week or $149 a month</TooltipContent>
+        <TooltipContent>$49 a week or $149 a month</TooltipContent>
       </Tooltip>
     )
   }

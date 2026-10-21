@@ -35,7 +35,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // signed-in ever visits.
   let subscription: SubscriptionSummary | null = null
   if (user) {
-    subscription = await getSubscriptionSummary(supabase, user.id)
     // Seed the trial balance before reading it. Nothing granted credits on
     // signup, so accounts started at zero and the first AI action they tried
     // answered "Out of credits — upgrade your plan", which reads as a paywall
@@ -46,6 +45,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // rather than granted by the Stripe webhook, because the webhook is the
     // part that can silently not happen — see ensurePlanCredits.
     await ensurePlanCredits(supabase, user.id)
+    // After the grant above, which is what starts the free trial's clock — read
+    // first, a brand-new account's first page would show no trial at all.
+    subscription = await getSubscriptionSummary(supabase, user.id)
 
     const { data } = await supabase
       .from("user_credits")
@@ -72,6 +74,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   state={subscription.state}
                   plan={subscription.plan}
                   daysLeft={subscription.daysLeft}
+                  freeTrial={subscription.freeTrial}
                 />
               )}
               {credits && <CreditBar balance={credits.balance} allowance={credits.allowance} />}
