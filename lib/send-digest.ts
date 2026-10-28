@@ -72,9 +72,9 @@ export async function sendDigest(
   await sendMail({
     to: r.email,
     subject: `${leads.length} new lead${leads.length === 1 ? "" : "s"} for ${r.name} — ${today}`,
-    html: emailHtml(r.name, leads),
+    html: emailHtml(r.name, leads, r.timezone),
     attachments: [
-      { filename: `leads-${today}.csv`, content: toCsv(leads), contentType: "text/csv; charset=utf-8" },
+      { filename: `leads-${today}.csv`, content: toCsv(leads, r.timezone), contentType: "text/csv; charset=utf-8" },
     ],
   });
 

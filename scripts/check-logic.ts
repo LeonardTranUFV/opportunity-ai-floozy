@@ -19,6 +19,15 @@ import { extractPostsFromBodies } from "../lib/feed-capture";
 import { DomainThrottle, classifyResponse, checkTarget } from "../lib/fetchers";
 import { redactProviderSecrets } from "../lib/remote-browser";
 import { scoreLead, WEAK_CAP } from "../lib/lead-score";
+import {
+  skepticMode,
+  parseSkepticResponse,
+  needsSkeptic,
+  skepticColumns,
+  leadConfidence,
+  skepticAllowsEmail,
+} from "../lib/lead-skeptic";
+import { collectLeads, emailHtml, toCsv, postedLabel, type Lead } from "../lib/lead-digest";
 
 let failures = 0;
 let checks = 0;
@@ -352,7 +361,195 @@ section("lib/lead-score — scoreLead");
   );
 }
 
-console.log(
-  `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed`
-);
-process.exit(failures === 0 ? 0 : 1);
+// ------------------------------------------------------------- skeptic pass
+section("lib/lead-skeptic — flag, parsing, confidence");
+{
+  check(
+    "SKEPTIC_MODE: only 'shadow' and 'on' switch it on; anything else is off",
+    skepticMode("shadow") === "shadow" &&
+      skepticMode(" ON ") === "on" &&
+      skepticMode(undefined) === "off" &&
+      skepticMode("") === "off" &&
+      skepticMode("true") === "off" &&
+      skepticMode("onn") === "off"
+  );
+  check("only leads at the email line are checked", needsSkeptic(60) && !needsSkeptic(59) && !needsSkeptic(null));
+
+  const parsed = parseSkepticResponse(
+    [
+      { index: 2, verdict: "reject", code: "advertising", reason: "  Ends with 'DM me for a free quote'\n" },
+      { index: 1, verdict: "keep", code: null, reason: "Asks for a roofer this week" },
+      { index: 3, verdict: "reject", code: "feels_weak", reason: "Seems thin" },
+      { index: 4, verdict: "maybe", code: null, reason: "?" },
+    ],
+    5
+  );
+  check(
+    "matches verdicts by echoed index, not position",
+    parsed[0]?.verdict === "keep" && parsed[1]?.verdict === "reject" && parsed[1]?.code === "advertising"
+  );
+  check("reason is trimmed to one line", parsed[1]?.reason === "Ends with 'DM me for a free quote'");
+  check(
+    "a reject without a listed reason is overruled to keep, and says so",
+    parsed[2]?.verdict === "keep" && parsed[2]?.reason.includes("without a listed reason")
+  );
+  check("an unknown verdict leaves the lead unchecked", parsed[3] === null);
+  check("a lead the model skipped is unchecked, not rejected", parsed[4] === null);
+  check(
+    "a second answer for the same lead is ignored",
+    parseSkepticResponse(
+      [
+        { index: 1, verdict: "keep", code: null, reason: "fine" },
+        { index: 1, verdict: "reject", code: "no_ask", reason: "no" },
+      ],
+      1
+    )[0]?.verdict === "keep"
+  );
+  check(
+    "a non-array answer leaves every lead unchecked",
+    parseSkepticResponse({ verdict: "reject" }, 2).every((v) => v === null)
+  );
+  check(
+    "a reject with no reason text falls back to the code's own wording",
+    parseSkepticResponse([{ index: 1, verdict: "reject", code: "already_hired", reason: "" }], 1)[0]?.reason ===
+      "Already hired someone or solved it"
+  );
+  check(
+    "unchecked writes no skeptic columns (fail open, and nothing for 0020 to reject)",
+    Object.keys(skepticColumns(null)).length === 0
+  );
+  const cols = skepticColumns({ verdict: "reject", code: "too_old", reason: "Asked last May" }, new Date("2026-10-28T00:00:00Z"));
+  check(
+    "a verdict is stored with its version and time",
+    cols.skeptic_verdict === "reject" &&
+      cols.skeptic_code === "too_old" &&
+      cols.skeptic_version === "s1" &&
+      cols.skeptic_checked_at === "2026-10-28T00:00:00.000Z"
+  );
+
+  const base = { score: 85, postedAt: "2026-10-27T10:00:00Z", hasExactLink: true };
+  check("80+, dated, direct link, not rejected → High", leadConfidence(base) === "High");
+  check("same lead with no post date → Medium", leadConfidence({ ...base, postedAt: null }) === "Medium");
+  check("an unparseable post date counts as no date", leadConfidence({ ...base, postedAt: "15 May" }) === "Medium");
+  check("a lead scored 60-79 is Medium even when dated", leadConfidence({ ...base, score: 70 }) === "Medium");
+  check("only a group link stops High but is not Low", leadConfidence({ ...base, hasExactLink: false }) === "Medium");
+  check("rejected by the skeptic → Low", leadConfidence({ ...base, skepticVerdict: "reject" }) === "Low");
+  check("under the email line → Low", leadConfidence({ ...base, score: 55 }) === "Low");
+  check("kept by the skeptic stays High", leadConfidence({ ...base, skepticVerdict: "keep" }) === "High");
+
+  check(
+    "only mode 'on' holds rejected leads back from the email",
+    !skepticAllowsEmail("reject", "on") &&
+      skepticAllowsEmail("reject", "shadow") &&
+      skepticAllowsEmail("reject", "off") &&
+      skepticAllowsEmail("keep", "on") &&
+      skepticAllowsEmail(null, "on")
+  );
+}
+
+// collectLeads is async and tsx runs this file as CommonJS: no top-level await.
+async function digestChecks(): Promise<void> {
+  section("lib/lead-digest — skeptic filter, proof in email and CSV");
+  /**
+   * A stand-in for the two Supabase reads collectLeads makes. It records the
+   * select strings, because "off asks for no 0020 column" is the property
+   * that keeps the flag safe on a database without the migration.
+   */
+  const now = Date.parse("2026-10-28T16:00:00Z");
+  const selects: string[] = [];
+  const opp = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    source_post_id: `p-${id}`,
+    platform: "facebook",
+    author_name: "Member",
+    author_profile_url: null,
+    post_url: `https://www.facebook.com/groups/1/posts/${id}`,
+    location_mentioned: "Langley",
+    phone_number: null,
+    estimated_value: "Unknown",
+    content: "Need a roofer, leak after the storm",
+    category: "roofing",
+    intent_score: 88,
+    urgency: "high",
+    ai_summary: "Roof leak after the storm",
+    created_at: "2026-10-28T08:00:00Z",
+    ...extra,
+  });
+  const rows = [
+    opp("kept", { skeptic_verdict: "keep", skeptic_reason: "Asks for a roofer" }),
+    opp("rejected", { skeptic_verdict: "reject", skeptic_reason: "Roofing company advertising" }),
+    opp("unchecked"),
+  ];
+  const posts = rows.map((r) => ({
+    id: r.source_post_id,
+    posted_at: r.id === "unchecked" ? null : "2026-10-27T18:00:00Z",
+    scraped_at: "2026-10-28T07:00:00Z",
+  }));
+  const fakeSb = {
+    from(table: string) {
+      const q: Record<string, unknown> = {
+        select(cols: string) {
+          selects.push(`${table}:${cols}`);
+          return q;
+        },
+        eq: () => q,
+        gte: () => q,
+        in: () => q,
+        then(resolve: (v: unknown) => void) {
+          resolve({ data: table === "opportunities" ? rows : posts, error: null });
+        },
+      };
+      return q;
+    },
+  } as unknown as Parameters<typeof collectLeads>[0];
+
+  const ids = async (mode: "off" | "shadow" | "on") => {
+    selects.length = 0;
+    const leads = await collectLeads(fakeSb, { userId: "u", agentIds: [], alreadySent: new Set(), now, skeptic: mode });
+    return { leads, ids: leads.map((l) => l.id).sort().join(",") };
+  };
+
+  const off = await ids("off");
+  check("off asks for none of the 0020 columns", !selects.some((s) => s.includes("skeptic_")), selects[0]);
+  check("off sends every lead", off.ids === "kept,rejected,unchecked");
+  const shadow = await ids("shadow");
+  check("shadow reads the verdicts but still sends every lead", shadow.ids === "kept,rejected,unchecked" && selects[0].includes("skeptic_verdict"));
+  check(
+    "shadow does not let the verdict change the client's confidence label",
+    shadow.leads.find((l) => l.id === "rejected")?.confidence === "High"
+  );
+  const on = await ids("on");
+  check("on drops only the rejected lead; unchecked ones still go", on.ids === "kept,unchecked");
+  check(
+    "confidence: dated 88 → High, undated 88 → Medium",
+    on.leads.find((l) => l.id === "kept")?.confidence === "High" &&
+      on.leads.find((l) => l.id === "unchecked")?.confidence === "Medium"
+  );
+
+  const html = emailHtml("Dave", on.leads, "America/Vancouver");
+  check("email shows the post date in the client's timezone", html.includes("Oct 27, 2026, 11:00"), html.match(/<td>Oct[^<]*/)?.[0]);
+  check("email says 'date unknown' rather than leaving it blank", html.includes("<td>date unknown</td>"));
+  check("email shows the confidence label", html.includes("<td>High</td>") && html.includes("<td>Medium</td>"));
+  check("email links the post itself", html.includes('href="https://www.facebook.com/groups/1/posts/kept">open post</a>'));
+
+  const lead = (over: Partial<Lead>): Lead => ({ ...on.leads[0], ...over });
+  const risky = emailHtml("Dave", [
+    lead({ postUrl: "javascript:alert(1)" }),
+    lead({ postUrl: "https://www.facebook.com/groups/1" }),
+  ]);
+  check("a non-http link is never made clickable", !risky.includes("javascript:"));
+  check("a group link is labelled as a group, not as the post", risky.includes(">open group</a>"));
+
+  const csv = toCsv(on.leads, "America/Vancouver");
+  const header = csv.split("\r\n")[0];
+  check("CSV has a Confidence column next to the score", header.includes("Score,Confidence,Urgency"), header);
+  check("CSV says 'date unknown' for an undated lead", csv.includes(",date unknown,"));
+  check("postedLabel survives an unknown timezone", postedLabel(new Date(now), "Mars/Olympus").length > 0);
+}
+
+digestChecks().then(() => {
+  console.log(
+    `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed`
+  );
+  process.exit(failures === 0 ? 0 : 1);
+});

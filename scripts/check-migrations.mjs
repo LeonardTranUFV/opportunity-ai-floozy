@@ -152,6 +152,20 @@ for (const [id, name, table] of [
       : `could not read opportunities (${status})`);
 }
 
+// ── 0020: skeptic columns on opportunities. Selecting one answers it: a ────
+// missing column is a 400 naming it (PostgREST 42703).
+{
+  const { status, body } = await ask("opportunities", "select=skeptic_verdict&limit=0");
+  if (readOk(status)) {
+    record("0020", "skeptic pass       ", "applied", "skeptic_verdict column present");
+  } else if (body.includes("42703") || body.includes("skeptic_verdict")) {
+    record("0020", "skeptic pass       ", "missing",
+      "no skeptic columns — fine while SKEPTIC_MODE is off; apply before setting it to shadow or on");
+  } else {
+    record("0020", "skeptic pass       ", "unknown", `opportunities query returned ${status}: ${body.slice(0, 80)}`);
+  }
+}
+
 // ── The tables the scan reads must be closed to the browser ───────────────
 // Same property that was verified for browser_sessions. The scan is served by
 // the service role through /api/scan/preview; anon should never reach these
