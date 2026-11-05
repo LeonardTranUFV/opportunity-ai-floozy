@@ -34,6 +34,15 @@ import {
   collectPublicAreaGroups,
 } from "../lib/floozy-collect";
 import { isOffCloudByPolicy, withCloudPolicy } from "../lib/collection-mode";
+import {
+  matchSettings,
+  parseClassification,
+  placeOf,
+  jobTerms,
+  rankCandidates,
+  matchAreaPosts,
+  type Candidate,
+} from "../lib/lead-matcher";
 
 let failures = 0;
 let checks = 0;
@@ -663,6 +672,229 @@ asyncChecks.push(
       if (realToken === undefined) delete process.env.APIFY_TOKEN;
       else process.env.APIFY_TOKEN = realToken;
     }
+  })()
+);
+
+// ------------------------------------------------------------ lead matcher
+section("lib/lead-matcher");
+{
+  check(
+    "up to 5 clients per lead by default, never more than 10",
+    matchSettings({}).maxClients === 5 &&
+      matchSettings({ MATCH_MAX_CLIENTS: "10" }).maxClients === 10 &&
+      matchSettings({ MATCH_MAX_CLIENTS: "40" }).maxClients === 10 &&
+      matchSettings({}).minScore === 60
+  );
+  const cls = parseClassification(
+    JSON.stringify({
+      posts: [
+        { index: 2, intent: "offer", trade: "roofing", city: null },
+        { index: 1, intent: "request", trade: "roofing", city: " Burnaby " },
+        { index: 3, intent: "request", trade: "astrology", city: null },
+      ],
+    }),
+    4
+  );
+  check(
+    "classification is read by index, an offer never carries a trade, unknown trades are dropped",
+    cls[0]?.intent === "request" && cls[0]?.trade === "roofing" && cls[0]?.city === "Burnaby" &&
+      cls[1]?.intent === "offer" && cls[1]?.trade === null &&
+      cls[2]?.intent === "request" && cls[2]?.trade === null &&
+      cls[3] === null
+  );
+  check("a garbled answer classifies nothing", parseClassification("not json", 2).every((c) => c === null));
+  check(
+    "a city in another area moves the lead there; an unknown city keeps the group's area",
+    placeOf("metro-vancouver", "calgary").areaId === "calgary" &&
+      placeOf("metro-vancouver", "calgary").city === "Calgary" &&
+      placeOf("metro-vancouver", "Somewhere Small").areaId === "metro-vancouver" &&
+      placeOf("metro-vancouver", null).areaId === "metro-vancouver"
+  );
+  check("job lists split on commas, 'and', 'or'", jobTerms("Leaks and storm damage, gutters; roofs or skylights").join("|") === "leaks|storm damage|gutters|roofs|skylights");
+
+  const mk = (userId: string, over: Partial<Candidate> = {}): Candidate => ({
+    userId,
+    trades: ["roofing"],
+    areas: [{ areaId: "metro-vancouver", cities: [] }],
+    wantedJobs: "",
+    unwantedJobs: "",
+    recentLeads: 0,
+    ...over,
+  });
+  const lead = { trade: "roofing", areaId: "metro-vancouver", city: "Burnaby", text: "Roof leak after the storm, need someone in Burnaby" };
+  const ranked = rankCandidates(
+    lead,
+    [
+      mk("a-busy", { recentLeads: 9 }),
+      mk("b-plumber", { trades: ["plumbing"] }),
+      mk("c-surrey-only", { areas: [{ areaId: "metro-vancouver", cities: ["Surrey"] }] }),
+      mk("d-no-leaks", { unwantedJobs: "leak repairs, leak" }),
+      mk("e-wants-storm", { wantedJobs: "storm damage, storm" }),
+      mk("f-burnaby", { areas: [{ areaId: "metro-vancouver", cities: ["Burnaby"] }] }),
+      mk("g-quiet", { recentLeads: 0 }),
+      mk("h-calgary", { areas: [{ areaId: "calgary", cities: [] }] }),
+    ],
+    3
+  );
+  check(
+    "fit: right trade and place only, 'never send' respected, wanted jobs then exact city then fewer recent leads",
+    ranked.map((r) => r.userId).join() === "e-wants-storm,f-burnaby,g-quiet",
+    ranked.map((r) => r.userId).join()
+  );
+  check("the note says why", ranked[0].note === 'Roofing in Burnaby, in your service area; matches "storm".');
+  check(
+    "never more clients than the cap",
+    rankCandidates(lead, Array.from({ length: 12 }, (_, i) => mk(`u${String(i).padStart(2, "0")}`)), 5).length === 5
+  );
+}
+
+asyncChecks.push(
+  (async () => {
+    // matchAreaPosts against an in-memory database, with fake AI calls.
+    const COL = "00000000-0000-0000-0000-0000000000c0";
+    const C1 = "00000000-0000-0000-0000-0000000000c1";
+    const C2 = "00000000-0000-0000-0000-0000000000c2";
+    type Row = Record<string, unknown>;
+    const recent = new Date().toISOString();
+    const floozyGroup = { name: "Burnaby neighbours", area_id: "metro-vancouver", owner_kind: "floozy" };
+    const post = (id: string, text: string): Row => ({
+      id, user_id: COL, group_id: "g1", platform: "facebook", post_url: `https://www.facebook.com/groups/1/posts/${id}`,
+      author_name: "Someone", author_profile_url: null, posted_at: "2026-11-05T09:00:00Z", raw_text: text,
+      area_id: "metro-vancouver", groups: floozyGroup, classified_at: null, scraped_at: recent,
+    });
+    const tables: Record<string, Row[]> = {
+      company_profiles: [
+        { user_id: C1, trades: ["roofing"], wanted_jobs: "", unwanted_jobs: "" },
+        { user_id: C2, trades: ["plumbing"], wanted_jobs: "", unwanted_jobs: "" },
+        { user_id: COL, trades: ["roofing"], wanted_jobs: "", unwanted_jobs: "" },
+      ],
+      client_service_areas: [
+        { user_id: C1, area_id: "metro-vancouver", cities: [] },
+        { user_id: C2, area_id: "metro-vancouver", cities: [] },
+        { user_id: COL, area_id: "metro-vancouver", cities: [] },
+      ],
+      lead_matches: [],
+      opportunities: [],
+      credit_transactions: [],
+      user_credits: [],
+      subscriptions: [],
+      posts: [
+        post("p1", "Our roof is leaking in Burnaby, who do you recommend?"),
+        post("p2", "Roofer here, free quotes this week!"),
+        post("p3", "Lost cat near Metrotown"),
+        { ...post("p4", "Need a roofer"), groups: { ...floozyGroup, owner_kind: "client" } },
+      ],
+    };
+    let nextId = 1;
+    const fake = {
+      from(table: string) {
+        const filters: ((r: Row) => boolean)[] = [];
+        let op = "select";
+        let payload: Row | Row[] | null = null;
+        let wantRows = false;
+        let single = false;
+        let limit = Infinity;
+        const b = {
+          select: () => ((wantRows = true), b),
+          eq: (c: string, v: unknown) =>
+            (filters.push((r) => c.split(".").reduce<unknown>((o, k) => (o as Row | null)?.[k], r) === v), b),
+          neq: (c: string, v: unknown) => (filters.push((r) => r[c] !== v), b),
+          in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), b),
+          is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), b),
+          gte: (c: string, v: string) => (filters.push((r) => String(r[c]) >= v), b),
+          order: () => b,
+          limit: (n: number) => ((limit = n), b),
+          maybeSingle: () => ((single = true), b),
+          single: () => ((single = true), b),
+          update: (p: Row) => ((op = "update"), (payload = p), b),
+          insert: (p: Row | Row[]) => ((op = "insert"), (payload = p), b),
+          then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+            const t = (tables[table] ??= []);
+            const hits = () => t.filter((r) => filters.every((f) => f(r)));
+            let data: unknown = null;
+            if (op === "select") data = hits().slice(0, limit);
+            else if (op === "update") {
+              const h = hits();
+              h.forEach((r) => Object.assign(r, payload));
+              data = h.map((r) => ({ id: r.id }));
+            } else {
+              const rows = (Array.isArray(payload) ? payload : [payload]) as Row[];
+              const made = rows.map((r) => ({ id: `row${nextId++}`, ...r }));
+              t.push(...made);
+              data = made;
+            }
+            if (single) data = Array.isArray(data) ? (data[0] ?? null) : data;
+            void wantRows;
+            return Promise.resolve({ data, error: null }).then(resolve, reject);
+          },
+        };
+        return b;
+      },
+    };
+
+    let classifyCalls = 0;
+    const scoredTrades: string[] = [];
+    const res = await matchAreaPosts(fake as never, {
+      budgetMs: 600_000,
+      env: { FLOOZY_COLLECTOR_USER_IDS: COL },
+      ai: {
+        classify: async (_s, user) => {
+          classifyCalls++;
+          const n = (user.match(/### Post /g) ?? []).length;
+          const answers = [
+            { index: 1, intent: "request", trade: "roofing", city: "Burnaby" },
+            { index: 2, intent: "offer", trade: "roofing", city: null },
+            { index: 3, intent: "other", trade: null, city: null },
+          ].slice(0, n);
+          return JSON.stringify({ posts: answers });
+        },
+        score: async (agent, posts) => {
+          scoredTrades.push(agent.name);
+          return posts.map((_, i) => ({
+            index: i + 1, relevant: true, intent_score: 88, urgency: "high" as const, estimated_value: "Unknown",
+            ai_summary: "Roof leak in Burnaby", category: "Roofing", location_mentioned: "Burnaby", phone_number: null,
+          }));
+        },
+      },
+    });
+
+    const opp = tables.opportunities;
+    check(
+      "a request is classified once, scored once, and lands only with the client in that trade",
+      classifyCalls === 1 && scoredTrades.length === 1 && opp.length === 1 && opp[0].user_id === C1,
+      `classify ${classifyCalls}, score ${scoredTrades.length}, opps ${opp.map((o) => o.user_id).join()}`
+    );
+    check(
+      "the delivered lead carries the post's text, date, group and why",
+      opp[0]?.source_kind === "floozy" && opp[0]?.agent_id === null && opp[0]?.source_group_name === "Burnaby neighbours" &&
+        opp[0]?.source_posted_at === "2026-11-05T09:00:00Z" && opp[0]?.intent_score === 88 &&
+        String(opp[0]?.match_note).startsWith("Roofing in Burnaby")
+    );
+    check(
+      "the collector never receives its own leads, and the match is logged",
+      !opp.some((o) => o.user_id === COL) &&
+        tables.lead_matches.length === 1 && tables.lead_matches[0].post_id === "p1" && tables.lead_matches[0].rank === 1
+    );
+    check(
+      "ads and chat are classified but not scored; posts from client groups are left alone",
+      tables.posts.find((p) => p.id === "p2")?.intent === "offer" &&
+        tables.posts.find((p) => p.id === "p3")?.intent === "other" &&
+        tables.posts.find((p) => p.id === "p4")?.classified_at === null &&
+        res.classified === 3 && res.leads === 1 && res.deliveries === 1
+    );
+
+    const again = await matchAreaPosts(fake as never, {
+      budgetMs: 600_000,
+      env: { FLOOZY_COLLECTOR_USER_IDS: COL },
+      ai: { classify: async () => { classifyCalls++; return "{}"; }, score: async () => [] },
+    });
+    check("a second run finds nothing new and sends nothing twice", classifyCalls === 1 && again.deliveries === 0 && tables.opportunities.length === 1);
+
+    const noClients = await matchAreaPosts(
+      { from: (t: string) => fake.from(t === "company_profiles" ? "nobody" : t) } as never,
+      { budgetMs: 1000, env: { FLOOZY_COLLECTOR_USER_IDS: COL } }
+    );
+    check("with no client set up it spends no AI at all", noClients.skipped === "no client has a trade and a service area yet");
   })()
 );
 

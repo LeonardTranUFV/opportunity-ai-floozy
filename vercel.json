@@ -9,6 +9,10 @@
       "schedule": "40 */2 * * *"
     },
     {
+      "path": "/api/cron/match-leads",
+      "schedule": "30 * * * *"
+    },
+    {
       "path": "/api/cron/auto-scan",
       "schedule": "0 * * * *"
     },
