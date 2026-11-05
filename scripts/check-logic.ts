@@ -20,6 +20,10 @@ import { DomainThrottle, classifyResponse, checkTarget } from "../lib/fetchers";
 import { redactProviderSecrets } from "../lib/remote-browser";
 import { scoreLead, WEAK_CAP } from "../lib/lead-score";
 import { providerChain, readyProviders, extractJson, cooldownFor } from "../lib/ai-provider";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { SERVICE_AREAS, areaSlug, areaForCity, choiceCovers, serviceAreaSeedSql } from "../lib/service-areas";
+import { normalizeProfileInput, toBusinessProfile, isNotMigrated, EMPTY_PROFILE } from "../lib/company-profile";
 
 let failures = 0;
 let checks = 0;
@@ -392,6 +396,88 @@ section("lib/ai-provider");
     cooldownFor("codex-cli", "usage limit reached") > cooldownFor("claude-api", "429 rate limit")
   );
   check("an ordinary error does not pause a provider", cooldownFor("gemini", "answer was not JSON") === 0);
+}
+
+// ------------------------------------------------- service areas + profiles
+section("lib/service-areas + lib/company-profile");
+{
+  check(
+    "area slugs drop accents and punctuation",
+    areaSlug("Greater Montréal") === "greater-montreal" && areaSlug("Washington, DC") === "washington-dc"
+  );
+  const ids = SERVICE_AREAS.map((a) => a.id);
+  check("every area has its own slug", new Set(ids).size === ids.length, `${ids.length} areas`);
+  const migration = readFileSync(
+    path.join(__dirname, "..", "supabase", "migrations", "0021_company_profiles_and_areas.sql"),
+    "utf8"
+  ).replace(/\r\n/g, "\n");
+  check(
+    "migration 0021 seeds exactly the areas in the code",
+    migration.includes(`values\n${serviceAreaSeedSql()}\non conflict (id)`)
+  );
+  // If that one fails, lib/nearby-cities.ts changed: regenerate the seed with
+  // serviceAreaSeedSql() and paste it into 0021 (or into a new migration once
+  // 0021 is applied).
+  check("a city finds its area", areaForCity("burnaby")?.id === "metro-vancouver");
+  check(
+    "a whole-area pick covers every city, a narrow pick only its own",
+    choiceCovers({ areaId: "metro-vancouver", cities: [] }, "metro-vancouver", "Surrey") &&
+      choiceCovers({ areaId: "metro-vancouver", cities: ["Burnaby"] }, "metro-vancouver", "burnaby") &&
+      !choiceCovers({ areaId: "metro-vancouver", cities: ["Burnaby"] }, "metro-vancouver", "Surrey") &&
+      !choiceCovers({ areaId: "metro-vancouver", cities: [] }, "fraser-valley", "Surrey")
+  );
+
+  const good = normalizeProfileInput({
+    businessName: "  Test Roofing  ",
+    yearsExperience: "12",
+    trades: ["roofing", "roofing"],
+    areas: [{ areaId: "metro-vancouver", cities: ["burnaby", "Surrey"] }],
+  });
+  check(
+    "a profile is trimmed, de-duplicated and city names take the area's spelling",
+    good.ok &&
+      good.profile.businessName === "Test Roofing" &&
+      good.profile.yearsExperience === 12 &&
+      good.profile.trades.join() === "roofing" &&
+      good.profile.areas[0].cities.join() === "Burnaby,Surrey"
+  );
+  const valley = SERVICE_AREAS.find((a) => a.id === "fraser-valley")!;
+  const whole = normalizeProfileInput({ areas: [{ areaId: valley.id, cities: valley.cities }] });
+  check("ticking every city saves as the whole area", whole.ok && whole.profile.areas[0].cities.length === 0);
+  check("an unknown trade is refused", !normalizeProfileInput({ trades: ["astrology"] }).ok);
+  check("an unknown area is refused", !normalizeProfileInput({ areas: [{ areaId: "atlantis", cities: [] }] }).ok);
+  check(
+    "a city outside the area is refused",
+    !normalizeProfileInput({ areas: [{ areaId: "metro-vancouver", cities: ["Calgary"] }] }).ok
+  );
+  check(
+    "more than 3 areas is refused",
+    !normalizeProfileInput({ areas: SERVICE_AREAS.slice(0, 4).map((a) => ({ areaId: a.id, cities: [] })) }).ok
+  );
+  check(
+    "years outside 0-100 or not whole are refused",
+    !normalizeProfileInput({ yearsExperience: 150 }).ok && !normalizeProfileInput({ yearsExperience: 2.5 }).ok
+  );
+  const bp = toBusinessProfile({
+    ...EMPTY_PROFILE,
+    ownerName: "Leo",
+    about: "Free quotes",
+    yearsExperience: 10,
+    services: "Re-roofs",
+  });
+  check(
+    "the AI gets name, pitch, years and services, and nothing empty",
+    bp.ownerName === "Leo" &&
+      bp.businessName === undefined &&
+      bp.pitch === "Free quotes. 10 years in the trade. Services: Re-roofs"
+  );
+  check(
+    "a missing table or column reads as 'not migrated', a real error does not",
+    isNotMigrated({ code: "PGRST205" }) &&
+      isNotMigrated({ code: "42703" }) &&
+      !isNotMigrated({ code: "23505", message: "duplicate key" }) &&
+      !isNotMigrated(null)
+  );
 }
 
 console.log(

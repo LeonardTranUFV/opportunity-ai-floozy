@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { enhanceAgentProfile, type BusinessProfile } from "@/lib/ai";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { loadBusinessProfile } from "@/lib/company-profile";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -24,17 +25,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: settingsRows } = await supabase
-    .from("settings")
-    .select("key, value")
-    .in("key", ["business_owner_name", "business_name", "business_phone", "business_pitch"]);
-  const settingsMap = Object.fromEntries((settingsRows ?? []).map((r) => [r.key, r.value]));
-  const businessProfile: BusinessProfile = {
-    ownerName: settingsMap.business_owner_name || undefined,
-    businessName: settingsMap.business_name || undefined,
-    phone: settingsMap.business_phone || undefined,
-    pitch: settingsMap.business_pitch || undefined,
-  };
+  const businessProfile: BusinessProfile = await loadBusinessProfile(supabase, user.id);
 
   try {
     const enhancement = await enhanceAgentProfile(description, businessProfile);

@@ -4,7 +4,8 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { CheckCircle2, XCircle, Gem, Radar } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { SettingsForm } from "@/components/settings/settings-form"
-import { BusinessProfileForm } from "@/components/settings/business-profile-form"
+import { CompanyProfileForm } from "@/components/settings/company-profile-form"
+import { EMPTY_PROFILE, loadCompanyProfile, loadServiceAreas } from "@/lib/company-profile"
 import { GhlToggle } from "@/components/settings/ghl-toggle"
 import { PrivacyModeToggle } from "@/components/settings/privacy-mode-toggle"
 import { CreditsPanel, type CreditTx } from "@/components/settings/credits-panel"
@@ -68,6 +69,11 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser()
   const userIsAdmin = user ? await isAdmin(supabase, user.id) : false
 
+  const [{ profile, migrated: profileMigrated }, serviceAreas] = await Promise.all([
+    user ? loadCompanyProfile(supabase, user.id) : Promise.resolve({ profile: EMPTY_PROFILE, migrated: false }),
+    loadServiceAreas(supabase),
+  ])
+
   let creditSummary: { balance: number; allowance: number; plan: string } | null = null
   let transactions: CreditTx[] = []
   if (user) {
@@ -110,18 +116,14 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Business Profile</CardTitle>
+          <CardTitle>Company Profile</CardTitle>
           <CardDescription>
-            Optional, but recommended — used to personalize AI-generated replies so they sound like you.
+            What you do and where you work decide which leads Floozy sends you. The rest helps the AI write
+            comments and messages that sound like you.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <BusinessProfileForm
-            initialOwnerName={settingsMap.business_owner_name || ""}
-            initialBusinessName={settingsMap.business_name || ""}
-            initialPhone={settingsMap.business_phone || ""}
-            initialPitch={settingsMap.business_pitch || ""}
-          />
+          <CompanyProfileForm initial={profile} areas={serviceAreas} migrated={profileMigrated} />
         </CardContent>
       </Card>
 
