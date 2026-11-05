@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { evaluatePostsForAgent, type AgentProfile, type RawPostInput } from "@/lib/ai";
+import { evaluatePostsForAgent, skepticCheckLeads, type AgentProfile, type RawPostInput } from "@/lib/ai";
+import { needsSkeptic, skepticColumns, skepticMode } from "@/lib/lead-skeptic";
 import { CREDIT_COSTS, hasCredits, spendCredits, outOfCreditsError } from "@/lib/credits";
 import { filterPostsForAgent, describeFilter } from "@/lib/post-filter";
 import { isExactPostUrl } from "@/lib/post-url";
@@ -26,6 +27,8 @@ interface PostRow {
   author_profile_url: string | null;
   post_url: string | null;
   raw_text: string;
+  /** Read for the skeptic pass, which judges "too old" partly by it. */
+  posted_at?: string | null;
 }
 
 export interface EvaluateAgentResult {
@@ -142,7 +145,7 @@ export async function evaluateAgentPosts(
    * counted and reported rather than silently dropped: this trades recall for
    * truth, and they should be able to see how much recall it cost.
    */
-  const COLS = "id, platform, author_name, author_profile_url, post_url, raw_text";
+  const COLS = "id, platform, author_name, author_profile_url, post_url, raw_text, posted_at";
   const sel = () => supabase.from("posts").select(COLS).eq("user_id", userId);
 
   /**
@@ -478,7 +481,14 @@ export async function evaluateAgentPosts(
       estimated_value: string;
       ai_summary: string;
       status: string;
+      skeptic_verdict?: string;
+      skeptic_code?: string | null;
+      skeptic_reason?: string;
+      skeptic_version?: string;
+      skeptic_checked_at?: string;
     }[] = [];
+    // posted_at per row above, index for index; not a column of opportunities.
+    const insertPostedAt: (string | null)[] = [];
     const evaluatedToInsert: { user_id: string; agent_id: string; source_post_id: string }[] = [];
 
     // Match each verdict back to a post the model never saw the id of. The
@@ -568,8 +578,46 @@ export async function evaluateAgentPosts(
           ai_summary: evalItem.ai_summary,
           status: "new",
         });
+        insertPostedAt.push(p.posted_at ?? null);
       }
     });
+
+    /**
+     * The skeptic pass (lib/lead-skeptic.ts), only when SKEPTIC_MODE is shadow
+     * or on — off writes none of the 0020 columns, so it runs on a database
+     * without that migration.
+     *
+     * Only leads that could reach the morning email are checked, in one call
+     * per batch. A failed call costs nothing but the check: the leads are
+     * saved unchecked, which counts as kept, and the scan carries on. It is not
+     * charged to the customer — it is Floozy's quality control, not their
+     * scan.
+     */
+    if (skepticMode() !== "off") {
+      const toCheck = opportunitiesToInsert
+        .map((row, k) => ({ row, k }))
+        .filter(({ row }) => needsSkeptic(row.intent_score));
+      if (toCheck.length > 0) {
+        try {
+          const verdicts = await skepticCheckLeads(
+            agent,
+            toCheck.map(({ row, k }) => ({
+              platform: row.platform,
+              text: row.content,
+              posted_at: insertPostedAt[k],
+              location_mentioned: row.location_mentioned,
+              ai_summary: row.ai_summary,
+            }))
+          );
+          aiCalls += 1;
+          toCheck.forEach(({ row }, j) => Object.assign(row, skepticColumns(verdicts[j] ?? null)));
+        } catch (error) {
+          console.warn(
+            `[scan] skeptic pass skipped for agent ${agent.id}: ${error instanceof Error ? error.message : error}`
+          );
+        }
+      }
+    }
 
     if (evaluatedToInsert.length > 0) {
       const { error } = await supabase

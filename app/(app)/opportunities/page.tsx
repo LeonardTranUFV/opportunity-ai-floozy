@@ -17,6 +17,9 @@ import { platformMeta, PLATFORM_ORDER } from "@/lib/platform-meta"
 import { isExactPostUrl } from "@/lib/post-url"
 import { isPrivacyMode, maskName, maskPhone } from "@/lib/privacy-mode"
 import { dedupeOpportunities, opportunityKey } from "@/lib/dedupe-opportunities"
+import { knownPostDate, leadConfidence, skepticMode, SKEPTIC_REASONS, type Confidence, type SkepticCode } from "@/lib/lead-skeptic"
+import { formatDateTimeFull } from "@/lib/format-date"
+import { isAdmin } from "@/lib/admin"
 
 export const dynamic = "force-dynamic"
 
@@ -25,6 +28,18 @@ const URGENCY_VARIANT: Record<string, "destructive" | "warning" | "brand" | "sec
   high: "warning",
   medium: "brand",
   low: "secondary",
+}
+
+const CONFIDENCE_VARIANT: Record<Confidence, "success" | "brand" | "secondary"> = {
+  High: "success",
+  Medium: "brand",
+  Low: "secondary",
+}
+
+const CONFIDENCE_HELP: Record<Confidence, string> = {
+  High: "Scored 80+, there is a direct link to the post, and we know when it was posted.",
+  Medium: "A good lead we can't fully vouch for — usually the platform didn't show the post date or a direct link.",
+  Low: "Scored under the email line, or the skeptic check rejected it.",
 }
 
 const URGENCY_RANK: Record<string, number> = { asap: 0, high: 1, medium: 2, low: 3 }
@@ -115,6 +130,20 @@ export default async function OpportunitiesPage({
     .maybeSingle()
   const ghlEnabled = ghlSetting?.value === "true"
   const privacyMode = await isPrivacyMode(supabase)
+  const skeptic = skepticMode()
+  /**
+   * Who sees the skeptic's verdicts. With the flag on, everyone: a lead left
+   * out of their email has to say why. In shadow mode only an admin, because
+   * shadow is for measuring a check nobody has proven yet, and a customer
+   * should not see their leads labelled weak by it.
+   */
+  let showSkeptic = skeptic === "on"
+  if (skeptic === "shadow") {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    showSkeptic = user ? await isAdmin(supabase, user.id) : false
+  }
 
   /**
    * Read in the order the customer asked for, not always by score.
@@ -331,11 +360,26 @@ export default async function OpportunitiesPage({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {opportunities.map((opp) => {
             const isHot = (opp.intent_score ?? 0) >= 90 || opp.urgency === "asap"
-            const confidence = Math.max(0, Math.min(100, opp.intent_score ?? 0))
+            const scoreBar = Math.max(0, Math.min(100, opp.intent_score ?? 0))
             const agentName = (opp.agents as unknown as { name: string } | null)?.name ?? "Unknown agent"
             const sourcePost = opp.posts as unknown as { posted_at: string | null; scraped_at: string | null } | null
             const age = postAge(sourcePost?.posted_at ?? null, sourcePost?.scraped_at ?? null)
             const source = platformMeta(opp.platform)
+            // Migration 0020 columns: absent from `*` until it is applied, and
+            // only ever written while SKEPTIC_MODE is shadow or on.
+            const skepticVerdict = showSkeptic ? ((opp.skeptic_verdict as string | null | undefined) ?? null) : null
+            const rejected = skepticVerdict === "reject"
+            const rejectReason =
+              (opp.skeptic_reason as string | null | undefined) ||
+              SKEPTIC_REASONS[opp.skeptic_code as SkepticCode] ||
+              "No reason given"
+            const postedOn = knownPostDate(sourcePost?.posted_at)
+            const confidence = leadConfidence({
+              score: opp.intent_score ?? 0,
+              postedAt: sourcePost?.posted_at ?? null,
+              hasExactLink: isExactPostUrl(opp.post_url),
+              skepticVerdict,
+            })
 
             return (
               <Card
@@ -391,6 +435,31 @@ export default async function OpportunitiesPage({
 
                   {opp.ai_summary && <p className="text-sm font-medium">{opp.ai_summary}</p>}
 
+                  {/* Proof: what a contractor can check before calling. The
+                      post's own date or "date unknown" (never the scrape time),
+                      a label from facts rather than the model's own certainty,
+                      and the link to the post further down. */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant={CONFIDENCE_VARIANT[confidence]} title={CONFIDENCE_HELP[confidence]}>
+                      {confidence} confidence
+                    </Badge>
+                    <span>
+                      {postedOn ? `Posted ${formatDateTimeFull(postedOn)}` : "Post date unknown"}
+                    </span>
+                  </div>
+
+                  {rejected && (
+                    <div className="rounded-md border border-dashed border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+                      <span className="font-medium text-amber-700 dark:text-amber-400">Skeptic check: weak lead. </span>
+                      <span className="text-muted-foreground">{rejectReason}</span>
+                      <span className="block pt-0.5 text-muted-foreground/80">
+                        {skeptic === "on"
+                          ? "Kept out of the morning email. Still here in case the check got it wrong."
+                          : "Shadow mode (admins only): still sent in the morning email while the check is measured."}
+                      </span>
+                    </div>
+                  )}
+
                   <details className="rounded-md bg-muted/30 p-2 text-sm text-muted-foreground">
                     <summary className="cursor-pointer text-xs">View Raw Social Post Text</summary>
                     <p className="mt-2 whitespace-pre-wrap">&quot;{opp.content}&quot;</p>
@@ -429,13 +498,13 @@ export default async function OpportunitiesPage({
 
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">AI Confidence</span>
-                      <span className="font-medium">{confidence}%</span>
+                      <span className="text-muted-foreground">Lead score</span>
+                      <span className="font-medium">{scoreBar}/100</span>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-brand/70 to-brand transition-all"
-                        style={{ width: `${confidence}%` }}
+                        style={{ width: `${scoreBar}%` }}
                       />
                     </div>
                   </div>

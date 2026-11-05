@@ -40,6 +40,13 @@ export interface LeadScore {
 export const LEAD_WEIGHTS = { need: 35, fit: 30, urgency: 20, detail: 15 } as const;
 
 /**
+ * The morning-email line. Lives here rather than in lib/lead-digest.ts so the
+ * skeptic (lib/lead-skeptic.ts) can use it without the two files importing
+ * each other; lib/lead-digest.ts re-exports it.
+ */
+export const MIN_SCORE = 60;
+
+/**
  * Below the morning-email line (MIN_SCORE 60). A real need in the wrong trade,
  * or a faint ask, is still shown in the app for whoever wants to browse — but it
  * should never land in a contractor's inbox as a lead.

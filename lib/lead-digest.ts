@@ -1,4 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { MIN_SCORE } from "@/lib/lead-score";
+import {
+  HIGH_CONFIDENCE_SCORE,
+  leadConfidence,
+  skepticAllowsEmail,
+  skepticMode,
+  type Confidence,
+  type SkepticMode,
+} from "@/lib/lead-skeptic";
+import { isExactPostUrl } from "@/lib/post-url";
 
 /**
  * The morning lead digest: which leads a client gets, and the spreadsheet of
@@ -18,9 +28,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *     days, in a clearly separate "date unknown" group so nobody mistakes it
  *     for confirmed-fresh
  *   - never sent to this recipient before
+ *   - with SKEPTIC_MODE=on only: not rejected by the skeptic pass
+ *     (lib/lead-skeptic.ts). Rejected leads stay in the app with the reason.
  */
 
-export const MIN_SCORE = 60;
+export { MIN_SCORE };
 export const FRESH_DAYS = 3;
 export const WEEK_DAYS = 7;
 export const UNDATED_SEEN_DAYS = 3;
@@ -44,6 +56,11 @@ export interface Lead {
   profileUrl: string;
   platform: string;
   author: string;
+  /** High / Medium / Low — see leadConfidence in lib/lead-skeptic.ts. */
+  confidence: Confidence;
+  /** "keep" / "reject", or null when the skeptic did not run (or SKEPTIC_MODE=off). */
+  skepticVerdict: string | null;
+  skepticReason: string;
 }
 
 /**
@@ -56,25 +73,40 @@ export interface Lead {
  */
 export async function collectLeads(
   sb: SupabaseClient,
-  opts: { userId: string; agentIds: string[]; alreadySent: Set<string>; now?: number }
+  opts: {
+    userId: string;
+    agentIds: string[];
+    alreadySent: Set<string>;
+    now?: number;
+    /** Defaults to SKEPTIC_MODE. */
+    skeptic?: SkepticMode;
+  }
 ): Promise<Lead[]> {
   const now = opts.now ?? Date.now();
+  const mode = opts.skeptic ?? skepticMode();
   // An opportunity is created when a post is scored, always after the post was
   // scraped, so nothing posted within the week can be older than this.
   const since = new Date(now - (WEEK_DAYS + 1) * DAY_MS).toISOString();
 
+  // The skeptic columns come from migration 0020 and are only asked for when
+  // the skeptic is switched on, so SKEPTIC_MODE=off keeps working on a
+  // database that has not had it applied.
+  const columns =
+    "id,source_post_id,platform,author_name,author_profile_url,post_url,location_mentioned,phone_number,estimated_value,content,category,intent_score,urgency,ai_summary,created_at" +
+    (mode === "off" ? "" : ",skeptic_verdict,skeptic_reason");
+
   let query = sb
     .from("opportunities")
-    .select(
-      "id,source_post_id,platform,author_name,author_profile_url,post_url,location_mentioned,phone_number,estimated_value,content,category,intent_score,urgency,ai_summary,created_at"
-    )
+    .select(columns)
     .eq("user_id", opts.userId)
     .gte("intent_score", MIN_SCORE)
     .gte("created_at", since);
   if (opts.agentIds.length > 0) query = query.in("agent_id", opts.agentIds);
 
-  const { data: opps, error } = await query;
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
+  // A select string built at runtime loses supabase-js's row typing.
+  const opps = data as unknown as OpportunityRow[] | null;
 
   // The post rows carry the two dates the buckets are decided by.
   const postIds = [...new Set((opps ?? []).map((o) => o.source_post_id).filter(Boolean))] as string[];
@@ -93,6 +125,7 @@ export async function collectLeads(
 
   for (const o of opps ?? []) {
     if (opts.alreadySent.has(o.id)) continue;
+    if (!skepticAllowsEmail(o.skeptic_verdict, mode)) continue;
 
     const post = o.source_post_id ? posts.get(o.source_post_id) : undefined;
     const parsed = post?.posted_at ? new Date(post.posted_at) : null;
@@ -114,6 +147,15 @@ export async function collectLeads(
       profileUrl: o.author_profile_url ?? "",
       platform: o.platform ?? "",
       author: o.author_name ?? "",
+      confidence: leadConfidence({
+        score: o.intent_score ?? 0,
+        postedAt,
+        hasExactLink: isExactPostUrl(o.post_url),
+        // In shadow mode the verdict is measured, not shown to the client.
+        skepticVerdict: mode === "on" ? o.skeptic_verdict : null,
+      }),
+      skepticVerdict: o.skeptic_verdict ?? null,
+      skepticReason: o.skeptic_reason ?? "",
     };
 
     if (lead.postedAt) {
@@ -133,6 +175,43 @@ export async function collectLeads(
   );
 }
 
+interface OpportunityRow {
+  id: string;
+  source_post_id: string | null;
+  platform: string | null;
+  author_name: string | null;
+  author_profile_url: string | null;
+  post_url: string | null;
+  location_mentioned: string | null;
+  phone_number: string | null;
+  estimated_value: string | null;
+  content: string | null;
+  category: string | null;
+  intent_score: number | null;
+  urgency: string | null;
+  ai_summary: string | null;
+  created_at: string;
+  /** Only selected when SKEPTIC_MODE is not off (migration 0020). */
+  skeptic_verdict?: string | null;
+  skeptic_reason?: string | null;
+}
+
+/**
+ * The post's own date for a reader, or "date unknown" — never the scrape time,
+ * which is a different fact (see lib/post-age.ts). In the recipient's timezone
+ * when one is given.
+ */
+export function postedLabel(postedAt: Date | null, timezone?: string): string {
+  if (!postedAt) return "date unknown";
+  const opts: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" };
+  try {
+    return postedAt.toLocaleString("en-CA", { ...opts, timeZone: timezone });
+  } catch {
+    // An unknown zone must not stop the send.
+    return postedAt.toLocaleString("en-CA", opts);
+  }
+}
+
 /**
  * The columns, in the order a contractor reads them: how fresh, how good, who
  * and where, then how to reach them, then the evidence.
@@ -147,6 +226,7 @@ const COLUMNS = [
   "Freshness",
   "Posted",
   "Score",
+  "Confidence",
   "Urgency",
   "Category",
   "Location",
@@ -160,11 +240,12 @@ const COLUMNS = [
   "Author",
 ] as const;
 
-export function toCsv(leads: Lead[]): string {
+export function toCsv(leads: Lead[], timezone?: string): string {
   const rows = leads.filter((l) => l.postUrl).map((l) => [
     l.bucket,
-    l.postedAt ? l.postedAt.toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }) : "",
+    postedLabel(l.postedAt, timezone),
     String(l.score),
+    l.confidence,
     l.urgency,
     l.category,
     l.location,
@@ -203,23 +284,44 @@ export function countBuckets(leads: Lead[]): string {
 const esc = (s: string) =>
   s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 
-export function emailHtml(name: string, leads: Lead[]): string {
+/**
+ * Only http(s) links become an <a href>. The URL was scraped from a platform,
+ * and escaping quotes does nothing about a `javascript:` scheme.
+ */
+function safeHref(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+export function emailHtml(name: string, leads: Lead[], timezone?: string): string {
   const rows = leads
     .slice(0, 15)
-    .map(
-      (l) =>
-        `<tr><td>${esc(l.bucket)}</td><td>${l.score}</td>` +
+    .map((l) => {
+      const href = safeHref(l.postUrl);
+      // Same wording as the card: a group link is not proof of the post itself.
+      const link = href
+        ? `<a href="${esc(href)}">${isExactPostUrl(l.postUrl) ? "open post" : "open group"}</a>`
+        : "";
+      return (
+        `<tr><td>${esc(l.bucket)}</td><td>${esc(postedLabel(l.postedAt, timezone))}</td>` +
+        `<td>${l.score}</td><td>${esc(l.confidence)}</td>` +
         `<td>${esc(l.summary || l.text.slice(0, 140))}</td>` +
         `<td>${esc(l.location)}</td>` +
-        `<td>${l.postUrl ? `<a href="${esc(l.postUrl)}">open</a>` : ""}</td></tr>`
-    )
+        `<td>${link}</td></tr>`
+      );
+    })
     .join("");
   return `<p>Hi ${esc(name)},</p>
 <p>${leads.length} new lead${leads.length === 1 ? "" : "s"} this morning (${esc(countBuckets(leads))}).
 Top ones below; all of them are in the attached spreadsheet, with the post link, the profile link and a phone number where one was given.</p>
 <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:sans-serif;font-size:13px">
-<tr><th>When</th><th>Score</th><th>What they need</th><th>Where</th><th>Post</th></tr>${rows}</table>
-<p style="color:#666;font-size:12px">"Date unknown" means the platform didn't show when it was posted; we first saw it in the last ${UNDATED_SEEN_DAYS} days.</p>`;
+<tr><th>When</th><th>Posted</th><th>Score</th><th>Confidence</th><th>What they need</th><th>Where</th><th>Source</th></tr>${rows}</table>
+<p style="color:#666;font-size:12px">"Date unknown" means the platform didn't show when it was posted; we first saw it in the last ${UNDATED_SEEN_DAYS} days.
+Confidence is High when a lead scored ${HIGH_CONFIDENCE_SCORE}+ and we have both a direct link to the post and its date; Medium when one of those is missing.</p>`;
 }
 
 /**

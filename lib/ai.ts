@@ -1,4 +1,5 @@
 import { scoreLead } from "@/lib/lead-score";
+import { parseSkepticResponse, type SkepticVerdict } from "@/lib/lead-skeptic";
 
 // Two models, split by what the call is actually for.
 //
@@ -379,6 +380,100 @@ Always include every input post, even if relevant is false.
       phone_number: v?.phone_number ?? null,
     };
   });
+}
+
+/**
+ * Skeptic prompt version (SKEPTIC_PROMPT_VERSION in lib/lead-skeptic.ts).
+ *
+ * s1 (2026-10-28) first version. Reject only on one of five named grounds,
+ *    each needing evidence in the post itself; keep on any doubt.
+ */
+export interface SkepticLeadInput {
+  platform: string;
+  text: string;
+  /** The post's own date (ISO), or null when the platform didn't show one. */
+  posted_at: string | null;
+  location_mentioned: string | null;
+  ai_summary: string;
+}
+
+/**
+ * The skeptic pass: one call per batch of leads that already scored
+ * MIN_SCORE+, whose only job is to find the reason each one is *not* a lead.
+ * See lib/lead-skeptic.ts for why, and for the fail-open rules applied to
+ * whatever comes back. Returns one slot per lead; null means unchecked.
+ *
+ * Runs on the scoring model: it is a short classification, and it must never
+ * compete with outreach drafts for the writing model's quota.
+ */
+export async function skepticCheckLeads(
+  agent: AgentProfile,
+  leads: SkepticLeadInput[],
+  today: Date = new Date()
+): Promise<(SkepticVerdict | null)[]> {
+  if (leads.length === 0) return [];
+
+  const systemInstruction = `
+You are the skeptic on a lead-finding team. Another AI has already read each
+post below and decided it is a lead for this business. Your job is to try to
+prove it wrong — but only with evidence that is in the post itself.
+
+### The business
+Name: ${agent.name}
+Goal: ${agent.goal}
+Service area: ${agent.location || "Any (do not use outside_area)"}
+
+Today is ${today.toISOString().slice(0, 10)}.
+
+${UNTRUSTED_NOTE}
+
+### You may reject a lead for exactly one of these reasons
+- no_ask: nobody is asking for work to be done. A story, a review, a warning,
+  a recommendation being given, someone selling or giving something away, or
+  someone who says they will do it themselves.
+- advertising: the author is a business or worker offering the service,
+  showing their work, looking for jobs, or pitching contractors — even when it
+  is written to sound like a customer.
+- too_old: the post itself shows the moment has passed — it says the work was
+  needed last season or months ago, or its date is more than 30 days before
+  today.
+- outside_area: the post names a place clearly outside the service area above.
+  A post that names no place is never outside the area.
+- already_hired: the post says they found someone, booked someone, or solved
+  it ("update: sorted, thanks").
+
+### Keep it when
+- the evidence for a rejection is not written in the post
+- the post is short, vague, informal or missing a location — thin is not wrong
+- you are unsure. A real customer you reject is a job the owner never hears
+  about; a weak lead you keep costs them a glance.
+
+### Input
+A JSON array of leads. Each has "i" (its position), "p" (platform), "d" (the
+post's date, or null if unknown), "loc" (a place the first AI read in it, or
+null), "s" (the first AI's one-line summary) and "t" (the post text). Judge the
+post text; the summary can be wrong.
+
+### Output
+A JSON array with exactly one object per lead, in the same order:
+{
+  "index": number (the "i" value),
+  "verdict": "keep" or "reject",
+  "code": one of "no_ask", "advertising", "too_old", "outside_area", "already_hired", or null when keeping,
+  "reason": string (one short line a business owner can check against the post, e.g. "Says 'update: we found someone, thanks'")
+}
+`;
+
+  const wire = leads.map((l, i) => ({
+    i: i + 1,
+    p: l.platform,
+    d: l.posted_at,
+    loc: l.location_mentioned,
+    s: untrusted(l.ai_summary),
+    t: untrusted(l.text),
+  }));
+  const text = await callGemini(systemInstruction, `Check these leads:\n${JSON.stringify(wire)}`, SCORING_MODEL);
+  return parseSkepticResponse(JSON.parse(text), leads.length);
 }
 
 export interface AgentEnhancement {
