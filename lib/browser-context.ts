@@ -3,7 +3,7 @@ import { getAuthSessionPath, hasAuthSession, formatAuthLaunchError } from "@/lib
 import { loadSession, saveSession, isSessionPlatform } from "@/lib/session-store";
 import { isHostedDeployment } from "@/lib/deployment";
 import { getRemoteBrowserProvider } from "@/lib/remote-browser";
-import { collectsLocally } from "@/lib/collection-mode";
+import { collectsLocally, isOffCloudByPolicy } from "@/lib/collection-mode";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BrowserContext, BrowserContextOptions } from "playwright";
 
@@ -186,7 +186,10 @@ export async function openPlatformContext(
    * the worker running on the operator's PC is exactly where these accounts
    * are supposed to be crawled.
    */
-  if (isHostedDeployment() && (await collectsLocally(createAdminClient(), userId, platform))) {
+  if (
+    isHostedDeployment() &&
+    (isOffCloudByPolicy(platform) || (await collectsLocally(createAdminClient(), userId, platform)))
+  ) {
     return null;
   }
 

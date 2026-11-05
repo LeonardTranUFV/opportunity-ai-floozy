@@ -35,3 +35,8 @@ exports/
 # is public. The runner and the label format are committed; the data is not.
 evals/*.local.json
 evals/runs/
+
+# Floozy's real area-group lists (scripts/floozy-groups.ts). The repository is
+# public; only floozy-groups.example.json is committed.
+floozy-groups*.json
+!floozy-groups.example.json

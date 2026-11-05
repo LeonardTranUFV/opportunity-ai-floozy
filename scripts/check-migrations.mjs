@@ -178,13 +178,28 @@ for (const [id, name, table] of [
   }
 }
 
+// ── 0022: Floozy collection (groups.access + collector_runs). ─────────────
+{
+  const runs = await tableExists("collector_runs");
+  const { status } = await ask("groups", "select=access&limit=0");
+  if (runs === true && readOk(status)) {
+    const { count } = await ask("collector_runs", "select=id&limit=0");
+    record("0022", "floozy collection  ", "applied", `${count ?? "?"} collector run(s) logged`);
+  } else if (runs === false || status === 400) {
+    record("0022", "floozy collection  ", "missing",
+      "area groups can't be loaded and the Apify cron skips until this runs (needs 0021 first)");
+  } else {
+    record("0022", "floozy collection  ", "unknown", "could not determine — unexpected response");
+  }
+}
+
 // ── The tables the scan reads must be closed to the browser ───────────────
 // Same property that was verified for browser_sessions. The scan is served by
 // the service role through /api/scan/preview; anon should never reach these
 // directly, or the paywall is decoration.
 if (anonKey) {
   console.log("\nanon (browser) access — these must all be refused:");
-  for (const table of ["public_leads", "subscriptions", "scan_requests", "company_profiles", "client_service_areas"]) {
+  for (const table of ["public_leads", "subscriptions", "scan_requests", "company_profiles", "client_service_areas", "collector_runs"]) {
     const { status, body } = await ask(table, "select=*&limit=1", anonKey);
     /**
      * The status alone does not answer this, and reading it that way made the

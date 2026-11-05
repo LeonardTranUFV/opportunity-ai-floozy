@@ -24,9 +24,21 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { SERVICE_AREAS, areaSlug, areaForCity, choiceCovers, serviceAreaSeedSql } from "../lib/service-areas";
 import { normalizeProfileInput, toBusinessProfile, isNotMigrated, EMPTY_PROFILE } from "../lib/company-profile";
+import {
+  floozyCollectorIds,
+  collectSettings,
+  pickDueGroups,
+  apifyAllowance,
+  utcDayStart,
+  parseAreaGroupFile,
+  collectPublicAreaGroups,
+} from "../lib/floozy-collect";
+import { isOffCloudByPolicy, withCloudPolicy } from "../lib/collection-mode";
 
 let failures = 0;
 let checks = 0;
+/** Checks that need to await something; the tally waits for them. */
+const asyncChecks: Promise<void>[] = [];
 
 function check(label: string, passed: boolean, detail?: string): void {
   checks++;
@@ -480,7 +492,185 @@ section("lib/service-areas + lib/company-profile");
   );
 }
 
-console.log(
-  `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed`
+// ------------------------------------------------------ Floozy collection
+section("lib/floozy-collect + cloud policy");
+{
+  const A = "00000000-0000-0000-0000-00000000000a";
+  const B = "00000000-0000-0000-0000-00000000000b";
+  check(
+    "collector ids are trimmed, de-duplicated, and junk is dropped",
+    floozyCollectorIds({ FLOOZY_COLLECTOR_USER_IDS: ` ${A}, nope ,${A.toUpperCase()},${B}` }).join() === `${A},${B}`
+  );
+  const s = collectSettings({ APIFY_DAILY_RESULTS: "abc", APIFY_RESULTS_PER_GROUP: "9999", FLOOZY_PC_GROUPS_PER_RUN: "" });
+  check(
+    "bad or out-of-range settings fall back or clamp",
+    s.apifyDailyResults === 1000 && s.apifyResultsPerGroup === 500 && s.pcGroupsPerRun === 6
+  );
+  const now = Date.parse("2026-11-05T12:00:00Z");
+  const hoursAgo = (h: number) => new Date(now - h * 3_600_000).toISOString();
+  const due = pickDueGroups(
+    [
+      { id: "fresh", last_scraped_at: hoursAgo(1) },
+      { id: "old", last_scraped_at: hoursAgo(30) },
+      { id: "never", last_scraped_at: null },
+      { id: "older", last_scraped_at: hoursAgo(50) },
+    ],
+    now,
+    8 * 3_600_000,
+    2
+  );
+  check("never-read groups go first, then the stalest, within the limit", due.map((g) => g.id).join() === "never,older");
+  check(
+    "the Apify allowance stops at the daily cap",
+    apifyAllowance(0, 1000, 25) === 25 && apifyAllowance(990, 1000, 25) === 10 && apifyAllowance(1000, 1000, 25) === 0
+  );
+  check("the day starts at UTC midnight", utcDayStart(now) === "2026-11-05T00:00:00.000Z");
+
+  const areaIds = new Set(SERVICE_AREAS.map((a) => a.id));
+  const parsed = parseAreaGroupFile(
+    [
+      { url: "https://m.facebook.com/groups/123/?ref=x", area: "metro-vancouver", access: "public" },
+      { url: "https://www.facebook.com/groups/123", area: "metro-vancouver", access: "private" },
+      { url: "https://example.com/groups/1", area: "metro-vancouver", access: "public" },
+      { url: "https://www.facebook.com/groups/456", area: "atlantis", access: "secret", collector: B },
+    ],
+    [A],
+    areaIds
+  );
+  check(
+    "an area-group file is cleaned and every problem is listed",
+    parsed.groups.length === 1 &&
+      parsed.groups[0].url === "https://www.facebook.com/groups/123" &&
+      parsed.groups[0].collector === A &&
+      parsed.problems.length === 5,
+    parsed.problems.join(" | ")
+  );
+
+  check("the cloud reads Facebook unless CLOUD_FACEBOOK=off", !isOffCloudByPolicy("facebook", {}));
+  check(
+    "CLOUD_FACEBOOK=off keeps Facebook and Marketplace off the cloud, not Nextdoor",
+    isOffCloudByPolicy("facebook", { CLOUD_FACEBOOK: "off" }) &&
+      isOffCloudByPolicy("marketplace", { CLOUD_FACEBOOK: "OFF" }) &&
+      !isOffCloudByPolicy("nextdoor", { CLOUD_FACEBOOK: "off" })
+  );
+  const merged = withCloudPolicy(new Set(["nextdoor"]), { CLOUD_FACEBOOK: "off" });
+  check(
+    "the policy adds to an account's own local platforms",
+    merged !== "all" && merged !== null && merged.has("facebook") && merged.has("nextdoor") &&
+      withCloudPolicy(null, {}) === null && withCloudPolicy("all", {}) === "all"
+  );
+}
+
+asyncChecks.push(
+  (async () => {
+    // collectPublicAreaGroups against an in-memory database and a fake Apify.
+    const A = "00000000-0000-0000-0000-00000000000a";
+    type Row = Record<string, unknown>;
+    const tables: Record<string, Row[]> = {
+      collector_runs: [{ source: "apify", items: 990, started_at: new Date().toISOString() }],
+      groups: [
+        { id: "g1", user_id: A, platform: "facebook", name: "Pub 1", url: "https://www.facebook.com/groups/1", area_id: "metro-vancouver", last_scraped_at: null, owner_kind: "floozy", access: "public", active: true },
+        { id: "g2", user_id: A, platform: "facebook", name: "Pub 2", url: "https://www.facebook.com/groups/2", area_id: "metro-vancouver", last_scraped_at: null, owner_kind: "floozy", access: "public", active: true },
+        { id: "g3", user_id: A, platform: "facebook", name: "Private", url: "https://www.facebook.com/groups/3", area_id: "metro-vancouver", last_scraped_at: null, owner_kind: "floozy", access: "private", active: true },
+      ],
+      posts: [],
+    };
+    const fake = {
+      from(table: string) {
+        const filters: ((r: Row) => boolean)[] = [];
+        let op = "select";
+        let payload: unknown = null;
+        let opts: { ignoreDuplicates?: boolean } = {};
+        const b = {
+          select: () => b,
+          eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), b),
+          in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), b),
+          gte: (c: string, v: string) => (filters.push((r) => String(r[c]) >= v), b),
+          upsert: (rows: Row[], o: typeof opts) => ((op = "upsert"), (payload = rows), (opts = o ?? {}), b),
+          update: (p: Row) => ((op = "update"), (payload = p), b),
+          insert: (p: Row) => ((op = "insert"), (payload = p), b),
+          then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+            const t = (tables[table] ??= []);
+            let out: unknown;
+            if (op === "select") out = { data: t.filter((r) => filters.every((f) => f(r))), error: null };
+            else if (op === "insert") {
+              t.push(payload as Row);
+              out = { error: null };
+            }
+            else if (op === "update") {
+              t.filter((r) => filters.every((f) => f(r))).forEach((r) => Object.assign(r, payload));
+              out = { error: null };
+            } else {
+              let count = 0;
+              for (const row of payload as Row[]) {
+                const hit = t.find((r) => r.user_id === row.user_id && r.external_post_id === row.external_post_id);
+                if (!hit) {
+                  t.push({ ...row });
+                  count++;
+                }
+                else if (!opts.ignoreDuplicates) Object.assign(hit, row);
+              }
+              out = { error: null, count };
+            }
+            return Promise.resolve(out).then(resolve, reject);
+          },
+        };
+        return b;
+      },
+    };
+
+    const realFetch = globalThis.fetch;
+    // lib/apify-scraper.ts reads the token from process.env itself.
+    const realToken = process.env.APIFY_TOKEN;
+    process.env.APIFY_TOKEN = "test";
+    const asked: number[] = [];
+    globalThis.fetch = (async (_url: string, init?: { body?: string }) => {
+      const limit = JSON.parse(init?.body ?? "{}").resultsLimit as number;
+      asked.push(limit);
+      const items = Array.from({ length: limit }, (_, i) => ({
+        postId: `p${asked.length}-${i}`,
+        text: `Need a roofer ${i}`,
+        user: { name: "Someone" },
+        time: "2026-11-05T10:00:00Z",
+      }));
+      return new Response(JSON.stringify(items), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const res = await collectPublicAreaGroups(fake as never, {
+        budgetMs: 600_000,
+        env: { FLOOZY_COLLECTOR_USER_IDS: A, APIFY_TOKEN: "test", APIFY_DAILY_RESULTS: "1000", APIFY_RESULTS_PER_GROUP: "25" },
+      });
+      const g1 = tables.groups.find((g) => g.id === "g1")!;
+      const g2 = tables.groups.find((g) => g.id === "g2")!;
+      check(
+        "Apify asks only for what is left of the daily cap, then stops",
+        asked.join() === "10" && res.usedToday === 1000 && res.groupsRead === 1 && !g2.last_scraped_at,
+        `asked ${asked.join()}, used ${res.usedToday}`
+      );
+      check(
+        "area posts are stored under the collector, tagged with the area, and the read is logged",
+        tables.posts.length === 10 &&
+          tables.posts.every((p) => p.user_id === A && p.area_id === "metro-vancouver") &&
+          !!g1.last_scraped_at &&
+          tables.collector_runs.some((r) => r.group_id === "g1" && r.items === 10 && r.posts_new === 10)
+      );
+      check("private area groups are never sent to Apify", !tables.posts.some((p) => p.group_id === "g3"));
+      const noToken = await collectPublicAreaGroups(fake as never, { budgetMs: 1000, env: { FLOOZY_COLLECTOR_USER_IDS: A } });
+      check("without APIFY_TOKEN it says so and reads nothing", noToken.skipped === "APIFY_TOKEN is not set");
+    } finally {
+      globalThis.fetch = realFetch;
+      if (realToken === undefined) delete process.env.APIFY_TOKEN;
+      else process.env.APIFY_TOKEN = realToken;
+    }
+  })()
 );
-process.exit(failures === 0 ? 0 : 1);
+
+Promise.all(asyncChecks)
+  .catch((err) => check("async checks finished", false, err instanceof Error ? err.message : String(err)))
+  .then(() => {
+    console.log(
+      `\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed`
+    );
+    process.exit(failures === 0 ? 0 : 1);
+  });

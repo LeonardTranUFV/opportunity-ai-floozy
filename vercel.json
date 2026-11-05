@@ -5,6 +5,10 @@
       "schedule": "0 */2 * * *"
     },
     {
+      "path": "/api/cron/collect-areas",
+      "schedule": "40 */2 * * *"
+    },
+    {
       "path": "/api/cron/auto-scan",
       "schedule": "0 * * * *"
     },

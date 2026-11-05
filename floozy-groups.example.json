@@ -1,0 +1,15 @@
+[
+  {
+    "url": "https://www.facebook.com/groups/example-burnaby-neighbours",
+    "name": "Example: Burnaby neighbours",
+    "area": "metro-vancouver",
+    "access": "public"
+  },
+  {
+    "url": "https://www.facebook.com/groups/example-surrey-homeowners",
+    "name": "Example: Surrey homeowners",
+    "area": "metro-vancouver",
+    "access": "private",
+    "collector": "00000000-0000-0000-0000-000000000000"
+  }
+]
