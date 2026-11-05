@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
-import { localCollectionModes, isCollectedLocally } from "@/lib/collection-mode";
+import { localCollectionModes, isCollectedLocally, withCloudPolicy } from "@/lib/collection-mode";
+import { floozyCollectorIds } from "@/lib/floozy-collect";
 
 /**
  * Unattended collection — the thing that makes this a product rather than a
@@ -295,12 +296,20 @@ export async function GET(request: Request) {
    */
   const localModes = await localCollectionModes(supabase);
 
+  // Floozy's collector accounts are never crawled here: their public groups go
+  // through Apify (/api/cron/collect-areas) and their private ones through the
+  // PC worker. A rented browser signed in as a Floozy profile is exactly the
+  // datacentre login this split exists to avoid.
+  const collectors = new Set(floozyCollectorIds());
+
   // Distinct users, still in stalest-first order — the first time a user_id
   // appears is at their stalest source.
   const userOrder: string[] = [];
   const seen = new Set<string>();
   for (const row of (staleSources ?? []) as StaleSource[]) {
-    if (isCollectedLocally(localModes.get(row.user_id), row.platform)) continue;
+    if (collectors.has(row.user_id)) continue;
+    // CLOUD_FACEBOOK=off adds Facebook to every account's local set here.
+    if (isCollectedLocally(withCloudPolicy(localModes.get(row.user_id)), row.platform)) continue;
     if (seen.has(row.user_id)) continue;
     seen.add(row.user_id);
     userOrder.push(row.user_id);

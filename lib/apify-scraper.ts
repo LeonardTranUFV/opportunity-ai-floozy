@@ -24,7 +24,9 @@ import type { GroupToScrape, ScrapeSummary, ScrapedPost } from "@/lib/scraper";
  *
  * ── What this is not ───────────────────────────────────────────────────────
  *
- * Not a replacement, and not wired into scrapeAndStorePosts. It returns the
+ * Not a replacement for the browser path, and not wired into scrapeAndStorePosts.
+ * Since step 3 of the shared-leads plan it reads Floozy's PUBLIC area groups
+ * (lib/floozy-collect.ts); clients' own sources still go through the browser. It returns the
  * same ScrapeSummary as scrapeActiveGroups so the two can be run over the same
  * group list and compared (scripts/compare-apify.ts) before anything is
  * switched. Choosing between them is a decision to take with numbers in hand.
@@ -207,7 +209,7 @@ async function runActorForGroup(
 export async function scrapeGroupsViaApify(
   groups: GroupToScrape[],
   options: ApifyScrapeOptions = {}
-): Promise<ScrapeSummary> {
+): Promise<ScrapeSummary & { itemsReturned: number }> {
   const log: string[] = [];
   const posts: ScrapedPost[] = [];
   const scrapedGroupIds: string[] = [];
@@ -220,6 +222,7 @@ export async function scrapeGroupsViaApify(
       scrapedGroupIds,
       joinWalledGroupIds: [],
       brokenPlatforms: [],
+      itemsReturned: 0,
     };
   }
 
@@ -230,6 +233,9 @@ export async function scrapeGroupsViaApify(
 
   let slowestGroupMs = 0;
   let mappedNothing = 0;
+  // What Apify returned, mapped or not: it bills per result, so this is what
+  // a daily cap has to count.
+  let itemsReturned = 0;
 
   for (const group of groups) {
     // Stop before starting a run that cannot finish, rather than discovering it
@@ -246,6 +252,7 @@ export async function scrapeGroupsViaApify(
 
     try {
       const items = await runActorForGroup(group, token, { sinceDays, resultsLimit }, timeoutSeconds);
+      itemsReturned += items.length;
       const mapped = items.map((item) => mapItem(item, group)).filter((p): p is ScrapedPost => !!p);
 
       // Items returned but none mapped means the actor's output shape is not
@@ -282,5 +289,6 @@ export async function scrapeGroupsViaApify(
     // finding, and must not clear a badge the browser path set.
     joinWalledGroupIds: [],
     brokenPlatforms: mappedNothing > 0 && mappedNothing === groups.length ? ["facebook"] : [],
+    itemsReturned,
   };
 }

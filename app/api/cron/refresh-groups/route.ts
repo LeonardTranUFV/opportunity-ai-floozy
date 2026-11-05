@@ -3,7 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { canRunSignedInBrowser, redactProviderSecrets } from "@/lib/remote-browser";
 import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-groups";
 import { errorMessage } from "@/lib/errors";
-import { localCollectionModes, isCollectedLocally } from "@/lib/collection-mode";
+import { localCollectionModes, isCollectedLocally, withCloudPolicy } from "@/lib/collection-mode";
+import { floozyCollectorIds } from "@/lib/floozy-collect";
 
 /**
  * Re-read everyone's joined Facebook groups, weekly.
@@ -84,7 +85,11 @@ export async function GET(request: Request) {
   const localModes = await localCollectionModes(supabase);
   const userIds = (sessions ?? [])
     .map((s) => s.user_id as string)
-    .filter((id) => !isCollectedLocally(localModes.get(id), "facebook"));
+    // Collectors' groups are Floozy's area lists, loaded by scripts/floozy-groups.ts,
+    // not whatever the profile happens to have joined. CLOUD_FACEBOOK=off
+    // stops this for everyone.
+    .filter((id) => !floozyCollectorIds().includes(id))
+    .filter((id) => !isCollectedLocally(withCloudPolicy(localModes.get(id)), "facebook"));
   if (userIds.length === 0) {
     return NextResponse.json({ success: true, users: 0, results: [] });
   }

@@ -5,7 +5,7 @@ import { canRunSignedInBrowser } from "@/lib/remote-browser";
 import { getSourceCapacity, partitionByCap } from "@/lib/entitlement";
 import { isExactPostUrl } from "@/lib/post-url";
 import { isHostedDeployment } from "@/lib/deployment";
-import { localPlatformsFor, isCollectedLocally } from "@/lib/collection-mode";
+import { localPlatformsFor, isCollectedLocally, withCloudPolicy, isOffCloudByPolicy } from "@/lib/collection-mode";
 
 export interface ScrapeAndStoreResult {
   scraped: number;
@@ -74,7 +74,7 @@ export async function scrapeAndStorePosts(
    * local dev server calling it is the operator's own machine, which is
    * precisely where these platforms should be crawled.
    */
-  const localMode = isHostedDeployment() ? await localPlatformsFor(supabase, userId) : null;
+  const localMode = isHostedDeployment() ? withCloudPolicy(await localPlatformsFor(supabase, userId)) : null;
 
   const { data: accountGroups, error: groupsError } = await supabase
     .from("groups")
@@ -93,9 +93,20 @@ export async function scrapeAndStorePosts(
 
   const collectedOnPc = (accountGroups ?? []).filter((g) => isCollectedLocally(localMode, g.platform));
   const allGroups = (accountGroups ?? []).filter((g) => !isCollectedLocally(localMode, g.platform));
-  const localNote = collectedOnPc.length
-    ? `${collectedOnPc.length} source(s) on ${[...new Set(collectedOnPc.map((g) => sessionPlatform(g.platform)))].join(", ")} are collected on your own PC (RUN-WORKER.bat), not here — to keep that login off datacentre IPs. Posts the worker has collected are still scored.`
-    : null;
+  // Two reasons a source is not read here, and they need different words: the
+  // operator's own PC collects it, or Floozy collects that platform for
+  // everyone (CLOUD_FACEBOOK=off) and the client's login is not used at all.
+  const byPolicy = collectedOnPc.filter((g) => isOffCloudByPolicy(g.platform));
+  const onPc = collectedOnPc.filter((g) => !isOffCloudByPolicy(g.platform));
+  const notes = [
+    byPolicy.length
+      ? `${byPolicy.length} Facebook source(s) are not read with your login any more: Floozy collects Facebook leads in your area with its own accounts, so your account is never at risk.`
+      : null,
+    onPc.length
+      ? `${onPc.length} source(s) on ${[...new Set(onPc.map((g) => sessionPlatform(g.platform)))].join(", ")} are collected on your own PC (RUN-WORKER.bat), not here — to keep that login off datacentre IPs. Posts the worker has collected are still scored.`
+      : null,
+  ].filter(Boolean);
+  const localNote = notes.length ? notes.join(" ") : null;
 
   if (allGroups.length === 0) {
     return {

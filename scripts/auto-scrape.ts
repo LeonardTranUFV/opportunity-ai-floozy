@@ -37,6 +37,8 @@ import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-gro
 import { evaluateAgentPosts } from "@/lib/scan-agent";
 import type { AgentProfile } from "@/lib/ai";
 import { readyProviders } from "@/lib/ai-provider";
+import { floozyCollectorIds, collectSettings, pickDueGroups, logCollectorRun } from "@/lib/floozy-collect";
+import { storeScrapedPosts } from "@/lib/store-posts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -76,7 +78,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-async function collect(localModes: Map<string, LocalPlatforms>, crawlEveryone: boolean) {
+async function collect(localModes: Map<string, LocalPlatforms>, crawlEveryone: boolean, collectors: Set<string>) {
   const { data: allGroups, error: groupsError } = await supabase
     .from("groups")
     .select("id, user_id, platform, name, url, last_scraped_at")
@@ -90,9 +92,13 @@ async function collect(localModes: Map<string, LocalPlatforms>, crawlEveryone: b
   // Only the platforms each account collects here. An account can keep some
   // on the cloud — the operator's Nextdoor, which this PC cannot reach from
   // Vietnam — and those are the cloud's to read, not this machine's to retry.
-  const groups = crawlEveryone
-    ? allGroups
-    : (allGroups ?? []).filter((g) => isCollectedLocally(localModes.get(g.user_id), g.platform));
+  //
+  // Floozy's collector accounts are left out: their area groups have their own
+  // slower pass (collectFloozyPrivate), and their public ones are Apify's.
+  const groups = (crawlEveryone
+    ? allGroups ?? []
+    : (allGroups ?? []).filter((g) => isCollectedLocally(localModes.get(g.user_id), g.platform))
+  ).filter((g) => !collectors.has(g.user_id));
 
   if (!groups || groups.length === 0) {
     console.log("[auto-scrape] no active groups for the accounts in scope, nothing to collect.");
@@ -291,6 +297,106 @@ async function collect(localModes: Map<string, LocalPlatforms>, crawlEveryone: b
 }
 
 /**
+ * Floozy's private area groups (step 3 of the shared-leads plan).
+ *
+ * Read with each collector's own Facebook profile from this PC, never the
+ * cloud, and slowly: at most FLOOZY_PC_GROUPS_PER_RUN groups per profile per
+ * run, and none re-read within FLOOZY_PC_GROUP_MIN_AGE_HOURS (defaults 6 and
+ * 8). These profiles now carry the ban risk the clients used to, so they get
+ * the gentlest schedule in the system. Public area groups are skipped here:
+ * Apify reads those without any login (/api/cron/collect-areas).
+ *
+ * Posts are stored under the collector with the group's area, ready for the
+ * matcher (step 4) to hand to clients.
+ */
+async function collectFloozyPrivate(collectors: string[]) {
+  if (collectors.length === 0) return;
+  const settings = collectSettings();
+
+  const { data, error } = await supabase
+    .from("groups")
+    .select("id, user_id, platform, name, url, area_id, last_scraped_at")
+    .eq("owner_kind", "floozy")
+    .eq("active", true)
+    .eq("platform", "facebook")
+    .or("access.is.null,access.eq.private")
+    .in("user_id", collectors);
+  if (error) {
+    console.error(`[floozy] can't read area groups (are migrations 0021 and 0022 applied?): ${error.message}`);
+    return;
+  }
+
+  for (const collectorId of collectors) {
+    const own = (data ?? []).filter((g) => g.user_id === collectorId);
+    if (own.length === 0) continue;
+
+    const connected = (await hasStoredSession(collectorId, "facebook")) || hasAuthSession(collectorId, "facebook");
+    if (!connected) {
+      console.log(
+        `[floozy] collector ${collectorId.slice(0, 8)}: ${own.length} private group(s) waiting, but no Facebook login on this PC. Run: npx tsx scripts/local-login.ts --env .env.worker --platform facebook --user ${collectorId}`
+      );
+      continue;
+    }
+
+    const due = pickDueGroups(own, Date.now(), settings.pcMinAgeMs, settings.pcGroupsPerRun);
+    if (due.length === 0) {
+      console.log(`[floozy] collector ${collectorId.slice(0, 8)}: all ${own.length} private group(s) read recently.`);
+      continue;
+    }
+
+    console.log(`[floozy] collector ${collectorId.slice(0, 8)}: reading ${due.length} of ${own.length} private group(s)...`);
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await scrapeActiveGroups(
+        due.map((g) => ({ id: g.id, platform: g.platform, name: g.name, url: g.url })),
+        collectorId
+      );
+      for (const line of result.log) console.log(`  ${line}`);
+      const checkedAt = new Date().toISOString();
+
+      if (result.scrapedGroupIds.length > 0) {
+        await supabase
+          .from("groups")
+          .update({ last_scraped_at: checkedAt, needs_membership: false, membership_checked_at: checkedAt })
+          .in("id", result.scrapedGroupIds);
+      }
+      if (result.joinWalledGroupIds.length > 0) {
+        await supabase
+          .from("groups")
+          .update({ needs_membership: true, membership_checked_at: checkedAt })
+          .in("id", result.joinWalledGroupIds);
+        console.log(`  ${result.joinWalledGroupIds.length} group(s) need this profile to join first.`);
+      }
+
+      let newTotal = 0;
+      for (const g of due) {
+        const posts = result.posts.filter((p) => p.group_id === g.id);
+        const stored = await storeScrapedPosts(supabase, collectorId, posts, new Map([[g.id, g.area_id]]));
+        for (const e of stored.errors) console.error(`  [floozy] "${g.name}": ${e}`);
+        newTotal += stored.inserted;
+        await logCollectorRun(supabase, {
+          source: "pc",
+          group_id: g.id,
+          collector_id: collectorId,
+          area_id: g.area_id,
+          started_at: startedAt,
+          items: posts.length,
+          posts_new: stored.inserted,
+          error: result.joinWalledGroupIds.includes(g.id)
+            ? "join wall"
+            : result.scrapedGroupIds.includes(g.id)
+              ? stored.errors.join("; ") || null
+              : "not read",
+        });
+      }
+      console.log(`[floozy] collector ${collectorId.slice(0, 8)}: ${result.posts.length} post(s) read, ${newTotal} new.`);
+    } catch (err) {
+      console.error(`[floozy] collector ${collectorId.slice(0, 8)} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+/**
  * The weekly re-read of which Facebook groups an account has joined.
  *
  * The hosted cron does this for cloud customers and skips local accounts
@@ -413,11 +519,22 @@ async function run() {
    */
   const crawlEveryone = process.argv.includes("--all");
   const localModes = await localCollectionModes(supabase);
-  const localAccounts = [...localModes.keys()];
+  const collectorList = floozyCollectorIds();
+  const collectors = new Set(collectorList);
+  // Collectors are handled by collectFloozyPrivate, even if one is also
+  // marked collection_mode=local (which it should be, to keep the cloud off it).
+  const localAccounts = [...localModes.keys()].filter((id) => !collectors.has(id));
+
+  if (collectorList.length) {
+    console.log(`[auto-scrape] ${collectorList.length} Floozy collector account(s) from FLOOZY_COLLECTOR_USER_IDS.`);
+    await collectFloozyPrivate(collectorList);
+  }
 
   if (!crawlEveryone && localAccounts.length === 0) {
     console.log(
-      "[auto-scrape] no accounts are marked for local collection (settings.collection_mode = 'local'), so there is nothing for this machine to do. Run with --all to crawl every connected account."
+      collectorList.length
+        ? "[auto-scrape] no other accounts are marked for local collection. Done."
+        : "[auto-scrape] no accounts are marked for local collection (settings.collection_mode = 'local'), so there is nothing for this machine to do. Run with --all to crawl every connected account."
     );
     return;
   }
@@ -427,7 +544,7 @@ async function run() {
       : `[auto-scrape] crawling ${localAccounts.length} local-collection account(s): ${localAccounts.map((id) => { const m = localModes.get(id); return `${id.slice(0, 8)} (${m === "all" ? "every platform" : [...(m ?? [])].join(", ")})`; }).join("; ")}.`
   );
 
-  await collect(localModes, crawlEveryone);
+  await collect(localModes, crawlEveryone, collectors);
 
   for (const userId of localAccounts) {
     // Only when Facebook is one of the platforms this PC collects: otherwise

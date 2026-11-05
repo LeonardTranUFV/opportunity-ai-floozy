@@ -118,3 +118,40 @@ export async function localCollectionModes(supabase: SupabaseClient): Promise<Ma
 export async function usersCollectingLocally(supabase: SupabaseClient): Promise<Set<string>> {
   return new Set((await localCollectionModes(supabase)).keys());
 }
+
+/**
+ * Platforms the hosted deployment never crawls, for anyone.
+ *
+ * Step 3 of the shared-leads plan: Facebook leads come from Floozy's own
+ * accounts (lib/floozy-collect.ts), so clients' Facebook logins should stop
+ * being used from a datacentre at all. CLOUD_FACEBOOK=off does that: on the
+ * hosted side every account is then treated as if its Facebook (and
+ * Marketplace, which shares the login) were collected locally. Default is on,
+ * so deploying this changes nothing until the switch is flipped.
+ *
+ * Applied only where the hosted side decides (openPlatformContext, the scrape
+ * button, the collect and refresh-groups crons) and never inside
+ * isCollectedLocally, because the worker uses that to pick what to crawl and
+ * must not suddenly take every client's Facebook onto the PC.
+ */
+export function cloudOffPlatforms(env: Record<string, string | undefined> = process.env): Set<string> {
+  const off = new Set<string>();
+  if ((env.CLOUD_FACEBOOK ?? "").trim().toLowerCase() === "off") off.add(sessionPlatform("facebook"));
+  return off;
+}
+
+/** An account's own mode with the deployment-wide policy added on top. */
+export function withCloudPolicy(
+  mode: LocalPlatforms | null | undefined,
+  env: Record<string, string | undefined> = process.env
+): LocalPlatforms | null {
+  if (mode === "all") return "all";
+  const off = cloudOffPlatforms(env);
+  const merged = new Set([...(mode ?? []), ...off]);
+  return merged.size ? merged : null;
+}
+
+/** True when the deployment policy alone keeps this platform off the cloud. */
+export function isOffCloudByPolicy(platform: string, env: Record<string, string | undefined> = process.env): boolean {
+  return cloudOffPlatforms(env).has(sessionPlatform(platform));
+}
