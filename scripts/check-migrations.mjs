@@ -152,13 +152,39 @@ for (const [id, name, table] of [
       : `could not read opportunities (${status})`);
 }
 
+// ── 0021: company profiles and service areas. ─────────────────────────────
+// Three new tables plus columns on groups and posts. The tables answer most
+// of it; posts.classified_at is the last statement that adds a column, so a
+// read of it proves the file ran to the end.
+{
+  const [profiles, areas, picks] = await Promise.all([
+    tableExists("company_profiles"),
+    tableExists("service_areas"),
+    tableExists("client_service_areas"),
+  ]);
+  if (profiles && areas && picks) {
+    const { count } = await ask("service_areas", "select=id&limit=0");
+    const { status: colStatus } = await ask("posts", "select=classified_at&limit=0");
+    if (!readOk(colStatus)) {
+      record("0021", "company profiles   ", "missing", "tables exist but posts.classified_at does not; re-run the file");
+    } else {
+      record("0021", "company profiles   ", "applied", `${count ?? "?"} service areas seeded`);
+    }
+  } else if (profiles === false || areas === false || picks === false) {
+    record("0021", "company profiles   ", "missing",
+      "company profiles and service areas are saved as the 4 old settings only until this runs");
+  } else {
+    record("0021", "company profiles   ", "unknown", "could not determine — unexpected response");
+  }
+}
+
 // ── The tables the scan reads must be closed to the browser ───────────────
 // Same property that was verified for browser_sessions. The scan is served by
 // the service role through /api/scan/preview; anon should never reach these
 // directly, or the paywall is decoration.
 if (anonKey) {
   console.log("\nanon (browser) access — these must all be refused:");
-  for (const table of ["public_leads", "subscriptions", "scan_requests"]) {
+  for (const table of ["public_leads", "subscriptions", "scan_requests", "company_profiles", "client_service_areas"]) {
     const { status, body } = await ask(table, "select=*&limit=1", anonKey);
     /**
      * The status alone does not answer this, and reading it that way made the

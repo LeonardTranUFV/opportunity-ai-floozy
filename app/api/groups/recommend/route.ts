@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { recommendGroupsToJoin, type BusinessProfile } from "@/lib/ai";
 import { spendCredits, CREDIT_COSTS, InsufficientCreditsError } from "@/lib/credits";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { loadBusinessProfile } from "@/lib/company-profile";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -23,15 +24,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Tell us your trade and your main location first." }, { status: 400 });
   }
 
-  const { data: settingsRows } = await supabase
-    .from("settings")
-    .select("key, value")
-    .in("key", ["business_name", "business_pitch"]);
-  const settingsMap = Object.fromEntries((settingsRows ?? []).map((r) => [r.key, r.value]));
-  const businessProfile: BusinessProfile = {
-    businessName: settingsMap.business_name || undefined,
-    pitch: settingsMap.business_pitch || undefined,
-  };
+  const businessProfile: BusinessProfile = await loadBusinessProfile(supabase, user.id);
 
   try {
     const suggestions = await recommendGroupsToJoin(trade, location, businessProfile);

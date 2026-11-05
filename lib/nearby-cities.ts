@@ -14,8 +14,9 @@
  * homeowners would plausibly hire the same roofer. Keep them to places a
  * local would recognise by name.
  */
-export const CITY_CLUSTERS: { region: string; cities: string[] }[] = [
-  // ── Canada ────────────────────────────────────────────────────────────────
+export type CityCluster = { region: string; cities: string[] };
+
+const CANADA: CityCluster[] = [
   {
     region: "Metro Vancouver",
     cities: [
@@ -57,8 +58,9 @@ export const CITY_CLUSTERS: { region: string; cities: string[] }[] = [
   { region: "Québec City", cities: ["Québec City", "Lévis"] },
   { region: "Halifax", cities: ["Halifax", "Dartmouth", "Bedford"] },
   { region: "Moncton", cities: ["Moncton", "Dieppe", "Riverview"] },
+];
 
-  // ── United States ─────────────────────────────────────────────────────────
+const UNITED_STATES: CityCluster[] = [
   {
     region: "Seattle–Tacoma",
     cities: ["Seattle", "Bellevue", "Tacoma", "Everett", "Kent", "Renton", "Kirkland", "Redmond"],
@@ -132,6 +134,12 @@ export const CITY_CLUSTERS: { region: string; cities: string[] }[] = [
   },
   { region: "Long Island", cities: ["Hempstead", "Huntington", "Islip", "Brookhaven", "Oyster Bay"] },
   { region: "Boston", cities: ["Boston", "Cambridge MA", "Somerville", "Quincy", "Newton", "Brookline", "Waltham"] },
+];
+
+/** Every cluster, with the country it is in (the service areas are seeded from this). */
+export const CITY_CLUSTERS: (CityCluster & { country: "CA" | "US" })[] = [
+  ...CANADA.map((c) => ({ ...c, country: "CA" as const })),
+  ...UNITED_STATES.map((c) => ({ ...c, country: "US" as const })),
 ];
 
 export function clusterFor(city: string): string[] {

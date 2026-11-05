@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { generateOutreachDrafts, type AgentProfile, type BusinessProfile, type OutreachDrafts } from "@/lib/ai";
 import { CREDIT_COSTS, hasCredits, spendCredits, outOfCreditsError } from "@/lib/credits";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { loadBusinessProfile } from "@/lib/company-profile";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: opportunityId } = await params;
@@ -40,17 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   }
 
-  const { data: settingsRows } = await supabase
-    .from("settings")
-    .select("key, value")
-    .in("key", ["business_owner_name", "business_name", "business_phone", "business_pitch"]);
-  const settingsMap = Object.fromEntries((settingsRows ?? []).map((r) => [r.key, r.value]));
-  const businessProfile: BusinessProfile = {
-    ownerName: settingsMap.business_owner_name || undefined,
-    businessName: settingsMap.business_name || undefined,
-    phone: settingsMap.business_phone || undefined,
-    pitch: settingsMap.business_pitch || undefined,
-  };
+  const businessProfile: BusinessProfile = await loadBusinessProfile(supabase, user.id);
 
   const previousDraft: OutreachDrafts | undefined =
     opportunity.suggested_comment && opportunity.suggested_dm
