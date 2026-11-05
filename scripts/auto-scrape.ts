@@ -39,6 +39,7 @@ import type { AgentProfile } from "@/lib/ai";
 import { readyProviders } from "@/lib/ai-provider";
 import { floozyCollectorIds, collectSettings, pickDueGroups, logCollectorRun } from "@/lib/floozy-collect";
 import { storeScrapedPosts } from "@/lib/store-posts";
+import { matchAreaPosts } from "@/lib/lead-matcher";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -528,6 +529,16 @@ async function run() {
   if (collectorList.length) {
     console.log(`[auto-scrape] ${collectorList.length} Floozy collector account(s) from FLOOZY_COLLECTOR_USER_IDS.`);
     await collectFloozyPrivate(collectorList);
+
+    // Hand the area posts to clients now, with this PC's subscription AI,
+    // rather than waiting for the hourly cron (which uses the API).
+    if (readyProviders("scoring").length > 0) {
+      const match = await matchAreaPosts(supabase, { budgetMs: 20 * 60_000 });
+      if (match.skipped) console.log(`[match] skipped: ${match.skipped}`);
+      for (const line of match.log) console.log(`[match] ${line}`);
+    } else {
+      console.log("[match] skipped: no AI provider here; the hourly cron matches instead.");
+    }
   }
 
   if (!crawlEveryone && localAccounts.length === 0) {

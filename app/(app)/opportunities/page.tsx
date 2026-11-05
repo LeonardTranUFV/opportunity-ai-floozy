@@ -188,7 +188,16 @@ export default async function OpportunitiesPage({
     }
   }
 
-  const { data: rawOpportunities } = await query
+  const { data: queried } = await query
+  // A lead Floozy found in an area group points at a post in Floozy's own
+  // account, which this client cannot read, so the join comes back empty. The
+  // row carries the post's date itself (migration 0023); put it where the
+  // rest of this page looks.
+  const rawOpportunities = (queried ?? []).map((opp) =>
+    opp.source_kind === "floozy" && !opp.posts
+      ? { ...opp, posts: { posted_at: opp.source_posted_at ?? null, scraped_at: opp.created_at } }
+      : opp
+  )
   // Filtered by post date before the dedupe, and by *ask* rather than by row.
   // A deep link to one row is exempt - the point there is that specific lead.
   //
@@ -332,7 +341,10 @@ export default async function OpportunitiesPage({
           {opportunities.map((opp) => {
             const isHot = (opp.intent_score ?? 0) >= 90 || opp.urgency === "asap"
             const confidence = Math.max(0, Math.min(100, opp.intent_score ?? 0))
-            const agentName = (opp.agents as unknown as { name: string } | null)?.name ?? "Unknown agent"
+            const agentName =
+              opp.source_kind === "floozy"
+                ? `Found by Floozy${opp.source_group_name ? ` in ${opp.source_group_name}` : ""}`
+                : ((opp.agents as unknown as { name: string } | null)?.name ?? "Unknown agent")
             const sourcePost = opp.posts as unknown as { posted_at: string | null; scraped_at: string | null } | null
             const age = postAge(sourcePost?.posted_at ?? null, sourcePost?.scraped_at ?? null)
             const source = platformMeta(opp.platform)
@@ -377,9 +389,12 @@ export default async function OpportunitiesPage({
                         />
                       )}
                       <span className="text-xs text-muted-foreground">
-                        Agent: {agentName}
+                        {opp.source_kind === "floozy" ? agentName : `Agent: ${agentName}`}
                         {opp.category ? ` · ${opp.category}` : ""}
                       </span>
+                      {opp.source_kind === "floozy" && opp.match_note && (
+                        <span className="text-xs text-muted-foreground">{opp.match_note}</span>
+                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                       <Badge variant={URGENCY_VARIANT[opp.urgency] ?? "secondary"} className="capitalize">

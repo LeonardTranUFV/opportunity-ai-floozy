@@ -193,13 +193,27 @@ for (const [id, name, table] of [
   }
 }
 
+// ── 0023: lead matches (opportunities.source_kind + lead_matches). ────────
+{
+  const matches = await tableExists("lead_matches");
+  const { status } = await ask("opportunities", "select=source_kind&limit=0");
+  if (matches === true && readOk(status)) {
+    const { count } = await ask("lead_matches", "select=post_id&limit=0");
+    record("0023", "lead matches       ", "applied", `${count ?? "?"} Floozy lead(s) delivered`);
+  } else if (matches === false || status === 400) {
+    record("0023", "lead matches       ", "missing", "the matcher skips until this runs (needs 0021 and 0022 first)");
+  } else {
+    record("0023", "lead matches       ", "unknown", "could not determine — unexpected response");
+  }
+}
+
 // ── The tables the scan reads must be closed to the browser ───────────────
 // Same property that was verified for browser_sessions. The scan is served by
 // the service role through /api/scan/preview; anon should never reach these
 // directly, or the paywall is decoration.
 if (anonKey) {
   console.log("\nanon (browser) access — these must all be refused:");
-  for (const table of ["public_leads", "subscriptions", "scan_requests", "company_profiles", "client_service_areas", "collector_runs"]) {
+  for (const table of ["public_leads", "subscriptions", "scan_requests", "company_profiles", "client_service_areas", "collector_runs", "lead_matches"]) {
     const { status, body } = await ask(table, "select=*&limit=1", anonKey);
     /**
      * The status alone does not answer this, and reading it that way made the
