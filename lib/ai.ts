@@ -1,27 +1,21 @@
 import { scoreLead } from "@/lib/lead-score";
+import { callAI } from "@/lib/ai-provider";
 
-// Two models, split by what the call is actually for.
+// Two jobs, split by what the call is actually for.
 //
-// Measured 2026-08-12 against this project's key: the free tier allows about
-// five requests before returning 429 with quotaId
-// "GenerateRequestsPerMinutePerProjectPerModel-FreeTier". Three words there
-// matter — it is **per minute**, **per project** (every customer shares one
-// bucket, it is not per-user), and **per model** (each model has its own).
+// "scoring" is post scoring. It dominates spend (100 posts per request, so a
+// 1000-post scan is ten calls) and is classification, not writing, so it runs
+// on the cheapest models: Claude Haiku 5.5 on the API, gemini-3.1-flash-lite
+// on Gemini, or Leo's Claude Code / Codex login on the PC worker.
 //
-// Post scoring dominates spend: it batches 100 posts per request, so a single
-// 1000-post scan is ten calls, and it is a classification job rather than a
-// writing one. It runs on a Lite model — roughly 6x cheaper than 3.6-flash per
-// token, and on its own quota bucket, so a burst of scanning can no longer
-// starve someone's outreach draft.
+// "writing" is drafting, profile enhancement and reports: text a customer
+// sends to a real person, rare enough that its cost is noise.
 //
-// Drafting, profile enhancement and reports stay on the stronger model: those
-// are written for a customer to send to a real person, and are rare enough
-// that their cost is noise.
-//
-// Both are overridable by env so a model can be swapped, or scoring quality
-// A/B'd against the old one, without a deploy.
-const SCORING_MODEL = process.env.GEMINI_SCORING_MODEL || "gemini-3.1-flash-lite";
-const WRITING_MODEL = process.env.GEMINI_WRITING_MODEL || "gemini-3.6-flash";
+// Which provider serves each job, in which order, and with which model is set
+// in lib/ai-provider.ts and its env vars (AI_CHAIN_SCORING, AI_CHAIN_WRITING,
+// CLAUDE_*_MODEL, GEMINI_*_MODEL). Gemini's free tier, measured 2026-08-12,
+// allows about five requests per minute per project per model before a 429;
+// lib/scan-agent.ts still paces batches for it.
 
 export interface AgentProfile {
   id: string;
@@ -56,102 +50,6 @@ export interface OpportunityEvaluation {
   category: string;
   location_mentioned: string | null;
   phone_number: string | null;
-}
-
-function getApiKey(): string {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "GEMINI_API_KEY is not set in .env — add it from https://aistudio.google.com/apikey"
-    );
-  }
-  return apiKey;
-}
-
-const RETRYABLE_STATUS_CODES = new Set([503, 500]);
-const MAX_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 1500;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Every caller sets responseMimeType: "application/json" and immediately
-// JSON.parses the result, so a response that fails to parse is just as
-// useless as an HTTP-level failure. Observed empirically: this model
-// sometimes reports finishReason "STOP" while still cutting the JSON off
-// mid-string (no closing brace) — roughly 1 in 2 calls in one test batch —
-// unrelated to hitting maxOutputTokens. Previously every caller had its own
-// try/catch around JSON.parse with a silent fallback (e.g. dumping the raw
-// broken text into both the "comment" and "dm" fields), which meant a
-// customer could see garbled JSON presented as a real, sendable draft and
-// actually post it publicly. Retrying here — once, centrally — turns that
-// silent corruption into either a clean parse or a clear thrown error.
-function isParseableJson(text: string): boolean {
-  try {
-    JSON.parse(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function callGemini(
-  systemInstruction: string,
-  userText: string,
-  // Defaults to the writing model so an unmarked call never silently lands on
-  // the cheaper one — only post scoring opts in, explicitly.
-  model: string = WRITING_MODEL
-): Promise<string> {
-  const apiKey = getApiKey();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: userText }] }],
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        // maxOutputTokens set explicitly — some clients silently default well
-        // below the model's real 65,536-token cap when this is omitted, which
-        // would truncate the JSON array on large batches (see scan/route.ts).
-        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 65536 },
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        lastError = new Error("Gemini API returned no content");
-      } else if (!isParseableJson(text)) {
-        lastError = new Error(`Gemini API returned malformed JSON: ${text.slice(0, 200)}`);
-      } else {
-        return text;
-      }
-
-      if (attempt < MAX_ATTEMPTS) {
-        await sleep(RETRY_DELAY_MS * attempt);
-        continue;
-      }
-      throw lastError;
-    }
-
-    const errText = await response.text();
-    lastError = new Error(`Gemini API error (${response.status}): ${errText}`);
-
-    // Only retry on transient overload — not on quota exhaustion (429) or bad requests.
-    const shouldRetry = RETRYABLE_STATUS_CODES.has(response.status) && attempt < MAX_ATTEMPTS;
-    if (!shouldRetry) {
-      throw lastError;
-    }
-    await sleep(RETRY_DELAY_MS * attempt);
-  }
-
-  throw lastError ?? new Error("Gemini API request failed");
 }
 
 /**
@@ -348,18 +246,18 @@ Always include every input post, even if relevant is false.
   // Compact, not pretty-printed — the model does not need indentation and we
   // were paying for two spaces on every line of every batch.
   const userText = `Evaluate these posts:\n${JSON.stringify(wirePosts)}`;
-  // The only call on the cheaper model. This is 100 posts per request and by
-  // far the biggest consumer of both quota and spend; it is also scoring, not
-  // writing, so a Lite model is the right tool. If lead quality ever looks off,
-  // this is the first line to suspect — set GEMINI_SCORING_MODEL to the
-  // writing model to rule it out without a deploy.
-  const text = await callGemini(systemInstruction, userText, SCORING_MODEL);
+  // The only "scoring" job. This is 100 posts per request and by far the
+  // biggest consumer of both quota and spend; it is classification, not
+  // writing, so the cheapest models are the right tool. If lead quality ever
+  // looks off, this is the first line to suspect: point CLAUDE_SCORING_MODEL
+  // (or GEMINI_SCORING_MODEL) at a stronger model to rule it out without a deploy.
+  const { text } = await callAI("scoring", systemInstruction, userText);
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error(`Gemini returned unparseable JSON: ${text.slice(0, 200)}`);
+    throw new Error(`AI returned unparseable JSON: ${text.slice(0, 200)}`);
   }
   if (!Array.isArray(parsed)) return [];
 
@@ -424,7 +322,7 @@ Respond with a JSON object matching this schema exactly:
 }
 `;
   const userText = `Business owner's description:\n"""${description}"""`;
-  const text = await callGemini(systemInstruction, userText);
+  const { text } = await callAI("writing", systemInstruction, userText);
 
   try {
     const parsed = JSON.parse(text);
@@ -496,7 +394,7 @@ Return 10-12 suggestions, ordered by how likely they are to produce real leads. 
     ? `\nBusiness name: ${businessProfile.businessName}`
     : "";
   const userText = `Trade / service: ${trade}\nPrimary location: ${location}${profileLine}`;
-  const text = await callGemini(systemInstruction, userText);
+  const { text } = await callAI("writing", systemInstruction, userText);
 
   try {
     const parsed = JSON.parse(text);
@@ -608,7 +506,7 @@ ${
 Respond with a JSON object: { "comment": string, "dm": string }
 `;
   const userText = `Original post by ${untrusted(post.author_name)} on ${post.platform}:\n"""${untrusted(post.raw_text)}"""`;
-  const text = await callGemini(systemInstruction, userText);
+  const { text } = await callAI("writing", systemInstruction, userText);
 
   try {
     const parsed = JSON.parse(text);
@@ -635,7 +533,7 @@ what's missing, and the single highest-impact fix to prioritize first. Plain lan
 no markdown formatting. Respond with a JSON object: { "report": string }
 `;
   const userText = `Website: ${url}\n\nChecks:\n${JSON.stringify(checks, null, 2)}`;
-  const text = await callGemini(systemInstruction, userText);
+  const { text } = await callAI("writing", systemInstruction, userText);
 
   try {
     const parsed = JSON.parse(text);

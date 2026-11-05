@@ -50,7 +50,8 @@ export default async function SettingsPage() {
   const settingsMap = Object.fromEntries((rows ?? []).map((r) => [r.key, r.value]))
 
   const integrations = [
-    { name: "Gemini API (AI reasoning)", key: process.env.GEMINI_API_KEY },
+    { name: "Claude API (AI scoring and drafts)", key: process.env.ANTHROPIC_API_KEY },
+    { name: "Gemini API (AI fallback)", key: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY },
     { name: "GoHighLevel (CRM dispatch)", key: process.env.GHL_API_KEY },
     // Reddit is the only source type that collects without a signed-in
     // browser, so on the hosted deployment it decides whether a customer sees

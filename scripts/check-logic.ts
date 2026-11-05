@@ -19,6 +19,7 @@ import { extractPostsFromBodies } from "../lib/feed-capture";
 import { DomainThrottle, classifyResponse, checkTarget } from "../lib/fetchers";
 import { redactProviderSecrets } from "../lib/remote-browser";
 import { scoreLead, WEAK_CAP } from "../lib/lead-score";
+import { providerChain, readyProviders, extractJson, cooldownFor } from "../lib/ai-provider";
 
 let failures = 0;
 let checks = 0;
@@ -350,6 +351,47 @@ section("lib/lead-score — scoreLead");
     scoreLead(true, { need: 9, fit: "4" as unknown as number, urgency: -3, detail: Number.NaN })
       .intent_score === 66
   );
+}
+
+// ---------------------------------------------------------------- ai provider
+section("lib/ai-provider");
+{
+  check(
+    "PC scoring tries the subscriptions first, then the API, then Gemini",
+    providerChain("scoring", {}).join() === "claude-cli,codex-cli,claude-api,gemini"
+  );
+  check(
+    "drafts start at the API even on the PC",
+    providerChain("writing", {}).join() === "claude-api,gemini"
+  );
+  check(
+    "Vercel never tries a local CLI, even when the chain names one",
+    providerChain("scoring", { VERCEL: "1", AI_CHAIN_SCORING: "claude-cli,gemini" }).join() === "gemini"
+  );
+  check(
+    "a job's own chain beats AI_CHAIN, and unknown names are dropped",
+    providerChain("scoring", { AI_CHAIN: "gemini", AI_CHAIN_SCORING: "codex-cli, openai ,claude-api" }).join() ===
+      "codex-cli,claude-api"
+  );
+  check(
+    "only providers with a key or a CLI count as ready",
+    readyProviders("writing", { VERCEL: "1", GEMINI_API_KEY: "x" }).join() === "gemini" &&
+      readyProviders("writing", { VERCEL: "1" }).length === 0
+  );
+  check("plain JSON passes through", extractJson('{"a":1}') === '{"a":1}');
+  check("a ```json fence is unwrapped", extractJson('```json\n[{"a":1}]\n```') === '[{"a":1}]');
+  check("a sentence before the JSON is dropped", extractJson('Here you go: {"comment":"hi"}') === '{"comment":"hi"}');
+  check("text with no JSON is rejected", extractJson("Sorry, I can't help with that.") === null);
+  check("a cut-off array is rejected", extractJson('[{"index":0},{"ind') === null);
+  check(
+    "a signed-out CLI is paused for an hour",
+    cooldownFor("claude-cli", "Claude Code: Failed to authenticate: OAuth session expired") === 60 * 60_000
+  );
+  check(
+    "a CLI usage cap pauses it longer than an API rate limit",
+    cooldownFor("codex-cli", "usage limit reached") > cooldownFor("claude-api", "429 rate limit")
+  );
+  check("an ordinary error does not pause a provider", cooldownFor("gemini", "answer was not JSON") === 0);
 }
 
 console.log(
