@@ -36,6 +36,7 @@ import { localCollectionModes, isCollectedLocally, type LocalPlatforms } from "@
 import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-groups";
 import { evaluateAgentPosts } from "@/lib/scan-agent";
 import type { AgentProfile } from "@/lib/ai";
+import { readyProviders } from "@/lib/ai-provider";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, "..");
@@ -350,9 +351,9 @@ const LOCAL_SCAN_RANGE_DAYS = 7;
 const MAX_SCORING_PASSES = 10;
 
 async function scoreAgents(userId: string) {
-  if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
+  if (readyProviders("scoring").length === 0) {
     console.log(
-      `[auto-scrape] user ${userId}: scoring skipped — add GEMINI_API_KEY to .env.worker to score here. The hosted auto-scan still scores agents that have it switched on.`
+      `[auto-scrape] user ${userId}: scoring skipped — no AI provider is set up here. Sign in to Claude Code or Codex, or add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env.worker (see lib/ai-provider.ts). The hosted auto-scan still scores agents that have it switched on.`
     );
     return;
   }
