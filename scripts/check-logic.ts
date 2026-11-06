@@ -513,7 +513,7 @@ section("lib/floozy-collect + cloud policy");
   const s = collectSettings({ APIFY_DAILY_RESULTS: "abc", APIFY_RESULTS_PER_GROUP: "9999", FLOOZY_PC_GROUPS_PER_RUN: "" });
   check(
     "bad or out-of-range settings fall back or clamp",
-    s.apifyDailyResults === 1000 && s.apifyResultsPerGroup === 500 && s.pcGroupsPerRun === 6
+    s.apifyDailyResults === 300 && s.apifyResultsPerGroup === 500 && s.pcGroupsPerRun === 6
   );
   const now = Date.parse("2026-11-05T12:00:00Z");
   const hoursAgo = (h: number) => new Date(now - h * 3_600_000).toISOString();

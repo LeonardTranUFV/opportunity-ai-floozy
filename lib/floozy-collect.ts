@@ -50,7 +50,11 @@ const num = (raw: string | undefined, fallback: number, min: number, max: number
 };
 
 export interface CollectSettings {
-  /** Apify: results allowed per UTC day, across every area. */
+  /**
+   * Apify: results allowed per UTC day, across every area. 300 keeps the bill
+   * near Leo's $50 a month: the groups actor charges $2.60-$5 per 1,000 posts,
+   * so 9,000 posts a month is $23-$45 (Nov 2026 prices).
+   */
   apifyDailyResults: number;
   /** Apify: results asked for per group per read. */
   apifyResultsPerGroup: number;
@@ -67,7 +71,7 @@ export interface CollectSettings {
 export function collectSettings(env: Env = process.env): CollectSettings {
   const hour = 60 * 60 * 1000;
   return {
-    apifyDailyResults: num(env.APIFY_DAILY_RESULTS, 1000, 0, 100_000),
+    apifyDailyResults: num(env.APIFY_DAILY_RESULTS, 300, 0, 100_000),
     apifyResultsPerGroup: num(env.APIFY_RESULTS_PER_GROUP, 25, 1, 500),
     apifyMinAgeMs: num(env.APIFY_GROUP_MIN_AGE_HOURS, 6, 1, 168) * hour,
     apifySinceDays: num(env.APIFY_SINCE_DAYS, 3, 1, 30),
