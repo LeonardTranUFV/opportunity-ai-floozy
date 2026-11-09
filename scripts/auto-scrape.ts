@@ -37,7 +37,7 @@ import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-gro
 import { evaluateAgentPosts } from "@/lib/scan-agent";
 import type { AgentProfile } from "@/lib/ai";
 import { readyProviders } from "@/lib/ai-provider";
-import { floozyCollectorIds, collectSettings, pickDueGroups, logCollectorRun } from "@/lib/floozy-collect";
+import { collectorIds, collectSettings, pickDueGroups, logCollectorRun } from "@/lib/floozy-collect";
 import { storeScrapedPosts } from "@/lib/store-posts";
 import { matchAreaPosts } from "@/lib/lead-matcher";
 
@@ -520,7 +520,7 @@ async function run() {
    */
   const crawlEveryone = process.argv.includes("--all");
   const localModes = await localCollectionModes(supabase);
-  const collectorList = floozyCollectorIds();
+  const collectorList = await collectorIds(supabase);
   const collectors = new Set(collectorList);
   // Collectors are handled by collectFloozyPrivate, even if one is also
   // marked collection_mode=local (which it should be, to keep the cloud off it).

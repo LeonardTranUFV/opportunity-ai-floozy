@@ -27,6 +27,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { scrapeGroupsViaApify } from "@/lib/apify-scraper";
 import { storeScrapedPosts } from "@/lib/store-posts";
+import { cleanFacebookGroupUrl } from "@/lib/group-requests";
 
 type Env = Record<string, string | undefined>;
 
@@ -42,6 +43,21 @@ export function floozyCollectorIds(env: Env = process.env): string[] {
         .filter((s) => UUID.test(s))
     ),
   ];
+}
+
+/**
+ * Every collector: the env list plus the accounts added on the admin page.
+ * If the table can't be read (0025 not applied) the env list still works.
+ */
+export async function collectorIds(supabase: SupabaseClient, env: Env = process.env): Promise<string[]> {
+  const fromEnv = floozyCollectorIds(env);
+  try {
+    const { data, error } = await supabase.from("floozy_collectors").select("user_id").eq("active", true);
+    if (error) return fromEnv;
+    return [...new Set([...fromEnv, ...(data ?? []).map((row) => row.user_id as string)])];
+  } catch {
+    return fromEnv;
+  }
 }
 
 const num = (raw: string | undefined, fallback: number, min: number, max: number): number => {
@@ -162,7 +178,7 @@ export async function collectPublicAreaGroups(
   const s = collectSettings(env);
   const result: AreaCollectResult = { groupsRead: 0, items: 0, postsNew: 0, usedToday: 0, cap: s.apifyDailyResults, log: [] };
 
-  const collectors = floozyCollectorIds(env);
+  const collectors = await collectorIds(supabase, env);
   if (collectors.length === 0) return { ...result, skipped: "FLOOZY_COLLECTOR_USER_IDS is not set" };
   if (!env.APIFY_TOKEN) return { ...result, skipped: "APIFY_TOKEN is not set" };
 
@@ -276,17 +292,11 @@ export function parseAreaGroupFile(
     }
     const e = entry as Record<string, unknown>;
     const url = typeof e.url === "string" ? e.url.trim() : "";
-    let parsed: URL | null = null;
-    try {
-      parsed = new URL(url);
-    } catch {
-      parsed = null;
-    }
-    if (!parsed || !/(^|\.)facebook\.com$/i.test(parsed.hostname) || !/^\/groups\/[^/]+/.test(parsed.pathname)) {
+    const clean = cleanFacebookGroupUrl(url);
+    if (!clean) {
       problems.push(`${at}: "${url}" is not a facebook.com/groups/... link.`);
       return;
     }
-    const clean = `https://www.facebook.com${parsed.pathname.replace(/\/+$/, "")}`;
     if (seen.has(clean)) {
       problems.push(`${at}: ${clean} is listed twice.`);
       return;

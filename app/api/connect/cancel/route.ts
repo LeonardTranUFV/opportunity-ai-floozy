@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRemoteBrowserProvider } from "@/lib/remote-browser";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { connectOwner } from "@/lib/operator";
 
 /**
  * Release a cloud browser the customer walked away from.
@@ -35,9 +36,11 @@ export async function POST(request: Request) {
   }
 
   let sessionId: string;
+  let collectorId: unknown;
   try {
-    const body = (await request.json()) as { sessionId?: unknown };
+    const body = (await request.json()) as { sessionId?: unknown; collectorId?: unknown };
     sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    collectorId = body.collectorId;
   } catch {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
@@ -51,7 +54,8 @@ export async function POST(request: Request) {
   // released and it is.
   const info = await provider.getSession(sessionId);
   if (!info) return NextResponse.json({ success: true, alreadyReleased: true });
-  if (info.ownerUserId !== user.id) {
+  const ownerId = await connectOwner(user, collectorId);
+  if (!ownerId || info.ownerUserId !== ownerId) {
     return NextResponse.json({ error: "Unknown browser session." }, { status: 404 });
   }
 

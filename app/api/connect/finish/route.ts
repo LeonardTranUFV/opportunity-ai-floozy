@@ -10,6 +10,7 @@ import {
   type GroupSyncResult,
 } from "@/lib/facebook-groups";
 import { errorMessage } from "@/lib/errors";
+import { connectOwner } from "@/lib/operator";
 
 /**
  * Second half of self-serve connect: the customer says they are logged in, so
@@ -69,9 +70,11 @@ export async function POST(request: Request) {
   }
 
   let sessionId: string;
+  let collectorId: unknown;
   try {
-    const body = (await request.json()) as { sessionId?: unknown };
+    const body = (await request.json()) as { sessionId?: unknown; collectorId?: unknown };
     sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    collectorId = body.collectorId;
   } catch {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
@@ -95,7 +98,8 @@ export async function POST(request: Request) {
   //
   // 404 rather than 403 on mismatch: a caller probing ids should not be able
   // to tell "exists but not yours" from "does not exist".
-  if (info.ownerUserId !== user.id) {
+  const ownerId = await connectOwner(user, collectorId);
+  if (!ownerId || info.ownerUserId !== ownerId) {
     console.warn(
       `[connect] user ${user.id} tried to finish session ${sessionId} owned by ${info.ownerUserId ?? "nobody"}`
     );
@@ -180,7 +184,7 @@ export async function POST(request: Request) {
         );
       }
 
-      await saveSession(user.id, platform, storageState);
+      await saveSession(ownerId, platform, storageState);
 
       // Import the groups this account is actually in, while the signed-in
       // browser is still open — it is the only moment we have one.
@@ -194,7 +198,8 @@ export async function POST(request: Request) {
       // the crawler at forty groups nobody chose — beyond consent, every active
       // source is repeated traffic through that person's own account.
       let sync: GroupSyncResult | null = null;
-      if (platform === "facebook") {
+      // Not for Floozy's own accounts: their groups come from client requests.
+      if (platform === "facebook" && ownerId === user.id) {
         try {
           const page = context.pages()[0] ?? (await context.newPage());
           sync = await syncJoinedGroups(

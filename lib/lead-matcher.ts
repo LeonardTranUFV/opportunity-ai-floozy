@@ -28,7 +28,7 @@ import { callAI } from "@/lib/ai-provider";
 import { evaluatePostsForAgent, type AgentProfile, type OpportunityEvaluation, type RawPostInput } from "@/lib/ai";
 import { AGENT_TEMPLATES, findAgentTemplate } from "@/lib/agent-templates";
 import { areaForCity, choiceCovers, findServiceArea, type AreaChoice } from "@/lib/service-areas";
-import { floozyCollectorIds } from "@/lib/floozy-collect";
+import { collectorIds } from "@/lib/floozy-collect";
 import { freeTrialBlocksSpending } from "@/lib/credits";
 
 type Env = Record<string, string | undefined>;
@@ -173,7 +173,9 @@ export function jobTerms(text: string): string[] {
 export function rankCandidates(
   lead: { trade: string; areaId: string; city: string | null; text: string },
   candidates: Candidate[],
-  maxClients: number
+  maxClients: number,
+  /** Clients who asked Floozy to watch this group: first in line, wherever their service area is. */
+  requesters: ReadonlySet<string> = new Set()
 ): ChosenClient[] {
   const text = lead.text.toLowerCase();
   const trade = findAgentTemplate(lead.trade);
@@ -183,24 +185,25 @@ export function rankCandidates(
   const fits = candidates
     .filter((c) => c.trades.includes(lead.trade))
     .map((c) => ({ c, choice: c.areas.find((a) => choiceCovers(a, lead.areaId, lead.city)) }))
-    .filter((x): x is { c: Candidate; choice: AreaChoice } => !!x.choice)
+    .filter((x) => !!x.choice || requesters.has(x.c.userId))
     .filter(({ c }) => !jobTerms(c.unwantedJobs).some((t) => text.includes(t)))
     .map(({ c, choice }) => {
       const wanted = jobTerms(c.wantedJobs).find((t) => text.includes(t)) ?? null;
-      return { c, wanted, narrow: choice.cities.length > 0 };
+      return { c, wanted, narrow: (choice?.cities.length ?? 0) > 0, requested: requesters.has(c.userId) };
     });
 
   fits.sort(
     (a, b) =>
+      Number(b.requested) - Number(a.requested) ||
       Number(!!b.wanted) - Number(!!a.wanted) ||
       Number(b.narrow) - Number(a.narrow) ||
       a.c.recentLeads - b.c.recentLeads ||
       a.c.userId.localeCompare(b.c.userId)
   );
 
-  return fits.slice(0, Math.max(0, maxClients)).map(({ c, wanted }) => ({
+  return fits.slice(0, Math.max(0, maxClients)).map(({ c, wanted, requested }) => ({
     userId: c.userId,
-    note: `${trade?.label ?? lead.trade} in ${where}, in your service area${wanted ? `; matches "${wanted}"` : ""}.`,
+    note: `${trade?.label ?? lead.trade} in ${where}, ${requested ? "from a group you asked us to watch" : "in your service area"}${wanted ? `; matches "${wanted}"` : ""}.`,
   }));
 }
 
@@ -310,7 +313,7 @@ export async function matchAreaPosts(
   const deadline = Date.now() + opts.budgetMs;
   const result: MatchResult = { classified: 0, requests: 0, scored: 0, leads: 0, deliveries: 0, log: [] };
 
-  const collectorList = floozyCollectorIds(env);
+  const collectorList = await collectorIds(supabase, env);
   if (collectorList.length === 0) return { ...result, skipped: "FLOOZY_COLLECTOR_USER_IDS is not set" };
   const collectors = new Set(collectorList);
 
@@ -324,6 +327,19 @@ export async function matchAreaPosts(
   // posts nobody can receive. They stay unclaimed until somebody can.
   if (candidates.length === 0) return { ...result, skipped: "no client has a trade and a service area yet" };
   const servedTrades = new Set(candidates.flatMap((c) => c.trades));
+
+  const requestersByGroup = new Map<string, Set<string>>();
+  try {
+    const { data: requested } = await supabase.from("group_requests").select("user_id, group_id").eq("status", "active");
+    for (const r of requested ?? []) {
+      if (!r.group_id) continue;
+      requestersByGroup.set(r.group_id, (requestersByGroup.get(r.group_id) ?? new Set()).add(r.user_id));
+    }
+  } catch {
+    // Before 0025 there are no requests to honour.
+  }
+  const noRequesters: ReadonlySet<string> = new Set();
+  const requestersOf = (post: PostRow): ReadonlySet<string> => (post.group_id && requestersByGroup.get(post.group_id)) || noRequesters;
 
   const since = new Date(now - s.lookbackDays * 86_400_000).toISOString();
   const maxBatches = opts.maxBatches ?? 50;
@@ -409,7 +425,8 @@ export async function matchAreaPosts(
     // Score once per trade and area, and only what some client could receive.
     const byKey = new Map<string, typeof requests>();
     for (const r of requests) {
-      if (!candidates.some((c) => c.trades.includes(r.cls.trade!) && c.areas.some((a) => choiceCovers(a, r.areaId, r.city)))) continue;
+      const asked = requestersOf(r.post);
+      if (!candidates.some((c) => c.trades.includes(r.cls.trade!) && (asked.has(c.userId) || c.areas.some((a) => choiceCovers(a, r.areaId, r.city))))) continue;
       const key = `${r.cls.trade}|${r.areaId}`;
       byKey.set(key, [...(byKey.get(key) ?? []), r]);
     }
@@ -449,7 +466,8 @@ export async function matchAreaPosts(
         const chosen = rankCandidates(
           { trade: tradeId, areaId, city: g.city, text: g.post.raw_text },
           candidates,
-          s.maxClients
+          s.maxClients,
+          requestersOf(g.post)
         );
         if (chosen.length === 0) continue;
         result.leads++;
