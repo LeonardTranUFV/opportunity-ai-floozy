@@ -4,6 +4,7 @@ import { getPlan } from "@/lib/entitlement";
 import { isPackSize, packQuote, packsEnabled, PACK_CURRENCY } from "@/lib/credit-packs";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 import { siteUrl } from "@/lib/site-url";
+import { isSwitchedInto } from "@/lib/account-switch-server";
 
 /**
  * Sells a credit pack: opens a one-off Stripe Checkout for N credits.
@@ -47,6 +48,10 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  if (await isSwitchedInto(user.id)) {
+    return NextResponse.json({ error: "Payments are blocked while you're in a client's account." }, { status: 403 });
   }
 
   const rl = await rateLimit(`credits-checkout:${user.id}`, LIMITS.strict.limit, LIMITS.strict.windowMs);

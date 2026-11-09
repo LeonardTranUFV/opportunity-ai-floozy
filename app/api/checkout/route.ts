@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { siteUrl } from "@/lib/site-url";
+import { isSwitchedInto } from "@/lib/account-switch-server";
 
 /**
  * The only way to reach Stripe checkout.
@@ -51,6 +52,11 @@ export async function GET(request: Request) {
     const signup = new URL("/signup", siteUrl());
     signup.searchParams.set("next", `/api/checkout?plan=${plan}`);
     return NextResponse.redirect(signup);
+  }
+
+  // A payment has to be the client's own decision, on the client's own card.
+  if (await isSwitchedInto(user.id)) {
+    return NextResponse.redirect(new URL("/billing", siteUrl()));
   }
 
   const checkout = new URL(target);

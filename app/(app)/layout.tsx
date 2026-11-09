@@ -14,6 +14,8 @@ import { PLAN_ALLOWANCES, ensureTrialCredits, ensurePlanCredits } from "@/lib/cr
 import { getSubscriptionSummary, type SubscriptionSummary } from "@/lib/entitlement"
 import { getConsent } from "@/lib/consent"
 import { ConsentGate } from "@/components/consent-gate"
+import { SwitchBanner } from "@/components/account-switcher"
+import { getSwitcher } from "@/lib/account-switch-server"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -28,6 +30,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // page behind it is already warm once they accept.
   const consent = user ? await getConsent(supabase, user.id) : null
 
+  const switcher = user ? await getSwitcher(user) : null
+  const operatorInClientAccount = !!switcher?.viewing
+
   let credits: { balance: number; allowance: number } | null = null
   // Where they stand with billing, for the header badge. Asked for by name:
   // "show how many day free trial left on top corner" — and an upgrade
@@ -40,11 +45,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // answered "Out of credits — upgrade your plan", which reads as a paywall
     // rather than a bug. This runs on every authenticated page load but only
     // grants once, keyed off its own transaction record.
-    await ensureTrialCredits(supabase, user.id)
+    // Not on an operator's visit: looking at an account must not start its
+    // free trial's clock.
+    if (!operatorInClientAccount) await ensureTrialCredits(supabase, user.id)
     // And the credits their plan includes, if they are paying. Reconciled here
     // rather than granted by the Stripe webhook, because the webhook is the
     // part that can silently not happen — see ensurePlanCredits.
-    await ensurePlanCredits(supabase, user.id)
+    if (!operatorInClientAccount) await ensurePlanCredits(supabase, user.id)
     // After the grant above, which is what starts the free trial's clock — read
     // first, a brand-new account's first page would show no trial at all.
     subscription = await getSubscriptionSummary(supabase, user.id)
@@ -62,8 +69,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <SidebarProvider>
       <TourProvider>
-      <AppSidebar userEmail={user?.email} isAdmin={userIsAdmin} />
+      <AppSidebar userEmail={user?.email} isAdmin={userIsAdmin} switcher={switcher} />
       <div className="aurora-bg flex-1 w-full flex flex-col overflow-hidden">
+        {switcher && <SwitchBanner switcher={switcher} />}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <SidebarTrigger />
           <div className="w-full flex justify-between items-center px-4">
@@ -88,7 +96,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <MobileNav />
       <TourOverlay />
-      {consent && !consent.current && (
+      {consent && !consent.current && !operatorInClientAccount && (
         <ConsentGate
           poolAlreadyOn={consent.poolOptIn}
           // Having a stored version at all means they accepted once before,

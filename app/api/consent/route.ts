@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getConsent, recordConsent, setPoolOptIn, TERMS_VERSION } from "@/lib/consent";
 import { readJsonBody, validationErrorResponse } from "@/lib/validate";
+import { isSwitchedInto } from "@/lib/account-switch-server";
 
 export async function GET() {
   const supabase = await createClient();
@@ -28,6 +29,11 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  // This is the record of what the client agreed to. Nobody can agree for them.
+  if (await isSwitchedInto(user.id)) {
+    return NextResponse.json({ error: "Only the client can accept terms or change sharing." }, { status: 403 });
+  }
 
   let body: Record<string, unknown>;
   try {

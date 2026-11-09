@@ -90,6 +90,12 @@ export async function isAdmin(supabase: SupabaseClient, userId: string): Promise
   return isListed(supabase, userId, process.env.ADMIN_USER_IDS, process.env.ADMIN_EMAILS);
 }
 
+/** isAdmin for when the id and email are already in hand, with no lookups. */
+export function isAdminIdentity(userId: string, email: string | null | undefined): boolean {
+  if (allowList(process.env.ADMIN_USER_IDS).includes(userId.toLowerCase())) return true;
+  return !!email && allowList(process.env.ADMIN_EMAILS).includes(email.toLowerCase());
+}
+
 /**
  * May read the shared opportunity pool — other customers' leads, which they
  * opted in to contribute.
