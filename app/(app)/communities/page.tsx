@@ -12,6 +12,7 @@ import { getSourceCapacity, partitionByCap } from "@/lib/entitlement"
 import { SourceList } from "@/components/communities/source-list"
 import { listSessions } from "@/lib/session-store"
 import { countPostsByGroup } from "@/lib/post-counts"
+import { GroupRequestCard, type ClientGroupRequest } from "@/components/communities/group-request-card"
 
 export const dynamic = "force-dynamic"
 
@@ -76,6 +77,11 @@ export default async function CommunitiesPage() {
   // collects even where a signed-in browser cannot be opened at all.
   const hasFetchableSource = groups.some((g) => g.platform === "reddit" && g.active)
 
+  const { data: groupRequests } = await supabase
+    .from("group_requests")
+    .select("id, url, name, status, decline_reason")
+    .order("created_at", { ascending: false })
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -85,6 +91,8 @@ export default async function CommunitiesPage() {
           ask for your trade.
         </p>
       </div>
+
+      <GroupRequestCard requests={(groupRequests ?? []) as ClientGroupRequest[]} />
 
       <Card className="transition-shadow hover:shadow-sm">
         <CardHeader>

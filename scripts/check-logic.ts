@@ -23,6 +23,8 @@ import { providerChain, readyProviders, extractJson, cooldownFor } from "../lib/
 import { readFileSync } from "node:fs";
 import { accountLabel, decideSwitch, openOperatorPass, sealOperatorPass, sortAccounts } from "../lib/account-switch";
 import { sealStorageState } from "../lib/session-crypto";
+import { cleanFacebookGroupUrl, parseGroupRequest, parseGroupReview } from "../lib/group-requests";
+import { collectorIds } from "../lib/floozy-collect";
 import path from "node:path";
 import { SERVICE_AREAS, areaSlug, areaForCity, choiceCovers, serviceAreaSeedSql } from "../lib/service-areas";
 import { normalizeProfileInput, toBusinessProfile, isNotMigrated, EMPTY_PROFILE } from "../lib/company-profile";
@@ -957,6 +959,53 @@ section("operator account switcher");
 
   if (savedKey === undefined) delete process.env.SESSION_ENCRYPTION_KEY;
   else process.env.SESSION_ENCRYPTION_KEY = savedKey;
+}
+
+section("client group requests");
+{
+  const G = "https://www.facebook.com/groups/burnabyhomes";
+  check("a pasted group link is cleaned", cleanFacebookGroupUrl("m.facebook.com/groups/burnabyhomes/posts/12/?ref=x") === G);
+  check("non-group and look-alike links are refused", [
+    "https://facebook.com/burnabyhomes",
+    "https://evilfacebook.com/groups/x",
+    "https://facebook.com.evil.io/groups/x",
+    "javascript:alert(1)",
+    "",
+  ].every((u) => cleanFacebookGroupUrl(u) === null));
+
+  const longNote = parseGroupRequest({ url: G, note: "x".repeat(900), status: "active" });
+  check("a client's note is capped and can't set a status", longNote.ok && longNote.input.note?.length === 500 && !("status" in longNote.input));
+  check("a bad request link is explained", !parseGroupRequest({ url: "hello" }).ok);
+
+  const crew = new Set(["c1"]);
+  const areas = new Set(["metro-vancouver"]);
+  const good = { action: "activate", collectorId: "c1", areaId: "metro-vancouver", access: "private" };
+  check("a complete decision is accepted", parseGroupReview(good, crew, areas).ok);
+  check("only a Floozy account can be assigned", !parseGroupReview({ ...good, collectorId: "client-1" }, crew, areas).ok);
+  check("collecting needs an area and a privacy setting", !parseGroupReview({ ...good, areaId: "" }, crew, areas).ok && !parseGroupReview({ ...good, access: "" }, crew, areas).ok);
+  check("declining needs no account", parseGroupReview({ action: "decline" }, crew, areas).ok);
+  check("an unknown action is refused", !parseGroupReview({ action: "delete" }, crew, areas).ok);
+
+  const person = (userId: string, areaId: string, recentLeads = 0) => ({ userId, trades: ["roofing"], areas: [{ areaId, cities: [] }], wantedJobs: "", unwantedJobs: "", recentLeads });
+  const lead = { trade: "roofing", areaId: "metro-vancouver", city: null, text: "need a roofer" };
+  const people = [person("near", "metro-vancouver"), person("asker", "calgary", 50)];
+  const noRequest = rankCandidates(lead, people, 5).map((c) => c.userId);
+  const withRequest = rankCandidates(lead, people, 5, new Set(["asker"]));
+  check("without a request, area still decides", noRequest.join() === "near");
+  check("the client who asked for the group is first in line", withRequest[0].userId === "asker" && withRequest[0].note.includes("asked us to watch"));
+  check("a request doesn't override the client's trade", rankCandidates({ ...lead, trade: "plumbing" }, people, 5, new Set(["asker"])).length === 0);
+
+  asyncChecks.push(
+    (async () => {
+      const db = (rows: unknown, error: unknown = null) =>
+        ({ from: () => ({ select: () => ({ eq: async () => ({ data: rows, error }) }) }) }) as never;
+      const ENV = { FLOOZY_COLLECTOR_USER_IDS: "11111111-1111-4111-8111-111111111111" };
+      const merged = await collectorIds(db([{ user_id: "22222222-2222-4222-8222-222222222222" }]), ENV);
+      check("collectors combine the env list and the page", merged.length === 2);
+      const fallback = await collectorIds(db(null, { message: "missing table" }), ENV);
+      check("without the table the env list still works", fallback.length === 1);
+    })()
+  );
 }
 
 Promise.all(asyncChecks)

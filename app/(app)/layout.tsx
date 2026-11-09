@@ -16,6 +16,7 @@ import { getConsent } from "@/lib/consent"
 import { ConsentGate } from "@/components/consent-gate"
 import { SwitchBanner } from "@/components/account-switcher"
 import { getSwitcher } from "@/lib/account-switch-server"
+import { countOpenGroupRequests } from "@/lib/operator"
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -32,6 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const switcher = user ? await getSwitcher(user) : null
   const operatorInClientAccount = !!switcher?.viewing
+  const openGroupRequests = userIsAdmin ? await countOpenGroupRequests() : 0
 
   let credits: { balance: number; allowance: number } | null = null
   // Where they stand with billing, for the header badge. Asked for by name:
@@ -69,7 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <SidebarProvider>
       <TourProvider>
-      <AppSidebar userEmail={user?.email} isAdmin={userIsAdmin} switcher={switcher} />
+      <AppSidebar userEmail={user?.email} isAdmin={userIsAdmin} switcher={switcher} openGroupRequests={openGroupRequests} />
       <div className="aurora-bg flex-1 w-full flex flex-col overflow-hidden">
         {switcher && <SwitchBanner switcher={switcher} />}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">

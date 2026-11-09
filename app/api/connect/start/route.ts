@@ -6,6 +6,7 @@ import { hasSessionKey, SESSION_KEY_HINT } from "@/lib/session-crypto";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
 import { getChromium } from "@/lib/browser";
 import { errorMessage } from "@/lib/errors";
+import { connectOwner } from "@/lib/operator";
 
 /**
  * Where each platform's sign-in actually lives.
@@ -76,9 +77,11 @@ export async function POST(request: Request) {
   }
 
   let platform: string;
+  let collectorId: unknown;
   try {
-    const body = (await request.json()) as { platform?: unknown };
+    const body = (await request.json()) as { platform?: unknown; collectorId?: unknown };
     platform = typeof body.platform === "string" ? body.platform : "";
+    collectorId = body.collectorId;
   } catch {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
@@ -88,6 +91,11 @@ export async function POST(request: Request) {
       { error: `Unsupported platform. Expected one of: ${SESSION_PLATFORMS.join(", ")}.` },
       { status: 400 }
     );
+  }
+
+  const ownerId = await connectOwner(user, collectorId);
+  if (!ownerId || (ownerId !== user.id && platform !== "facebook")) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
   try {
@@ -114,7 +122,7 @@ export async function POST(request: Request) {
     const useProxy = process.env.CONNECT_USE_PROXY === "1";
 
     const session = await provider.startSession({
-      userId: user.id,
+      userId: ownerId,
       platform,
       ...(useProxy ? { proxyId: "residential" } : {}),
     });

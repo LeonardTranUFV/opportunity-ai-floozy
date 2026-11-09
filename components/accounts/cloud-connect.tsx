@@ -48,8 +48,11 @@ type Live = { sessionId: string; liveViewUrl: string; platform: Platform }
  */
 const SESSION_SECONDS = 600
 
-export function CloudConnect() {
+/** With `collector`, an operator is signing in one of Floozy's own Facebook accounts. */
+export function CloudConnect({ collector }: { collector?: { id: string; label: string } } = {}) {
   const router = useRouter()
+  const owner = collector ? { collectorId: collector.id } : {}
+  const offered = collector ? PLATFORMS.filter((p) => p.id === "facebook") : PLATFORMS
   const [starting, setStarting] = useState<Platform | null>(null)
   const [live, setLive] = useState<Live | null>(null)
   const [saving, setSaving] = useState(false)
@@ -68,7 +71,7 @@ export function CloudConnect() {
       const res = await fetch("/api/connect/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform }),
+        body: JSON.stringify({ platform, ...owner }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -92,7 +95,7 @@ export function CloudConnect() {
       const res = await fetch("/api/connect/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: live.sessionId }),
+        body: JSON.stringify({ sessionId: live.sessionId, ...owner }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -108,9 +111,12 @@ export function CloudConnect() {
       // email warning — that email often arrives after this screen, and by then
       // the customer has forgotten it was mentioned.
       setDone(
-        `${label(live.platform)} is connected. We can now read the groups you're already in — ` +
-          `add another account any time. If ${label(live.platform)} emails you about a new-device ` +
-          `login, that was us: ignore it, and don't press "This wasn't me".`
+        collector
+          ? `${collector.label} is signed in. If Facebook emails it about a new-device login, that was this ` +
+              `browser: don't press "This wasn't me".`
+          : `${label(live.platform)} is connected. We can now read the groups you're already in — ` +
+              `add another account any time. If ${label(live.platform)} emails you about a new-device ` +
+              `login, that was us: ignore it, and don't press "This wasn't me".`
       )
       setLive(null)
       router.refresh()
@@ -137,7 +143,7 @@ export function CloudConnect() {
       const res = await fetch("/api/connect/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: live.sessionId }),
+        body: JSON.stringify({ sessionId: live.sessionId, ...owner }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -160,14 +166,15 @@ export function CloudConnect() {
    * an unload, and the provider's timeout is the backstop when even that
    * fails.
    */
+  const collectorId = collector?.id
   const cancel = useCallback((sessionId: string) => {
     void fetch("/api/connect/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({ sessionId, ...(collectorId ? { collectorId } : {}) }),
       keepalive: true,
     }).catch(() => {})
-  }, [])
+  }, [collectorId])
 
   useEffect(() => {
     if (!live) return
@@ -401,6 +408,7 @@ export function CloudConnect() {
         different account — is answered here rather than left for them to
         guess at. Unanswered, the honest reading of this screen is "phishing".
       */}
+      {!collector && (
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
         <p className="text-sm font-medium">Why we ask for this</p>
         <p className="text-sm text-muted-foreground">
@@ -434,9 +442,10 @@ export function CloudConnect() {
           </li>
         </ul>
       </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {PLATFORMS.map(({ id, label: name, Icon }) => (
+        {offered.map(({ id, label: name, Icon }) => (
           <Button
             key={id}
             variant="outline"

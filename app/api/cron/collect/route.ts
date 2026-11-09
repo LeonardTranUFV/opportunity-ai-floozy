@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scrapeAndStorePosts } from "@/lib/scrape-and-store";
 import { canRunSignedInBrowser } from "@/lib/remote-browser";
 import { localCollectionModes, isCollectedLocally, withCloudPolicy } from "@/lib/collection-mode";
-import { floozyCollectorIds } from "@/lib/floozy-collect";
+import { collectorIds } from "@/lib/floozy-collect";
 
 /**
  * Unattended collection — the thing that makes this a product rather than a
@@ -300,7 +300,7 @@ export async function GET(request: Request) {
   // through Apify (/api/cron/collect-areas) and their private ones through the
   // PC worker. A rented browser signed in as a Floozy profile is exactly the
   // datacentre login this split exists to avoid.
-  const collectors = new Set(floozyCollectorIds());
+  const collectors = new Set(await collectorIds(supabase));
 
   // Distinct users, still in stalest-first order — the first time a user_id
   // appears is at their stalest source.

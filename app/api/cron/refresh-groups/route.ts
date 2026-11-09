@@ -4,7 +4,7 @@ import { canRunSignedInBrowser, redactProviderSecrets } from "@/lib/remote-brows
 import { refreshJoinedGroups, GROUPS_REFRESHED_AT_KEY } from "@/lib/facebook-groups";
 import { errorMessage } from "@/lib/errors";
 import { localCollectionModes, isCollectedLocally, withCloudPolicy } from "@/lib/collection-mode";
-import { floozyCollectorIds } from "@/lib/floozy-collect";
+import { collectorIds } from "@/lib/floozy-collect";
 
 /**
  * Re-read everyone's joined Facebook groups, weekly.
@@ -83,12 +83,13 @@ export async function GET(request: Request) {
   // page is a Facebook request like any other, and the point of local collection
   // is that none of those leave from a datacentre for these accounts.
   const localModes = await localCollectionModes(supabase);
+  const collectors = new Set(await collectorIds(supabase));
   const userIds = (sessions ?? [])
     .map((s) => s.user_id as string)
     // Collectors' groups are Floozy's area lists, loaded by scripts/floozy-groups.ts,
     // not whatever the profile happens to have joined. CLOUD_FACEBOOK=off
     // stops this for everyone.
-    .filter((id) => !floozyCollectorIds().includes(id))
+    .filter((id) => !collectors.has(id))
     .filter((id) => !isCollectedLocally(withCloudPolicy(localModes.get(id)), "facebook"));
   if (userIds.length === 0) {
     return NextResponse.json({ success: true, users: 0, results: [] });

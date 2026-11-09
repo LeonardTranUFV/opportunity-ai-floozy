@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen, ShieldCheck, Gem, Mail } from "lucide-react"
+import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen, ShieldCheck, Gem, Mail, UserCog, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AccountSwitcher } from "@/components/account-switcher"
 import type { Switcher } from "@/lib/account-switch"
@@ -22,7 +22,17 @@ import type { Switcher } from "@/lib/account-switch"
 // Each section gets its own accent color — same rotation the dashboard stat
 // cards already use (rose/blue/amber/emerald) — so the whole nav reads as
 // colorful sections instead of one flat brand-blue highlight.
-const NAV_ITEMS = [
+type NavItem = {
+  href: string
+  label: string
+  icon: LucideIcon
+  color: string
+  bg: string
+  dot: string
+  badge?: number
+}
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", dot: "before:bg-blue-500" },
   { href: "/opportunities", label: "Opportunities", icon: ListTodo, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10", dot: "before:bg-rose-500" },
   { href: "/agents", label: "AI Agents", icon: Users, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10", dot: "before:bg-violet-500" },
@@ -40,15 +50,26 @@ export function AppSidebar({
   userEmail,
   isAdmin,
   switcher,
+  openGroupRequests = 0,
 }: {
   userEmail?: string
   isAdmin?: boolean
   switcher?: Switcher | null
+  openGroupRequests?: number
 }) {
   const pathname = usePathname()
   const navItems = isAdmin
     ? [
         ...NAV_ITEMS,
+        {
+          href: "/admin/facebook",
+          label: "Facebook Accounts",
+          icon: UserCog,
+          color: "text-blue-600 dark:text-blue-400",
+          bg: "bg-blue-500/10",
+          dot: "before:bg-blue-500",
+          badge: openGroupRequests,
+        },
         {
           href: "/admin",
           label: "Admin",
@@ -83,8 +104,8 @@ export function AppSidebar({
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1.5">
-              {navItems.map(({ href, label, icon: Icon, color, bg, dot }) => {
-                const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href)
+              {navItems.map(({ href, label, icon: Icon, color, bg, dot, badge }) => {
+                const isActive = href === "/" || href === "/admin" ? pathname === href : pathname.startsWith(href)
                 return (
                   <SidebarMenuItem key={href}>
                     <SidebarMenuButton
@@ -114,6 +135,11 @@ export function AppSidebar({
                         <Icon className={cn("size-4", isActive ? color : "text-muted-foreground")} />
                       </span>
                       <span className={cn("text-[0.925rem]", isActive && color)}>{label}</span>
+                      {!!badge && (
+                        <span className="ml-auto rounded-full bg-rose-500 px-1.5 text-xs font-medium text-white" aria-label={`${badge} waiting`}>
+                          {badge}
+                        </span>
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )

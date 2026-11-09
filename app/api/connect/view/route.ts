@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getRemoteBrowserProvider } from "@/lib/remote-browser";
 import { rateLimit, tooManyRequests, LIMITS } from "@/lib/rate-limit";
+import { connectOwner } from "@/lib/operator";
 
 /**
  * Re-attach the screen to a browser that is still running.
@@ -42,9 +43,11 @@ export async function POST(request: Request) {
   }
 
   let sessionId: string;
+  let collectorId: unknown;
   try {
-    const body = (await request.json()) as { sessionId?: unknown };
+    const body = (await request.json()) as { sessionId?: unknown; collectorId?: unknown };
     sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+    collectorId = body.collectorId;
   } catch {
     return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
   }
@@ -62,7 +65,8 @@ export async function POST(request: Request) {
 
   // 404 rather than 403 on mismatch: someone probing ids should not be able to
   // tell "exists but not yours" from "does not exist".
-  if (info.ownerUserId !== user.id) {
+  const ownerId = await connectOwner(user, collectorId);
+  if (!ownerId || info.ownerUserId !== ownerId) {
     console.warn(
       `[connect] user ${user.id} asked for the live view of session ${sessionId} owned by ${info.ownerUserId ?? "nobody"}`
     );
