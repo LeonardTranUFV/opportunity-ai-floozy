@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/sidebar"
 import { Home, Users, Briefcase, ListTodo, Settings, Compass, Wrench, KeyRound, LogOut, BookOpen, ShieldCheck, Gem, Mail } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AccountSwitcher } from "@/components/account-switcher"
+import type { Switcher } from "@/lib/account-switch"
 
 // Each section gets its own accent color — same rotation the dashboard stat
 // cards already use (rose/blue/amber/emerald) — so the whole nav reads as
@@ -34,7 +36,15 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings, color: "text-slate-600 dark:text-slate-400", bg: "bg-slate-500/10", dot: "before:bg-slate-500" },
 ]
 
-export function AppSidebar({ userEmail, isAdmin }: { userEmail?: string; isAdmin?: boolean }) {
+export function AppSidebar({
+  userEmail,
+  isAdmin,
+  switcher,
+}: {
+  userEmail?: string
+  isAdmin?: boolean
+  switcher?: Switcher | null
+}) {
   const pathname = usePathname()
   const navItems = isAdmin
     ? [
@@ -66,6 +76,7 @@ export function AppSidebar({ userEmail, isAdmin }: { userEmail?: string; isAdmin
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {switcher && <AccountSwitcher switcher={switcher} />}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

@@ -207,13 +207,26 @@ for (const [id, name, table] of [
   }
 }
 
+// ── 0024: the record of operator account switches. ────────────────────────
+{
+  const exists = await tableExists("account_switches");
+  if (exists === true) {
+    const { count } = await ask("account_switches", "select=id&limit=0");
+    record("0024", "account switches   ", "applied", `${count ?? "?"} switch(es) logged`);
+  } else if (exists === false) {
+    record("0024", "account switches   ", "missing", "switching works, but each switch is only in the Vercel logs until this runs");
+  } else {
+    record("0024", "account switches   ", "unknown", "could not determine — unexpected response");
+  }
+}
+
 // ── The tables the scan reads must be closed to the browser ───────────────
 // Same property that was verified for browser_sessions. The scan is served by
 // the service role through /api/scan/preview; anon should never reach these
 // directly, or the paywall is decoration.
 if (anonKey) {
   console.log("\nanon (browser) access — these must all be refused:");
-  for (const table of ["public_leads", "subscriptions", "scan_requests", "company_profiles", "client_service_areas", "collector_runs", "lead_matches"]) {
+  for (const table of ["public_leads", "subscriptions", "scan_requests", "company_profiles", "client_service_areas", "collector_runs", "lead_matches", "account_switches"]) {
     const { status, body } = await ask(table, "select=*&limit=1", anonKey);
     /**
      * The status alone does not answer this, and reading it that way made the

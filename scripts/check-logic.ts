@@ -21,6 +21,8 @@ import { redactProviderSecrets } from "../lib/remote-browser";
 import { scoreLead, WEAK_CAP } from "../lib/lead-score";
 import { providerChain, readyProviders, extractJson, cooldownFor } from "../lib/ai-provider";
 import { readFileSync } from "node:fs";
+import { accountLabel, decideSwitch, openOperatorPass, sealOperatorPass, sortAccounts } from "../lib/account-switch";
+import { sealStorageState } from "../lib/session-crypto";
 import path from "node:path";
 import { SERVICE_AREAS, areaSlug, areaForCity, choiceCovers, serviceAreaSeedSql } from "../lib/service-areas";
 import { normalizeProfileInput, toBusinessProfile, isNotMigrated, EMPTY_PROFILE } from "../lib/company-profile";
@@ -897,6 +899,65 @@ asyncChecks.push(
     check("with no client set up it spends no AI at all", noClients.skipped === "no client has a trade and a service area yet");
   })()
 );
+
+section("operator account switcher");
+{
+  const savedKey = process.env.SESSION_ENCRYPTION_KEY;
+  process.env.SESSION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  const OP = "operator-1";
+  const CLIENT = "client-1";
+  const NOW = 1_000_000;
+  const pass = { operatorId: OP, viewingId: CLIENT, expiresAt: NOW + 1000 };
+  const sealed = sealOperatorPass(pass);
+  check("a pass opens back to what was sealed", JSON.stringify(openOperatorPass(sealed)) === JSON.stringify(pass));
+  check("the pass doesn't show who it names", !Buffer.from(sealed, "base64url").toString("utf8").includes(OP));
+
+  const raw = JSON.parse(Buffer.from(sealed, "base64url").toString("utf8"));
+  const flipped = { ...raw, ciphertext: Buffer.from("tampered").toString("base64") };
+  check("a tampered pass is refused", openOperatorPass(Buffer.from(JSON.stringify(flipped)).toString("base64url")) === null);
+  const other = Buffer.from(JSON.stringify(sealStorageState({ cookies: [], operatorId: OP, viewingId: CLIENT, expiresAt: NOW + 1000 }))).toString("base64url");
+  check("another sealed blob can't pose as a pass", openOperatorPass(other) === null);
+  check("rubbish and an empty cookie are refused", openOperatorPass("not-a-pass") === null && openOperatorPass(undefined) === null);
+
+  const base = {
+    sessionUserId: OP,
+    targetUserId: CLIENT,
+    pass: null,
+    sessionIsAdmin: true,
+    passOperatorIsAdmin: false,
+    targetIsAdmin: false,
+    now: NOW,
+  };
+  const operatorOk = decideSwitch(base);
+  check("an admin can switch into a client", operatorOk.ok && operatorOk.operatorId === OP);
+  check("a client can't switch at all", !decideSwitch({ ...base, sessionUserId: CLIENT, targetUserId: "client-2", sessionIsAdmin: false }).ok);
+
+  const inside = { ...base, sessionUserId: CLIENT, targetUserId: OP, pass, sessionIsAdmin: false, passOperatorIsAdmin: true, targetIsAdmin: true };
+  const back = decideSwitch(inside);
+  check("from a client account the operator can go back", back.ok && back.operatorId === OP);
+  check("from a client account the operator can go to another client", decideSwitch({ ...inside, targetUserId: "client-2", targetIsAdmin: false }).ok);
+  check("removing an operator from the allowlist ends switching", !decideSwitch({ ...inside, passOperatorIsAdmin: false }).ok);
+
+  const expired = decideSwitch({ ...inside, now: pass.expiresAt });
+  check("an expired pass is refused and says so", !expired.ok && expired.expired === true);
+  check(
+    "a leftover pass for another account gives no power",
+    !decideSwitch({ ...inside, sessionUserId: "stranger", targetUserId: CLIENT, targetIsAdmin: false }).ok
+  );
+  const otherAdmin = decideSwitch({ ...base, targetUserId: "operator-2", targetIsAdmin: true });
+  check("an operator can't go into another admin's account", !otherAdmin.ok && otherAdmin.status === 403);
+
+  check("a business name wins over the email", accountLabel("a@b.c", " Acme ") === "Acme" && accountLabel("a@b.c", "  ") === "a@b.c");
+  const sorted = sortAccounts([
+    { id: "2", label: "Zed", email: "z", isOperator: false },
+    { id: "3", label: "Abe", email: "a", isOperator: false },
+    { id: "1", label: "Me", email: "m", isOperator: true },
+  ]);
+  check("my own account is listed first, then A to Z", sorted.map((a) => a.id).join() === "1,3,2");
+
+  if (savedKey === undefined) delete process.env.SESSION_ENCRYPTION_KEY;
+  else process.env.SESSION_ENCRYPTION_KEY = savedKey;
+}
 
 Promise.all(asyncChecks)
   .catch((err) => check("async checks finished", false, err instanceof Error ? err.message : String(err)))
